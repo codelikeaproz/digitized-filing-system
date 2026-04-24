@@ -1,0 +1,80 @@
+// v1.0.3 - Full App Refresh
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Suspense, lazy } from "react";
+import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/lib/auth-context";
+import { CategoryProvider } from "@/contexts/CategoryContext";
+import { ProtectedRoute, RoleRoute } from "@/components/ProtectedRoute";
+
+// Lazy load pages
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
+const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const UsersPage = lazy(() => import("./pages/UsersPage"));
+const RecycleBinPage = lazy(() => import("./pages/RecycleBinPage"));
+const OrgUnitsPage = lazy(() => import("./pages/OrgUnitsPage"));
+const Error429Page = lazy(() => import("./pages/Error429Page"));
+const Error500Page = lazy(() => import("./pages/Error500Page"));
+
+// Layout
+import AppShell from "./layouts/AppShell";
+import AutoLogout from "./components/AutoLogout";
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AutoLogout timeoutMinutes={10} />
+        <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+            <Route path="/error/429" element={<Error429Page />} />
+            <Route path="/error/500" element={<Error500Page />} />
+            <Route 
+              path="/" 
+              element={
+                <ProtectedRoute>
+                  <CategoryProvider>
+                    <AppShell />
+                  </CategoryProvider>
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<DashboardPage />} />
+              <Route path="documents" element={<DocumentsPage />} />
+              <Route path="audit-logs" element={
+                <RoleRoute allowedRoles={['admin']}>
+                  <AuditLogsPage />
+                </RoleRoute>
+              } />
+              <Route path="users" element={
+                <RoleRoute allowedRoles={['admin']}>
+                  <UsersPage />
+                </RoleRoute>
+              } />
+              <Route path="org-units" element={
+                <RoleRoute allowedRoles={['admin']}>
+                  <OrgUnitsPage />
+                </RoleRoute>
+              } />
+              <Route path="recycle-bin" element={
+                <RoleRoute allowedRoles={['admin', 'dept_head']}>
+                  <RecycleBinPage />
+                </RoleRoute>
+              } />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+        <Toaster />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}

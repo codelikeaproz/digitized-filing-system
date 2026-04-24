@@ -1,0 +1,27 @@
+---
+description: Use shadcn MCP for frontend UI components; enforce project conventions.
+globs: frontend/**/*
+alwaysApply: false
+---
+
+# shadcn MCP and frontend UI rules
+
+## When working in the frontend
+
+- **Use the shadcn MCP** when adding, browsing, or installing UI components. Prefer MCP tools (list registry, search, install) over suggesting `npx shadcn@latest add ...` so components are pulled accurately for this project.
+- **Project context:** Frontend lives in `frontend/`. shadcn is configured there: Radix, Vega preset, Tailwind v4, TSX components. Config: `frontend/components.json`.
+
+## Conventions to enforce
+
+- **Imports:** Use the `@/` alias for shadcn and utils:
+  - Components: `@/components/ui/<name>` (e.g. `@/components/ui/button`)
+  - Utils: `@/lib/utils` for `cn()` and helpers
+  - Icons: Lucide via `lucide-react` (per components.json)
+- **New UI components:** Add them with the shadcn MCP (or `npx shadcn@latest add <name>` from `frontend/` if MCP is unavailable). Do not hand-write copies of shadcn components; use the registry so style (radix-vega), baseColor (neutral), and CSS variables stay consistent.
+- **Styling:** Use Tailwind classes and the `cn()` helper from `@/lib/utils` when merging or overriding component classes. Respect existing CSS variables in `frontend/src/index.css` (e.g. `--background`, `--primary`) for theming.
+- **File types:** New shadcn components are `.tsx`; use `.tsx` for UI in `frontend/src/components/ui/` and `.jsx` only where the project already uses it (e.g. App.jsx).
+
+## When suggesting commands
+
+- If the shadcn MCP is not connected or fails, fall back to: run from `frontend/` directory, e.g. `npx shadcn@latest add button input card`.
+- When installing multiple components, list them in one command (e.g. `add button dialog card`) unless dependency or size dictates otherwise.
