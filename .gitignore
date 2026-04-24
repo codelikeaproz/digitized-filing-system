@@ -1,6 +1,6 @@
 # Local repo conversion backups
 .git-backups/
-
+.cursor/
 # Python / Django
 venv/
 .venv/
