@@ -2,6 +2,7 @@ import json
 import posixpath
 import re
 
+from django.http import FileResponse
 from django.db import transaction
 from django.db.models import Count, Q
 from django.core.files.storage import default_storage
@@ -19,6 +20,7 @@ from .models import Category, Document, Folder
 from .serializers import CategorySerializer, DocumentSerializer, FolderSerializer, RESERVED_FOLDER_NAMES
 from .services import permanently_delete_folder, restore_folder, soft_delete_folder
 from accounts.models import User
+from config.pagination import StandardResultsSetPagination
 from orgunits.models import OrgUnit
 
 
@@ -316,6 +318,37 @@ class FolderViewSet(viewsets.ModelViewSet):
             children_by_parent.setdefault(folder.parent_id, []).append(folder)
         return [self._folder_node(folder, children_by_parent) for folder in children_by_parent.get(None, [])]
 
+    def _org_unit_node(self, org_unit, org_units_by_parent, folders_by_org_unit):
+        folder_tree = self._folder_tree(folders_by_org_unit.get(org_unit.id, []))
+        child_org_units = [
+            self._org_unit_node(child, org_units_by_parent, folders_by_org_unit)
+            for child in org_units_by_parent.get(org_unit.id, [])
+        ]
+        return {
+            "id": f"org-unit-{org_unit.id}",
+            "orgUnitId": str(org_unit.id),
+            "parentOrgUnitId": str(org_unit.parent_id) if org_unit.parent_id else None,
+            "name": org_unit.name,
+            "type": "org_unit",
+            "isOrgUnit": True,
+            "folders": folder_tree,
+            "children": [*child_org_units, *folder_tree],
+        }
+
+    def _org_unit_tree(self, org_units, folders):
+        org_units_by_parent = {}
+        for org_unit in org_units:
+            org_units_by_parent.setdefault(org_unit.parent_id, []).append(org_unit)
+
+        folders_by_org_unit = {}
+        for folder in folders:
+            folders_by_org_unit.setdefault(folder.org_unit_id, []).append(folder)
+
+        return [
+            self._org_unit_node(org_unit, org_units_by_parent, folders_by_org_unit)
+            for org_unit in org_units_by_parent.get(None, [])
+        ]
+
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request):
         all_files = {
@@ -330,28 +363,14 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         if getattr(user, "role", None) == "admin":
             org_units = OrgUnit.objects.filter(is_deleted=False).order_by("name")
-            nodes = [all_files]
-            for org_unit in org_units:
-                org_folders = [folder for folder in folders if folder.org_unit_id == org_unit.id]
-                folder_tree = self._folder_tree(org_folders)
-                nodes.append(
-                    {
-                        "id": f"org-unit-{org_unit.id}",
-                        "orgUnitId": str(org_unit.id),
-                        "name": org_unit.name,
-                        "type": "org_unit",
-                        "isOrgUnit": True,
-                        "folders": folder_tree,
-                        "children": folder_tree,
-                    }
-                )
-            return Response(nodes)
+            return Response([all_files, *self._org_unit_tree(org_units, folders)])
 
         return Response([all_files, *self._folder_tree(folders)])
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
+    pagination_class = StandardResultsSetPagination
     parser_classes = (JSONParser, MultiPartParser, FormParser)
 
     def get_serializer_context(self):
@@ -376,11 +395,20 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(folder__org_unit__isnull=True)
         folder_id = self.request.query_params.get("folderId")
         org_unit_id = self.request.query_params.get("orgUnitId")
+        category_id = self.request.query_params.get("category")
         search = self.request.query_params.get("search")
         if org_unit_id:
-            queryset = queryset.filter(folder__org_unit_id=org_unit_id)
+            include_children = self.request.query_params.get("includeChildOrgUnits", "true").lower() != "false"
+            org_unit = OrgUnit.objects.filter(pk=org_unit_id, is_deleted=False).first()
+            if include_children and org_unit:
+                org_unit_ids = [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
+                queryset = queryset.filter(folder__org_unit_id__in=org_unit_ids)
+            else:
+                queryset = queryset.filter(folder__org_unit_id=org_unit_id)
         if folder_id:
             queryset = queryset.filter(folder_id=folder_id)
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search)
@@ -395,6 +423,33 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if getattr(self.request.user, "role", None) == "staff":
             raise PermissionDenied("Staff cannot delete documents.")
         instance.soft_delete(self.request.user)
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        document = self.get_object()
+        assert_document_write_access(request.user, document)
+
+        if not document.file or not default_storage.exists(document.file.name):
+            return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        file_name = document.file.name.rsplit("/", 1)[-1] or document.title or "document.pdf"
+        org_unit_name = document.folder.org_unit.name if document.folder and document.folder.org_unit else None
+
+        log_audit(
+            request.user,
+            "DOWNLOAD_DOCUMENT",
+            f"Downloaded document: {file_name}",
+            target_type="Document",
+            target_name=file_name,
+            target_org_unit=org_unit_name,
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+
+        return FileResponse(
+            document.file.open("rb"),
+            as_attachment=True,
+            filename=file_name,
+        )
 
     @action(detail=True, methods=["patch"], url_path="rename")
     def rename(self, request, pk=None):
@@ -483,6 +538,8 @@ class DocumentUploadView(APIView):
 
 
 class RecycleBinAPIView(APIView):
+    pagination_class = StandardResultsSetPagination
+
     def _scope_deleted_folders(self, request):
         queryset = Folder.objects.filter(is_deleted=True, org_unit__is_deleted=False).select_related(
             "org_unit",
@@ -518,6 +575,7 @@ class RecycleBinAPIView(APIView):
     def get(self, request):
         documents = self._scope_deleted_documents(request)
         folders = self._scope_deleted_folders(request).order_by("-deleted_at")
+        item_type = (request.query_params.get("type") or "all").lower()
         doc_items = [
             {
                 **DocumentSerializer(doc, context={"request": request}).data,
@@ -527,7 +585,7 @@ class RecycleBinAPIView(APIView):
                 "orgUnitName": doc.folder.org_unit.name if doc.folder and doc.folder.org_unit else "Global Access",
             }
             for doc in documents
-        ]
+        ] if item_type in {"all", "documents", "document"} else []
         folder_items = [
             {
                 **FolderSerializer(folder).data,
@@ -538,8 +596,15 @@ class RecycleBinAPIView(APIView):
                 "deletedAt": folder.deleted_at,
             }
             for folder in folders
-        ]
-        return Response({"documents": doc_items, "folders": folder_items})
+        ] if item_type in {"all", "folders", "folder"} else []
+        items = sorted(
+            [*doc_items, *folder_items],
+            key=lambda item: item.get("deletedAt") or "",
+            reverse=True,
+        )
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(items, request, view=self)
+        return paginator.get_paginated_response(page)
 
 
 class RecycleBinRestoreAPIView(APIView):

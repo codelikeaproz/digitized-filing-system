@@ -5,8 +5,15 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL || "";
 
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 interface RequestOptions extends RequestInit {
-  params?: Record<string, string>;
+  params?: Record<string, string | number | undefined | null>;
 }
 
 class ApiService {
@@ -31,8 +38,14 @@ class ApiService {
     let url = `${cleanBaseUrl}${cleanEndpoint}`;
     
     if (params) {
-      const searchParams = new URLSearchParams(params);
-      url += `?${searchParams.toString()}`;
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          searchParams.set(key, String(value));
+        }
+      });
+      const query = searchParams.toString();
+      if (query) url += `?${query}`;
     }
 
     try {
@@ -77,10 +90,15 @@ class ApiService {
       }
 
       const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error("Server returned non-JSON response. Check API URL.");
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || data.detail || `Request failed with status ${response.status}`);
+        throw new Error(data.error || data.message || data.detail || `Request failed with status ${response.status}`);
       }
 
       return data;
@@ -94,7 +112,7 @@ class ApiService {
     }
   }
 
-  get<T>(endpoint: string, params?: Record<string, string>) {
+  get<T>(endpoint: string, params?: Record<string, string | number | undefined | null>) {
     return this.request<T>(endpoint, { method: "GET", params });
   }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   Table,
@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { logAudit } from '@/lib/audit';
+import { PaginationControls } from '@/components/PaginationControls';
 
 interface RecycleBinItem {
   id: string;
@@ -45,8 +46,11 @@ interface RecycleBinItem {
 
 export default function RecycleBinPage() {
   const [items, setItems] = useState<RecycleBinItem[]>([]);
+  const [itemCount, setItemCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'documents' | 'folders'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   const [itemToRestore, setItemToRestore] = useState<RecycleBinItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RecycleBinItem | null>(null);
@@ -55,13 +59,13 @@ export default function RecycleBinPage() {
   const fetchRecycleBin = async () => {
     setIsLoading(true);
     try {
-      const data = await api.get<{ documents: RecycleBinItem[], folders: RecycleBinItem[] }>('/api/recycle-bin');
-      const allItems = [...data.documents, ...data.folders].sort((a, b) => {
-        const dateA = a.deletedAt ? new Date(a.deletedAt).getTime() : 0;
-        const dateB = b.deletedAt ? new Date(b.deletedAt).getTime() : 0;
-        return dateB - dateA;
+      const data = await api.get<PaginatedResponse<RecycleBinItem>>('/api/recycle-bin', {
+        page: currentPage,
+        page_size: pageSize,
+        type: filter,
       });
-      setItems(allItems);
+      setItems(data.results);
+      setItemCount(data.count);
     } catch (error: any) {
       toast.error('Failed to load recycle bin');
       console.error(error);
@@ -72,7 +76,18 @@ export default function RecycleBinPage() {
 
   useEffect(() => {
     fetchRecycleBin();
-  }, []);
+  }, [currentPage, pageSize, filter]);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
+  };
+
+  const handleFilterChange = (value: 'all' | 'documents' | 'folders' | null) => {
+    if (!value) return;
+    setFilter(value);
+    setCurrentPage(1);
+  };
 
   const handleRestore = async () => {
     if (!itemToRestore) return;
@@ -109,13 +124,6 @@ export default function RecycleBinPage() {
     }
   };
 
-  const filteredItems = items.filter(item => {
-    if (filter === 'all') return true;
-    if (filter === 'documents') return item.type === 'document';
-    if (filter === 'folders') return item.type === 'folder';
-    return true;
-  });
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -128,7 +136,7 @@ export default function RecycleBinPage() {
         </div>
         
         <div className="flex items-center gap-4">
-          <Select value={filter} onValueChange={(value: any) => setFilter(value)}>
+          <Select value={filter} onValueChange={handleFilterChange}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by type" />
             </SelectTrigger>
@@ -162,13 +170,13 @@ export default function RecycleBinPage() {
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center">Loading recycle bin...</TableCell>
               </TableRow>
-            ) : filteredItems.length === 0 ? (
+            ) : items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">Recycle bin is empty.</TableCell>
               </TableRow>
             ) : (
-              filteredItems.map(item => (
-                <TableRow key={item.id}>
+              items.map(item => (
+                <TableRow key={`${item.type}-${item.id}`}>
                   <TableCell>
                     <Badge variant="outline" className="flex w-fit items-center gap-1.5 capitalize">
                       {item.type === 'folder' ? <Folder className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
@@ -201,6 +209,14 @@ export default function RecycleBinPage() {
             )}
           </TableBody>
         </Table>
+        <PaginationControls
+          count={itemCount}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={handlePageSizeChange}
+          disabled={isLoading}
+        />
       </div>
 
       <AlertDialog open={!!itemToRestore} onOpenChange={(open) => !open && setItemToRestore(null)}>

@@ -31,8 +31,9 @@ import { Document as DocType } from "@/types";
 import { toast } from "sonner";
 import { deleteDocument } from "@/lib/document-actions";
 import { useAuth } from "@/lib/auth-context";
-import { api } from "@/lib/api";
+import { api, PaginatedResponse } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import { PaginationControls } from "@/components/PaginationControls";
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -51,25 +52,41 @@ function getPdfUrl(fileUrl?: string | null) {
   }
 }
 
-async function downloadDocumentFile(document: DocType) {
-  const fileUrl = getPdfUrl(document.file_url);
-  if (!fileUrl) {
-    throw new Error("File URL not available");
-  }
+function getFileNameFromDisposition(disposition: string | null) {
+  if (!disposition) return null;
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+  const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return fileNameMatch?.[1] || null;
+}
 
-  const response = await fetch(fileUrl);
-  if (response.status === 404) {
-    throw new Error("File not found");
-  }
+async function downloadDocumentFile(document: DocType) {
+  const token = localStorage.getItem("auth_token");
+  const response = await fetch(`${BACKEND_URL}/api/documents/${document.id}/download/`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
   if (!response.ok) {
-    throw new Error("Download failed");
+    const text = await response.text();
+    let message = response.status === 404 ? "File not found" : "Download failed";
+    try {
+      const data = text ? JSON.parse(text) : {};
+      message = data.error || data.message || data.detail || message;
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(message);
   }
 
   const blob = await response.blob();
   const url = window.URL.createObjectURL(blob);
   const link = window.document.createElement("a");
   link.href = url;
-  link.download = document.file_name || document.title || "document.pdf";
+  link.download =
+    getFileNameFromDisposition(response.headers.get("Content-Disposition")) ||
+    document.file_name ||
+    document.title ||
+    "document.pdf";
   window.document.body.appendChild(link);
   link.click();
   link.remove();
@@ -80,7 +97,7 @@ function flattenFolderNodes(nodes: any[]): any[] {
   return nodes.flatMap((node) => {
     const children = node.children || node.folders || [];
     const nestedFolders = flattenFolderNodes(children);
-    return node.type === "folder" ? [node, ...nestedFolders] : nestedFolders;
+    return node.type === "folder" || node.type === "org_unit" ? [node, ...nestedFolders] : nestedFolders;
   });
 }
 
@@ -99,11 +116,15 @@ export default function DocumentsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [flatFolders, setFlatFolders] = useState<any[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [documentCount, setDocumentCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Debounce search query
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchQuery);
+      setCurrentPage(1);
     }, 400);
     return () => clearTimeout(handler);
   }, [searchQuery]);
@@ -134,7 +155,8 @@ export default function DocumentsPage() {
     
     while (current) {
       path.unshift(current);
-      current = flatFolders.find(f => f.id === current.parentId);
+      const parentNodeId = current.parentId || (current.parentOrgUnitId ? `org-unit-${current.parentOrgUnitId}` : null);
+      current = parentNodeId ? flatFolders.find(f => f.id === parentNodeId) : null;
     }
     return path;
   }, [flatFolders]);
@@ -144,18 +166,38 @@ export default function DocumentsPage() {
   const isOrgUnitNode = selectedFolder?.type === "org_unit";
   const previewPdfUrl = getPdfUrl(previewDoc?.file_url);
 
+  const handleSelectFolder = (folder: any) => {
+    setSelectedFolder(folder);
+    setCurrentPage(1);
+  };
+
+  const handleCategoryChange = (value: string) => {
+    setCategoryFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
+  };
+
   // Fetch Documents
   const fetchDocuments = async (silent = false, searchArg?: string) => {
     if (!silent) setIsRefreshing(true);
     try {
-      const params: any = {};
+      const params: Record<string, string | number> = {
+        page: currentPage,
+        page_size: pageSize,
+      };
       if (selectedFolder && selectedFolder.type === "folder") params.folderId = selectedFolder.id;
       if (isOrgUnitNode && selectedFolder?.orgUnitId) params.orgUnitId = selectedFolder.orgUnitId;
+      if (categoryFilter !== "all") params.category = categoryFilter;
       const effectiveSearch = searchArg !== undefined ? searchArg : debouncedSearch;
       if (effectiveSearch) params.search = effectiveSearch;
       
-      const docList = await api.get<DocType[]>("/api/documents", params);
-      setDocuments(docList);
+      const docPage = await api.get<PaginatedResponse<DocType>>("/api/documents", params);
+      setDocuments(docPage.results);
+      setDocumentCount(docPage.count);
     } catch (error) {
       console.error("API Error (Documents):", error);
       if (!silent) toast.error("Failed to load documents");
@@ -169,22 +211,10 @@ export default function DocumentsPage() {
     // Poll for updates if we want "pseudo-realtime" without sockets
     const interval = setInterval(() => fetchDocuments(true), 5000);
     return () => clearInterval(interval);
-  }, [selectedFolder, debouncedSearch]);
-
-  const filteredDocs = useMemo(() => {
-    return documents.filter(doc => {
-      const selectedCat = categories.find(c => c.id === categoryFilter);
-      const matchesCategory = categoryFilter === "all" || 
-                             (doc as any).categoryId === categoryFilter || 
-                             (selectedCat && doc.category === selectedCat.name) ||
-                             doc.category === categoryFilter;
-      
-      return matchesCategory;
-    });
-  }, [documents, categoryFilter, categories]);
+  }, [selectedFolder, debouncedSearch, categoryFilter, currentPage, pageSize]);
 
   const processedDocs = useMemo(() => {
-    return filteredDocs.map(doc => {
+    return documents.map(doc => {
       const categoryId = (doc as any).categoryId;
       const categoryObj = categories.find(c => c.id === categoryId);
       return {
@@ -192,7 +222,7 @@ export default function DocumentsPage() {
         category: categoryObj ? categoryObj.name : (doc.category || "Uncategorized")
       };
     });
-  }, [filteredDocs, categories]);
+  }, [documents, categories]);
 
   return (
     <div className="flex gap-6">
@@ -200,7 +230,7 @@ export default function DocumentsPage() {
       <div className="w-64 flex-shrink-0 border-right pr-6 min-h-[calc(100vh-120px)]">
         <FolderNavigation 
           folders={folders} 
-          onSelect={setSelectedFolder} 
+          onSelect={handleSelectFolder} 
           selectedId={selectedFolder?.id}
         />
       </div>
@@ -212,7 +242,7 @@ export default function DocumentsPage() {
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
-                  <BreadcrumbLink href="#" onClick={(e) => { e.preventDefault(); setSelectedFolder(null); }}>
+                  <BreadcrumbLink href="#" onClick={(e) => { e.preventDefault(); handleSelectFolder(null); }}>
                     <Home className="h-4 w-4" />
                   </BreadcrumbLink>
                 </BreadcrumbItem>
@@ -232,7 +262,7 @@ export default function DocumentsPage() {
                         ) : (
                           <BreadcrumbLink 
                             href="#" 
-                            onClick={(e) => { e.preventDefault(); setSelectedFolder(folder); }}
+                            onClick={(e) => { e.preventDefault(); handleSelectFolder(folder); }}
                           >
                             {folder.name}
                           </BreadcrumbLink>
@@ -256,7 +286,7 @@ export default function DocumentsPage() {
           <div className="flex items-center gap-2">
             <CategorySelect 
               value={categoryFilter} 
-              onValueChange={setCategoryFilter} 
+              onValueChange={handleCategoryChange} 
               className="w-[200px]"
               showAllOption
               orgUnitId={isOrgUnitNode ? selectedFolder?.orgUnitId : selectedFolder?.orgUnitId}
@@ -318,6 +348,14 @@ export default function DocumentsPage() {
               }}
             />
           )}
+          <PaginationControls
+            count={documentCount}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={handlePageSizeChange}
+            disabled={isInitialLoading || isRefreshing}
+          />
           {isRefreshing && !isInitialLoading && (
             <div className="absolute top-2 right-2 flex items-center gap-2 bg-background/80 px-2 py-1 rounded border shadow-sm z-20">
               <Loader2 className="h-3 w-3 animate-spin text-primary" />

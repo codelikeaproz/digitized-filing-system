@@ -51,12 +51,12 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative text-white p-16 flex-col justify-between overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src="/wide-office-hero.jpg"
+            src="/img/login_hero.jpeg"
             alt="Office Desk"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
             onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=2000'
+              (e.target as HTMLImageElement).src = '/img/hero.png'
             }}
           />
           <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />

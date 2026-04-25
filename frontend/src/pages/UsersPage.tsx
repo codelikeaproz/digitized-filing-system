@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import { 
   Users, 
@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { logAudit } from '@/lib/audit';
+import { PaginationControls } from '@/components/PaginationControls';
 
 type User = {
   id: string;
@@ -51,8 +52,12 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'dept_head' | 'staff'>('all');
   const [orgUnitFilter, setOrgUnitFilter] = useState<string>('all');
+  const [userCount, setUserCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -76,8 +81,17 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      const data = await api.get<User[]>('/api/users');
-      setUsers(data);
+      const params: Record<string, string | number> = {
+        page: currentPage,
+        page_size: pageSize,
+      };
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (roleFilter !== 'all') params.role = roleFilter;
+      if (orgUnitFilter !== 'all') params.orgUnitId = orgUnitFilter;
+
+      const data = await api.get<PaginatedResponse<User>>('/api/users', params);
+      setUsers(data.results);
+      setUserCount(data.count);
     } catch (error: any) {
       toast.error(error.message || 'Failed to fetch users');
     } finally {
@@ -87,8 +101,8 @@ export default function UsersPage() {
 
   const fetchOrgUnits = async () => {
     try {
-      const data = await api.get<{id: string, name: string}[]>('/api/org-units');
-      setOrgUnits(data);
+      const data = await api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 });
+      setOrgUnits(data.results);
     } catch (error) {
       console.error(error);
     }
@@ -96,8 +110,34 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
+  }, [currentPage, pageSize, debouncedSearch, roleFilter, orgUnitFilter]);
+
+  useEffect(() => {
     fetchOrgUnits();
   }, []);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
+  };
+
+  const handleRoleFilterChange = (value: 'all' | 'admin' | 'dept_head' | 'staff') => {
+    setRoleFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleOrgUnitFilterChange = (value: string) => {
+    setOrgUnitFilter(value);
+    setCurrentPage(1);
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -138,7 +178,11 @@ export default function UsersPage() {
       if (payload.role === 'admin') payload.orgUnitId = '';
 
       const newUser = await api.post<User>('/api/users', payload);
-      setUsers([...users, newUser]);
+      if (currentPage === 1) {
+        await fetchUsers();
+      } else {
+        setCurrentPage(1);
+      }
       
       const roleDisplay = payload.role === 'admin' ? 'Admin' : (payload.role === 'dept_head' ? 'Dept Head' : 'Staff');
       const targetOrg = orgUnits.find(o => o.id === newUser.orgUnitId);
@@ -168,7 +212,7 @@ export default function UsersPage() {
       if (payload.role === 'admin') payload.orgUnitId = '';
       
       const updatedUser = await api.put<User>(`/api/users/${selectedUser.id}`, payload);
-      setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+      await fetchUsers();
       
       const roleDisplay = payload.role === 'admin' ? 'Admin' : (payload.role === 'dept_head' ? 'Dept Head' : 'Staff');
       const targetOrg = orgUnits.find(o => o.id === updatedUser.orgUnitId);
@@ -203,7 +247,7 @@ export default function UsersPage() {
     
     try {
       await api.patch(`/api/users/${user.id}/status`, { isActive: !user.isActive });
-      setUsers(users.map(u => u.id === user.id ? { ...u, isActive: !user.isActive } : u));
+      await fetchUsers();
       
       const action = !user.isActive ? 'ACTIVATE_USER' : 'DEACTIVATE_USER';
       const targetOrg = orgUnits.find(o => o.id === user.orgUnitId);
@@ -225,7 +269,7 @@ export default function UsersPage() {
     if (!selectedUser) return;
     try {
       await api.delete(`/api/users/${selectedUser.id}`);
-      setUsers(users.filter(u => u.id !== selectedUser.id));
+      await fetchUsers();
       
       const targetOrg = orgUnits.find(o => o.id === selectedUser.orgUnitId);
       await logAudit(
@@ -242,15 +286,6 @@ export default function UsersPage() {
       toast.error(error.message || 'Failed to delete user');
     }
   };
-
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === 'all' || u.role.toLowerCase() === roleFilter;
-    const matchesOrgUnit = orgUnitFilter === 'all' || u.orgUnitId === orgUnitFilter;
-
-    return matchesSearch && matchesRole && matchesOrgUnit;
-  });
 
   return (
     <div className="w-full">
@@ -286,7 +321,7 @@ export default function UsersPage() {
             </div>
             <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as 'all' | 'admin' | 'dept_head' | 'staff')}
+              onChange={(e) => handleRoleFilterChange(e.target.value as 'all' | 'admin' | 'dept_head' | 'staff')}
               className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none"
             >
               <option value="all">All Roles</option>
@@ -296,7 +331,7 @@ export default function UsersPage() {
             </select>
             <select
               value={orgUnitFilter}
-              onChange={(e) => setOrgUnitFilter(e.target.value)}
+              onChange={(e) => handleOrgUnitFilterChange(e.target.value)}
               className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none max-w-[200px]"
             >
               <option value="all">All Org Units</option>
@@ -306,7 +341,7 @@ export default function UsersPage() {
             </select>
           </div>
           <div className="text-sm font-medium text-gray-500">
-            {filteredUsers.length} Users Total
+            {userCount} Users Total
           </div>
         </div>
 
@@ -332,14 +367,14 @@ export default function UsersPage() {
                     Loading users...
                   </TableCell>
                 </TableRow>
-              ) : filteredUsers.length === 0 ? (
+              ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     No users found matching your search.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredUsers.map((user) => (
+                users.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="pl-6 font-medium">
                       {user.fullName}
@@ -432,6 +467,14 @@ export default function UsersPage() {
             </TableBody>
           </Table>
         </div>
+        <PaginationControls
+          count={userCount}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={handlePageSizeChange}
+          disabled={isLoading}
+        />
       </div>
 
       {/* Add / Edit Modal Overlay */}

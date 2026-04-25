@@ -1,11 +1,14 @@
 from django.contrib.auth import authenticate
+from django.db import models
 from rest_framework import generics, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from auditlogs.models import log_audit
+from config.pagination import StandardResultsSetPagination
 
 from .models import User
 from .serializers import UserSerializer
@@ -73,9 +76,25 @@ class ResetPasswordView(APIView):
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        return User.objects.select_related("org_unit").order_by("email")
+        queryset = User.objects.select_related("org_unit").order_by("email")
+        search = self.request.query_params.get("search")
+        role = self.request.query_params.get("role")
+        org_unit_id = self.request.query_params.get("orgUnitId")
+
+        if search:
+            queryset = queryset.filter(
+                models.Q(email__icontains=search)
+                | models.Q(first_name__icontains=search)
+                | models.Q(last_name__icontains=search)
+            )
+        if role:
+            queryset = queryset.filter(role=role)
+        if org_unit_id:
+            queryset = queryset.filter(org_unit_id=org_unit_id)
+        return queryset
 
     def perform_create(self, serializer):
         user = serializer.save()
@@ -101,3 +120,12 @@ class UserViewSet(viewsets.ModelViewSet):
             user.save(update_fields=["is_active_status"])
             return Response(UserSerializer(user).data)
         return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["patch"], url_path="status")
+    def status(self, request, pk=None):
+        user = self.get_object()
+        if user == request.user and request.data.get("isActive") is False:
+            return Response({"error": "You cannot deactivate your own account."}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active_status = bool(request.data.get("isActive"))
+        user.save(update_fields=["is_active_status"])
+        return Response(UserSerializer(user).data)

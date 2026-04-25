@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth-context';
 import { logAudit } from '@/lib/audit';
+import { PaginationControls } from '@/components/PaginationControls';
+import { PaginatedResponse } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -36,6 +38,10 @@ type OrgUnit = {
 
 export default function OrgUnitsPage() {
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
+  const [allOrgUnits, setAllOrgUnits] = useState<OrgUnit[]>([]);
+  const [orgUnitCount, setOrgUnitCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -51,8 +57,12 @@ export default function OrgUnitsPage() {
   const fetchOrgUnits = async () => {
     try {
       setIsLoading(true);
-      const data = await api.get<OrgUnit[]>('/api/org-units');
-      setOrgUnits(data);
+      const data = await api.get<PaginatedResponse<OrgUnit>>('/api/org-units/', {
+        page: currentPage,
+        page_size: pageSize,
+      });
+      setOrgUnits(data.results);
+      setOrgUnitCount(data.count);
     } catch (error: any) {
       toast.error(error.message || 'Failed to fetch org units');
     } finally {
@@ -60,9 +70,27 @@ export default function OrgUnitsPage() {
     }
   };
 
+  const fetchAllOrgUnits = async () => {
+    try {
+      const data = await api.get<PaginatedResponse<OrgUnit>>('/api/org-units/', { page_size: 100 });
+      setAllOrgUnits(data.results);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
     fetchOrgUnits();
+  }, [currentPage, pageSize]);
+
+  useEffect(() => {
+    fetchAllOrgUnits();
   }, []);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -87,8 +115,9 @@ export default function OrgUnitsPage() {
     if (!ouToDelete) return;
     setIsDeleting(true);
     try {
-      await api.delete(`/api/org-units/${ouToDelete.id}`);
-      setOrgUnits(orgUnits.filter(ou => ou.id !== ouToDelete.id));
+      await api.delete(`/api/org-units/${ouToDelete.id}/`);
+      await fetchOrgUnits();
+      await fetchAllOrgUnits();
       toast.success('Org Unit deleted successfully');
       setOuToDelete(null);
     } catch (error: any) {
@@ -102,13 +131,13 @@ export default function OrgUnitsPage() {
     e.preventDefault();
     try {
       if (isEditMode && editId) {
-        const targetOu = orgUnits.find(o => o.id === editId);
-        const updatedOu = await api.put<OrgUnit>(`/api/org-units/${editId}`, {
+        const updatedOu = await api.put<OrgUnit>(`/api/org-units/${editId}/`, {
           ...formData,
           parentId: formData.parentId || null,
           type: formData.type || null
         });
-        setOrgUnits(orgUnits.map(ou => ou.id === editId ? updatedOu : ou));
+        await fetchOrgUnits();
+        await fetchAllOrgUnits();
         
         await logAudit(
           'UPDATE_ORG_UNIT',
@@ -120,12 +149,17 @@ export default function OrgUnitsPage() {
         
         toast.success('Org Unit updated successfully');
       } else {
-        const newOu = await api.post<OrgUnit>('/api/org-units', {
+        await api.post<OrgUnit>('/api/org-units/', {
           ...formData,
           parentId: formData.parentId || null,
           type: formData.type || null
         });
-        setOrgUnits([...orgUnits, newOu]);
+        if (currentPage === 1) {
+          await fetchOrgUnits();
+        } else {
+          setCurrentPage(1);
+        }
+        await fetchAllOrgUnits();
         toast.success('Org Unit created successfully');
       }
       setIsModalOpen(false);
@@ -137,12 +171,12 @@ export default function OrgUnitsPage() {
   // Helper to resolve parent name
   const getParentName = (parentId: string | null) => {
     if (!parentId) return 'None (Root)';
-    const parent = orgUnits.find(ou => ou.id === parentId);
+    const parent = allOrgUnits.find(ou => ou.id === parentId);
     return parent ? parent.name : 'Unknown';
   };
 
   // Option items avoiding the currently edited OrgUnit as parent
-  const parentOptions = orgUnits.filter(ou => !isEditMode || ou.id !== editId);
+  const parentOptions = allOrgUnits.filter(ou => !isEditMode || ou.id !== editId);
 
   if (!isAdmin) {
     return <div className="p-8 text-center text-red-500">Access Denied. Admins Only.</div>;
@@ -219,6 +253,14 @@ export default function OrgUnitsPage() {
             </TableBody>
           </Table>
         </div>
+        <PaginationControls
+          count={orgUnitCount}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={handlePageSizeChange}
+          disabled={isLoading}
+        />
       </div>
 
       {/* Add/Edit Modal Overlay */}

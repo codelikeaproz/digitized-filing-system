@@ -5,7 +5,9 @@ export type AuditAction =
   | "LOGOUT" 
   | "UPLOAD" 
   | "SCAN"
-  | "DOWNLOAD" 
+  | "DOWNLOAD"
+  | "DOWNLOAD_DOCUMENT"
+  | "EXPORT_AUDIT_CSV"
   | "CREATE_FOLDER" 
   | "DELETE_FOLDER" 
   | "ARCHIVE_DOCUMENT"
@@ -38,7 +40,7 @@ export async function logAudit(
     const userJson = localStorage.getItem("auth_user");
     const user = userJson ? JSON.parse(userJson) : null;
     
-    await api.post("/api/audit-logs", {
+    await api.post("/api/audit-logs/", {
       userId: user?.id || "system",
       userEmail: user?.email || "system",
       action,

@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { useCategories } from "@/contexts/CategoryContext";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
+import { PaginatedResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -73,7 +74,9 @@ export function CategorySelect({
     // If admin and no orgUnit is forced, fetch org units to populate the selection and labels
     // Do it once so we have names
     if (user?.role === 'admin' && !orgUnitId) {
-      api.get<{id: string, name: string}[]>('/api/org-units').then(res => setOrgUnits(res)).catch(console.error);
+      api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 })
+        .then(res => setOrgUnits(res.results))
+        .catch(console.error);
     }
   }, [user?.role, orgUnitId]);
 

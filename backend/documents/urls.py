@@ -20,6 +20,11 @@ router.register("documents", DocumentViewSet, basename="document")
 urlpatterns = [
     path("dashboard/stats", DashboardStatsAPIView.as_view(), name="dashboard-stats"),
     path("documents/upload", DocumentUploadView.as_view(), name="document-upload"),
+    path(
+        "documents/<int:pk>/download/",
+        DocumentViewSet.as_view({"get": "download"}),
+        name="document-download",
+    ),
     path("recycle-bin", RecycleBinAPIView.as_view(), name="recycle-bin"),
     path("recycle-bin/restore", RecycleBinRestoreAPIView.as_view(), name="recycle-bin-restore"),
     path("recycle-bin/delete", RecycleBinDeleteAPIView.as_view(), name="recycle-bin-delete"),
