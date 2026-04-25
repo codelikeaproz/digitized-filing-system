@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from config.timezone_utils import format_local_datetime
 from .models import User
 
 
@@ -9,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
     orgUnitId = serializers.CharField(source="org_unit_id", required=False, allow_blank=True, allow_null=True)
     orgUnitName = serializers.CharField(source="org_unit.name", read_only=True)
     isActive = serializers.BooleanField(source="is_active_status", required=False)
-    createdAt = serializers.DateTimeField(source="date_joined", read_only=True)
+    createdAt = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -28,6 +29,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_fullName(self, obj):
         return obj.get_full_name() or obj.email
+
+    def get_createdAt(self, obj):
+        return format_local_datetime(obj.date_joined)
 
     def _apply_full_name(self, user, full_name):
         if not full_name:

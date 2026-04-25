@@ -16,6 +16,7 @@ import { AuditLog } from "@/types";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PaginationControls } from "@/components/PaginationControls";
+import { formatManilaDateTime } from "@/lib/time";
 import {
   Dialog,
   DialogContent,
@@ -196,16 +197,6 @@ export default function AuditLogsPage() {
     }
   };
 
-  const formatDate = (date: any) => {
-    if (!date) return "-";
-    try {
-      const d = new Date(date);
-      return format(d, "MMM dd, yyyy HH:mm:ss");
-    } catch (e) {
-      return String(date);
-    }
-  };
-
   const formatActionStr = (action: string) => {
     const actionOption = ACTION_OPTIONS.find(option => option.value === action);
     if (actionOption) return actionOption.label;
@@ -332,7 +323,7 @@ export default function AuditLogsPage() {
             ) : (
               logs.map((log) => (
                 <TableRow key={log.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{formatDate(log.createdAt)}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{formatManilaDateTime(log.createdAt)}</TableCell>
                   <TableCell className="font-medium text-sm">
                     {(log as any).userFullName || "System"}
                   </TableCell>

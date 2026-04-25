@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { logAudit } from '@/lib/audit';
 import { PaginationControls } from '@/components/PaginationControls';
+import { formatManilaDate } from '@/lib/time';
 
 type User = {
   id: string;
@@ -414,11 +415,7 @@ export default function UsersPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                      {new Date(user.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                      {formatManilaDate(user.createdAt)}
                     </TableCell>
                     <TableCell className="text-right pr-6">
                       <DropdownMenu>

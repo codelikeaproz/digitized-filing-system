@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from config.timezone_utils import format_local_datetime
 from .models import Category, Document, Folder
 
 
@@ -10,7 +11,7 @@ class CategorySerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
     org_unit = serializers.IntegerField(source="org_unit_id", read_only=True, allow_null=True)
     orgUnitId = serializers.CharField(source="org_unit_id", required=False, allow_null=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    createdAt = serializers.SerializerMethodField()
     document_count = serializers.SerializerMethodField()
     documentCount = serializers.SerializerMethodField()
     inUse = serializers.SerializerMethodField()
@@ -31,6 +32,9 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_inUse(self, obj):
         return self.get_documentCount(obj) > 0
 
+    def get_createdAt(self, obj):
+        return format_local_datetime(obj.created_at)
+
     def validate_orgUnitId(self, value):
         return value or None
 
@@ -40,7 +44,7 @@ class FolderSerializer(serializers.ModelSerializer):
     parentId = serializers.CharField(source="parent_id", required=False, allow_null=True)
     orgUnitId = serializers.CharField(source="org_unit_id", required=False, allow_null=True)
     createdBy = serializers.CharField(source="created_by_id", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    createdAt = serializers.SerializerMethodField()
     documentCount = serializers.SerializerMethodField()
     subfolderCount = serializers.SerializerMethodField()
     location = serializers.CharField(source="get_full_path", read_only=True)
@@ -64,6 +68,9 @@ class FolderSerializer(serializers.ModelSerializer):
 
     def get_subfolderCount(self, obj):
         return obj.children.filter(is_deleted=False).count()
+
+    def get_createdAt(self, obj):
+        return format_local_datetime(obj.created_at)
 
     def validate_name(self, value):
         if value.strip().lower() in RESERVED_FOLDER_NAMES:
@@ -89,10 +96,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     filingYear = serializers.IntegerField(source="filing_year")
     mimeType = serializers.CharField(source="mime_type")
     isDeleted = serializers.BooleanField(source="is_deleted")
-    deletedAt = serializers.DateTimeField(source="deleted_at", read_only=True)
+    deletedAt = serializers.SerializerMethodField()
     deletedBy = serializers.CharField(source="deleted_by_id", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    created_at = serializers.DateTimeField(read_only=True)
+    createdAt = serializers.SerializerMethodField()
+    created_at = serializers.SerializerMethodField()
     mime_type = serializers.CharField(read_only=True)
     file_size = serializers.IntegerField(read_only=True)
 
@@ -139,3 +146,12 @@ class DocumentSerializer(serializers.ModelSerializer):
             return None
         url = obj.file.url
         return request.build_absolute_uri(url) if request else url
+
+    def get_deletedAt(self, obj):
+        return format_local_datetime(obj.deleted_at)
+
+    def get_createdAt(self, obj):
+        return format_local_datetime(obj.created_at)
+
+    def get_created_at(self, obj):
+        return self.get_createdAt(obj)

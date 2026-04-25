@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { logAudit } from '@/lib/audit';
 import { PaginationControls } from '@/components/PaginationControls';
+import { formatManilaDateTime } from '@/lib/time';
 
 interface RecycleBinItem {
   id: string;
@@ -194,7 +195,7 @@ export default function RecycleBinPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {item.deletedAt ? new Date(item.deletedAt).toLocaleString() : 'Unknown'}
+                    {item.deletedAt ? formatManilaDateTime(item.deletedAt) : 'Unknown'}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="outline" size="sm" onClick={() => setItemToRestore(item)}>

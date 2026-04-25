@@ -10,6 +10,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework import viewsets
 
 from config.pagination import StandardResultsSetPagination
+from config.timezone_utils import format_local_datetime
 from orgunits.models import OrgUnit
 from .models import AuditLog, log_audit
 from .serializers import AuditLogSerializer
@@ -137,7 +138,7 @@ class AuditLogViewSet(viewsets.ModelViewSet):
             org_unit = log.target_org_unit or (user.org_unit.name if user and user.org_unit else "Global Access")
             # Excel may render date/time cells as ####### when the column is narrow.
             # Wrapping the formatted timestamp in ="..." keeps it readable as text.
-            timestamp = f'="{timezone.localtime(log.created_at).strftime("%Y-%m-%d %H:%M:%S")}"'
+            timestamp = f'="{format_local_datetime(log.created_at)}"'
             writer.writerow([timestamp, name, role, org_unit, log.action, log.details])
 
         return response

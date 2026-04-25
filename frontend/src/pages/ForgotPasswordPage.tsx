@@ -77,7 +77,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         <div className="z-20 flex flex-col gap-4">
-          <p className="text-sm text-gray-400 font-medium">@2026</p>
+          <p className="text-sm text-gray-400 font-medium">@2026 Digifile</p>
         </div>
       </div>
 

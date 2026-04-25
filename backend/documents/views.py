@@ -21,6 +21,7 @@ from .serializers import CategorySerializer, DocumentSerializer, FolderSerialize
 from .services import permanently_delete_folder, restore_folder, soft_delete_folder
 from accounts.models import User
 from config.pagination import StandardResultsSetPagination
+from config.timezone_utils import format_local_datetime, local_datetime
 from orgunits.models import OrgUnit
 
 
@@ -302,7 +303,7 @@ class FolderViewSet(viewsets.ModelViewSet):
             "orgUnitId": str(folder.org_unit_id) if folder.org_unit_id else None,
             "org_unit": folder.org_unit.name if folder.org_unit else None,
             "createdBy": str(folder.created_by_id) if folder.created_by_id else None,
-            "createdAt": folder.created_at,
+            "createdAt": format_local_datetime(folder.created_at),
             "documentCount": folder.documents.filter(is_deleted=False).count(),
             "subfolderCount": folder.children.filter(is_deleted=False).count(),
             "location": folder.get_full_path(),
@@ -540,6 +541,15 @@ class DocumentUploadView(APIView):
 class RecycleBinAPIView(APIView):
     pagination_class = StandardResultsSetPagination
 
+    def _deleted_at_sort_value(self, value):
+        return local_datetime(value) or timezone.make_aware(
+            timezone.datetime.min,
+            timezone.get_current_timezone(),
+        )
+
+    def _format_deleted_at(self, value):
+        return format_local_datetime(value)
+
     def _scope_deleted_folders(self, request):
         queryset = Folder.objects.filter(is_deleted=True, org_unit__is_deleted=False).select_related(
             "org_unit",
@@ -573,38 +583,59 @@ class RecycleBinAPIView(APIView):
         raise PermissionDenied("Staff do not have Recycle Bin access.")
 
     def get(self, request):
-        documents = self._scope_deleted_documents(request)
-        folders = self._scope_deleted_folders(request).order_by("-deleted_at")
-        item_type = (request.query_params.get("type") or "all").lower()
-        doc_items = [
-            {
-                **DocumentSerializer(doc, context={"request": request}).data,
-                "type": "document",
-                "deletedByRole": getattr(doc.deleted_by, "role", "System") if doc.deleted_by else "System",
-                "deletedByFullName": doc.deleted_by.get_full_name() if doc.deleted_by else "System",
-                "orgUnitName": doc.folder.org_unit.name if doc.folder and doc.folder.org_unit else "Global Access",
-            }
-            for doc in documents
-        ] if item_type in {"all", "documents", "document"} else []
-        folder_items = [
-            {
-                **FolderSerializer(folder).data,
-                "type": "folder",
-                "deletedByRole": getattr(folder.deleted_by, "role", "System") if folder.deleted_by else "System",
-                "deletedByFullName": folder.deleted_by.get_full_name() if folder.deleted_by else "System",
-                "orgUnitName": folder.org_unit.name if folder.org_unit else "Global Access",
-                "deletedAt": folder.deleted_at,
-            }
-            for folder in folders
-        ] if item_type in {"all", "folders", "folder"} else []
-        items = sorted(
-            [*doc_items, *folder_items],
-            key=lambda item: item.get("deletedAt") or "",
-            reverse=True,
-        )
-        paginator = self.pagination_class()
-        page = paginator.paginate_queryset(items, request, view=self)
-        return paginator.get_paginated_response(page)
+        try:
+            documents = self._scope_deleted_documents(request)
+            folders = self._scope_deleted_folders(request).order_by("-deleted_at")
+            item_type = (request.query_params.get("type") or "all").lower()
+            doc_items = [
+                {
+                    **DocumentSerializer(doc, context={"request": request}).data,
+                    "type": "document",
+                    "deletedByRole": getattr(doc.deleted_by, "role", "System") if doc.deleted_by else "System",
+                    "deletedByFullName": doc.deleted_by.get_full_name() if doc.deleted_by else "System",
+                    "orgUnitName": doc.folder.org_unit.name if doc.folder and doc.folder.org_unit else "Global Access",
+                    "deletedAt": self._format_deleted_at(doc.deleted_at),
+                    "deleted_at": self._format_deleted_at(doc.deleted_at),
+                    "deleted_at_sort": self._deleted_at_sort_value(doc.deleted_at),
+                }
+                for doc in documents
+            ] if item_type in {"all", "documents", "document"} else []
+            folder_items = [
+                {
+                    **FolderSerializer(folder).data,
+                    "type": "folder",
+                    "deletedByRole": getattr(folder.deleted_by, "role", "System") if folder.deleted_by else "System",
+                    "deletedByFullName": folder.deleted_by.get_full_name() if folder.deleted_by else "System",
+                    "orgUnitName": folder.org_unit.name if folder.org_unit else "Global Access",
+                    "deletedAt": self._format_deleted_at(folder.deleted_at),
+                    "deleted_at": self._format_deleted_at(folder.deleted_at),
+                    "deleted_at_sort": self._deleted_at_sort_value(folder.deleted_at),
+                }
+                for folder in folders
+            ] if item_type in {"all", "folders", "folder"} else []
+            items = sorted(
+                [*doc_items, *folder_items],
+                key=lambda item: item["deleted_at_sort"],
+                reverse=True,
+            )
+            for item in items:
+                item.pop("deleted_at_sort", None)
+
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(items, request, view=self)
+            return paginator.get_paginated_response(page)
+        except PermissionDenied:
+            raise
+        except Exception as exc:
+            log_audit(
+                request.user,
+                "SYSTEM_ERROR",
+                f"Failed to load recycle bin items: {exc}",
+                target_type="RecycleBin",
+                target_name="Recycle Bin",
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
+            return Response({"message": "Failed to load recycle bin items."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class RecycleBinRestoreAPIView(APIView):

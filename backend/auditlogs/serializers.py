@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from config.timezone_utils import format_local_datetime
 from .models import AuditLog
 
 
@@ -8,7 +9,7 @@ class AuditLogSerializer(serializers.ModelSerializer):
     userId = serializers.CharField(source="user_id", read_only=True)
     userEmail = serializers.EmailField(source="user_email", required=False, allow_blank=True)
     ipAddress = serializers.IPAddressField(source="ip_address", required=False, allow_null=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    createdAt = serializers.SerializerMethodField()
     targetType = serializers.CharField(source="target_type", required=False, allow_blank=True, allow_null=True)
     targetName = serializers.CharField(source="target_name", required=False, allow_blank=True, allow_null=True)
     targetOrgUnit = serializers.CharField(source="target_org_unit", required=False, allow_blank=True, allow_null=True)
@@ -49,3 +50,6 @@ class AuditLogSerializer(serializers.ModelSerializer):
         if org_unit:
             return org_unit.name
         return "Global Access"
+
+    def get_createdAt(self, obj):
+        return format_local_datetime(obj.created_at)
