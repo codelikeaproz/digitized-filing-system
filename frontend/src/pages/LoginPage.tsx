@@ -56,7 +56,7 @@ export default function LoginPage() {
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
             onError={(e) => {
-              (e.target as HTMLImageElement).src = '/img/hero.png'
+              (e.target as HTMLImageElement).src = '/img/login_hero.jpeg'
             }}
           />
           <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
