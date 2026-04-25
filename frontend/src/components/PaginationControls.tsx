@@ -31,6 +31,7 @@ export function PaginationControls({
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}
           disabled={disabled}
+          title="Rows per page"
           className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring"
         >
           {PAGE_SIZE_OPTIONS.map((option) => (
