@@ -16,7 +16,6 @@ export type AuditAction =
   | "RESTORE_DOCUMENT"
   | "RESTORE"
   | "PERMANENT_DELETE"
-  | "UPDATE_SETTINGS"
   | "CREATE_USER"
   | "UPDATE_USER"
   | "DELETE_USER"

@@ -3,16 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Settings as SettingsIcon, Shield, Bell, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, Shield, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { logAudit } from "@/lib/audit";
-import { useAuth } from "@/lib/auth-context";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
-
   const [passwords, setPasswords] = useState({
     current: "",
     new: "",
@@ -38,13 +33,18 @@ export default function SettingsPage() {
 
     setIsUpdating(true);
     try {
-      await api.post("/api/auth/update-password", {
+      const response = await api.post<{ message: string }>("/api/auth/update-password/", {
         current_password: passwords.current,
-        new_password: passwords.new
+        new_password: passwords.new,
+        confirm_password: passwords.confirm
       });
-      await logAudit("UPDATE_SETTINGS", "Updated personal account password");
-      toast.success("Password updated successfully");
+      toast.success(response.message || "Password updated successfully. Please login again.");
       setPasswords({ current: "", new: "", confirm: "" });
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("auth_user");
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 800);
     } catch (error: any) {
       toast.error(error.message || "Failed to update password");
     } finally {

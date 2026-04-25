@@ -35,6 +35,7 @@ import { api } from "@/lib/api";
 import { PaginatedResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Category } from "@/types";
 
 interface CategorySelectProps {
   value: string;
@@ -62,7 +63,7 @@ export function CategorySelect({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [orgUnits, setOrgUnits] = useState<{id: string, name: string}[]>([]);
-  const [categoryToDelete, setCategoryToDelete] = useState<any>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
 
   useEffect(() => {
     if (orgUnitId) {
@@ -110,7 +111,7 @@ export function CategorySelect({
     }
   };
 
-  const getCategoryLabel = (c: any) => {
+  const getCategoryLabel = (c: Category) => {
     if (user?.role === 'admin' && !orgUnitId) {
       // Find the org unit name if we fetched them, else just show ID or fallback
       // Since we don't always fetch org units unless adding, we can try to find from existing
@@ -133,11 +134,11 @@ export function CategorySelect({
     }
   };
 
-  const getCategoryDocumentCount = (category: any) => {
+  const getCategoryDocumentCount = (category: Category) => {
     return category.document_count ?? category.documentCount ?? 0;
   };
 
-  const handleRequestDeleteCategory = (category: any) => {
+  const handleRequestDeleteCategory = (category: Category) => {
     const inUse = getCategoryDocumentCount(category) > 0;
     if (inUse) return;
     setCategoryToDelete(category);

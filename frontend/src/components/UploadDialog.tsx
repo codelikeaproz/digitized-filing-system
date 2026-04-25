@@ -225,14 +225,17 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       const physicalLocation = folderPaths.find(p => p.id === targetFolderId)?.path || "All Files";
       
       const categoryObj = Array.isArray(categories) ? categories.find(c => c.id === categoryId) : null;
-      const categoryName = categoryObj?.name ?? "Uncategorized";
+      if (!categoryObj) {
+        toast.error("Selected category is no longer available. Please select another category.");
+        return;
+      }
 
       const formData = new FormData();
       formData.append("file", file);
       formData.append("title", finalName);
       formData.append("requestor", docTitle);
       formData.append("categoryId", categoryId);
-      formData.append("categoryName", categoryName);
+      formData.append("categoryName", categoryObj.name);
       formData.append("folderId", targetFolderId);
       formData.append("uploaderId", user.id);
       formData.append("filePath", physicalLocation);

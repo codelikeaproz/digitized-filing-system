@@ -1,18 +1,9 @@
 // Version 1.0.2 - API Integration Robustness
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, PaginatedResponse } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
-
-interface Category {
-  id: string;
-  name: string;
-  org_unit?: number | null;
-  orgUnitId?: string;
-  inUse?: boolean;
-  document_count?: number;
-  documentCount?: number;
-}
+import type { Category } from "@/types";
 
 interface CategoryContextType {
   categories: Category[];
@@ -25,6 +16,16 @@ interface CategoryContextType {
 
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
 
+function normalizeCategory(category: Category): Category {
+  const rawOrgUnitId = category.orgUnitId ?? category.org_unit;
+
+  return {
+    ...category,
+    id: String(category.id),
+    orgUnitId: rawOrgUnitId === undefined || rawOrgUnitId === null ? null : String(rawOrgUnitId),
+  };
+}
+
 export function CategoryProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,9 +33,12 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
   const fetchCategories = useCallback(async (orgUnitId?: string) => {
     setLoading(true);
     try {
-      const query = orgUnitId ? `?orgUnitId=${orgUnitId}` : '';
-      const data = await api.get<Category[]>(`/api/categories${query}`);
-      setCategories(data);
+      const data = await api.get<Category[] | PaginatedResponse<Category>>(
+        "/api/categories",
+        orgUnitId ? { orgUnitId } : undefined
+      );
+      const categoryList = Array.isArray(data) ? data : data.results;
+      setCategories(categoryList.map(normalizeCategory));
     } catch (error: any) {
       console.error("API Category Fetch Error:", error);
       toast.error(`Failed to load categories: ${error.message}`);
@@ -55,7 +59,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       const payload: any = { name: trimmedName };
       if (orgUnitId) payload.orgUnitId = orgUnitId;
       
-      const newCategory = await api.post<Category>("/api/categories", payload);
+      const newCategory = normalizeCategory(await api.post<Category>("/api/categories", payload));
       setCategories(prev => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)));
       toast.success(`Category "${newCategory.name}" added.`);
       return newCategory.id;
@@ -72,12 +76,12 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const existingCategory = categories.find(c => c.id === id);
-      const updatedCategory = await api.put<Category>(`/api/categories/${id}`, { name: trimmedName });
+      const updatedCategory = normalizeCategory(await api.put<Category>(`/api/categories/${id}`, { name: trimmedName }));
       setCategories(prev => prev.map(c => c.id === id ? updatedCategory : c).sort((a, b) => a.name.localeCompare(b.name)));
       
       await logAudit(
         "UPDATE_CATEGORY", 
-        `Updated Category: ${existingCategory?.name || 'Unknown'} → ${trimmedName}`,
+        `Updated Category: ${existingCategory?.name || 'Unknown'} to ${trimmedName}`,
         undefined,
         'category',
         trimmedName

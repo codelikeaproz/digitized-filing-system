@@ -509,8 +509,13 @@ class DocumentUploadView(APIView):
             return Response({"error": "Target folder is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         category = Category.objects.filter(pk=request.data.get("categoryId")).first()
-        if not category and request.data.get("categoryName"):
-            category, _ = Category.objects.get_or_create(name=request.data["categoryName"], org_unit=None)
+        if not category:
+            return Response({"error": "Valid category is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
+            return Response(
+                {"error": "Category must belong to the selected folder's Org Unit."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             keywords = json.loads(request.data.get("keywords", "[]"))

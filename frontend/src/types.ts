@@ -16,8 +16,6 @@ export interface Department {
   name: string;
 }
 
-export type DocumentCategory = 'Memo' | 'Approved Documents' | 'Reports' | 'Letters' | 'Forms' | 'Others';
-
 export type DocumentStatus = 'Received';
 
 export interface Folder {
@@ -33,7 +31,12 @@ export interface Folder {
 export interface Category {
   id: string;
   name: string;
-  createdAt: string;
+  org_unit?: number | string | null;
+  orgUnitId?: string | null;
+  createdAt?: string;
+  document_count?: number;
+  documentCount?: number;
+  inUse?: boolean;
 }
 
 export interface Document {

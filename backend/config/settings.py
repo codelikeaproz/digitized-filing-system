@@ -65,7 +65,6 @@ INSTALLED_APPS = [
     "orgunits",
     "documents",
     "auditlogs",
-    "systemsettings",
 ]
 
 AUTH_USER_MODEL = 'accounts.User'

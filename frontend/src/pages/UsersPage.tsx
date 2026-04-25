@@ -47,6 +47,7 @@ type User = {
   createdAt: string;
   orgUnitId?: string;
   orgUnitName?: string;
+  isLastActiveAdmin?: boolean;
 };
 
 export default function UsersPage() {
@@ -78,6 +79,8 @@ export default function UsersPage() {
   });
   
   const { user: currentUser } = useAuth();
+  const isSelectedLastActiveAdmin = Boolean(selectedUser?.isLastActiveAdmin);
+  const lastAdminMessage = 'At least one active Admin must remain in the system.';
 
   const fetchUsers = async () => {
     try {
@@ -168,6 +171,10 @@ export default function UsersPage() {
   };
 
   const handleOpenDelete = (user: User) => {
+    if (user.isLastActiveAdmin) {
+      toast.error(lastAdminMessage);
+      return;
+    }
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
   };
@@ -175,8 +182,10 @@ export default function UsersPage() {
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...formData };
-      if (payload.role === 'admin') payload.orgUnitId = '';
+      const payload = {
+        ...formData,
+        orgUnitId: formData.role === 'admin' ? null : formData.orgUnitId,
+      };
 
       const newUser = await api.post<User>('/api/users', payload);
       if (currentPage === 1) {
@@ -206,11 +215,17 @@ export default function UsersPage() {
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
+    if (selectedUser.isLastActiveAdmin && formData.role !== 'admin') {
+      toast.error(lastAdminMessage);
+      return;
+    }
     try {
       // Omit password if blank
-      const payload = { ...formData } as any;
+      const payload = {
+        ...formData,
+        orgUnitId: formData.role === 'admin' ? null : formData.orgUnitId,
+      } as any;
       if (!payload.password) delete payload.password;
-      if (payload.role === 'admin') payload.orgUnitId = '';
       
       const updatedUser = await api.put<User>(`/api/users/${selectedUser.id}`, payload);
       await fetchUsers();
@@ -245,6 +260,10 @@ export default function UsersPage() {
       toast.error('You cannot deactivate your own account.');
       return;
     }
+    if (user.isLastActiveAdmin && user.isActive) {
+      toast.error(lastAdminMessage);
+      return;
+    }
     
     try {
       await api.patch(`/api/users/${user.id}/status`, { isActive: !user.isActive });
@@ -268,6 +287,11 @@ export default function UsersPage() {
 
   const handleDelete = async () => {
     if (!selectedUser) return;
+    if (selectedUser.isLastActiveAdmin) {
+      toast.error(lastAdminMessage);
+      setIsDeleteModalOpen(false);
+      return;
+    }
     try {
       await api.delete(`/api/users/${selectedUser.id}`);
       await fetchUsers();
@@ -430,7 +454,7 @@ export default function UsersPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
                             onClick={() => handleToggleStatus(user)}
-                            disabled={user.id === currentUser?.id}
+                            disabled={user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
                           >
                             <span className="flex items-center">
                               {user.isActive ? (
@@ -451,7 +475,7 @@ export default function UsersPage() {
                           <DropdownMenuItem 
                             className="text-destructive focus:bg-destructive/10"
                             onClick={() => handleOpenDelete(user)}
-                            disabled={user.id === currentUser?.id}
+                            disabled={user.id === currentUser?.id || Boolean(user.isLastActiveAdmin)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" /> Delete
                           </DropdownMenuItem>
@@ -516,12 +540,18 @@ export default function UsersPage() {
                   name="role"
                   value={formData.role}
                   onChange={handleInputChange}
+                  disabled={isEditModalOpen && isSelectedLastActiveAdmin}
                   className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="staff">Staff</option>
                   <option value="dept_head">Department Head</option>
                   <option value="admin">Admin</option>
                 </select>
+                {isEditModalOpen && isSelectedLastActiveAdmin && (
+                  <p className="text-xs text-amber-700">
+                    This role cannot be changed because at least one active Admin must remain.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
