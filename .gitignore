@@ -16,8 +16,10 @@ backend/*.log
 # Django secrets / local env
 .env
 *.env
-.env.example
+!.env.example
 backend/.env
+backend/*.env
+!backend/.env.example
 
 # Node / Vite
 frontend/node_modules/

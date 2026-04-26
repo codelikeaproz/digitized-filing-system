@@ -68,7 +68,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2 px-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Building2 className="h-5 w-5" />
+            <img src="/img/login_logo.png" alt="DigiFile logo" />
           </div>
           <div className="flex flex-col">
             <span className="text-xl font-extrabold tracking-tight text-sidebar-foreground">DigiFile</span>

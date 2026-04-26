@@ -95,9 +95,9 @@ export default function ResetPasswordPage() {
         </div>
 
         <div className="z-20">
-          <div className="flex items-center gap-2 mb-12">
-            <div className="h-8 w-8 bg-[#0A4D27] rounded-lg flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-white" />
+          <div className="flex items-center mb-12">
+            <div className="h-12 w-12 rounded-xl object-contain">
+              <img src="/img/login_logo.png" alt="DigiFile logo" />
             </div>
             <span className="text-xl font-bold tracking-tight">DigiFile</span>
           </div>
@@ -125,9 +125,9 @@ export default function ResetPasswordPage() {
         <div className="w-full max-w-[520px] space-y-8">
           <Card className="shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-none rounded-2xl bg-white p-2">
             <CardHeader className="space-y-4 py-8 flex flex-col items-center text-center">
-              <div className="flex items-center gap-2">
-                <div className="h-10 w-10 bg-[#0A4D27] rounded-xl flex items-center justify-center shadow-lg shadow-[#0A4D27]/20">
-                  <Building2 className="w-6 h-6 text-white" />
+              <div className="flex items-center">
+                <div className="h-12 w-12 rounded-xl object-contain">
+                  <img src="/img/login_logo.png" alt="DigiFile logo" />
                 </div>
                 <span className="text-2xl font-black tracking-tighter text-gray-900">DigiFile</span>
               </div>
