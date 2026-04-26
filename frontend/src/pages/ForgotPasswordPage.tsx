@@ -27,9 +27,9 @@ export default function ForgotPasswordPage() {
 
     setIsLoading(true);
     try {
-      await api.requestPasswordReset(email);
+      const response = await api.requestPasswordReset(email);
       setIsSuccess(true);
-      toast.success("Reset link sent if the account exists");
+      toast.success(response.message || "Reset link sent if the account exists");
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to request password reset");

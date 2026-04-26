@@ -1,7 +1,14 @@
 import logging
 
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import EmailMultiAlternatives
 from django.db import models
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
@@ -13,7 +20,7 @@ from auditlogs.models import log_audit
 from config.pagination import StandardResultsSetPagination
 
 from .models import User
-from .serializers import PasswordChangeSerializer, UserSerializer
+from .serializers import ForgotPasswordSerializer, PasswordChangeSerializer, PasswordResetConfirmSerializer, UserSerializer
 from .throttles import LoginRateThrottle
 
 logger = logging.getLogger(__name__)
@@ -91,16 +98,68 @@ class UpdatePasswordView(APIView):
 
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = ForgotPasswordSerializer
 
     def post(self, request):
-        return Response({"message": "If the email exists, password reset instructions will be sent."})
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].strip().lower()
+        user = User.objects.filter(email__iexact=email, is_active_status=True).first()
+        if user:
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            reset_link = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}"
+            context = {
+                "user": user,
+                "user_display_name": user.get_full_name() or user.email,
+                "reset_link": reset_link,
+            }
+            html_message = render_to_string("emails/password_reset_email.html", context)
+            text_message = strip_tags(html_message)
+            try:
+                email_message = EmailMultiAlternatives(
+                    subject="Password Reset Request",
+                    body=text_message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[user.email],
+                )
+                email_message.attach_alternative(html_message, "text/html")
+                email_message.send(fail_silently=False)
+                log_audit(
+                    user,
+                    "PASSWORD_RESET_REQUEST",
+                    f"Password reset email requested for {user.email}",
+                    ip_address=request.META.get("REMOTE_ADDR"),
+                )
+            except Exception:
+                logger.exception("Failed to send password reset email for user id %s", user.pk)
+
+        return Response({"message": "If this email exists, a password reset link has been sent."})
 
 
 class ResetPasswordView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
 
     def post(self, request):
-        return Response({"message": "Password reset endpoint is ready for email-token integration."})
+        serializer = self.serializer_class(data=request.data)
+        if not serializer.is_valid():
+            errors = serializer.errors
+            message = errors.get("message") if isinstance(errors, dict) else None
+            if isinstance(message, list):
+                message = message[0]
+            response_data = {"message": str(message or "Password reset failed."), "errors": errors}
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.save()
+        log_audit(
+            user,
+            "PASSWORD_RESET_SUCCESS",
+            f"Password reset completed for {user.email}",
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response({"message": "Password reset successful. Please login."})
 
 
 class UserViewSet(viewsets.ModelViewSet):

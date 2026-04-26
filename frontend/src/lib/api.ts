@@ -142,11 +142,11 @@ class ApiService {
   }
 
   requestPasswordReset(email: string) {
-    return this.post<{ message: string }>("/api/auth/forgot-password", { email });
+    return this.post<{ message: string }>("/api/auth/forgot-password/", { email });
   }
 
   resetPassword(data: any) {
-    return this.post<{ message: string }>("/api/auth/reset-password", data);
+    return this.post<{ message: string }>("/api/auth/reset-password/", data);
   }
 
   // Specialized for FormData (Uploads)

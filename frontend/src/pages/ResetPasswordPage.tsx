@@ -15,7 +15,6 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
-import { logAudit } from "@/lib/audit";
 
 export default function ResetPasswordPage() {
   const { uid, token } = useParams();
@@ -67,10 +66,9 @@ export default function ResetPasswordPage() {
 
     setIsLoading(true);
     try {
-      await api.resetPassword({ uid, token, new_password: password, confirm_password: confirmPassword });
+      const response = await api.resetPassword({ uid, token, new_password: password, confirm_password: confirmPassword });
       setIsSuccess(true);
-      await logAudit("RESET_PASSWORD", "User successfully reset their password via token");
-      toast.success("Password has been reset successfully.");
+      toast.success(response.message || "Password has been reset successfully.");
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to reset password. The link might be expired.");
@@ -84,13 +82,13 @@ export default function ResetPasswordPage() {
       {/* Left Panel - Branding Section with Image Background */}
       <div className="hidden lg:flex flex-1 relative text-white p-16 flex-col justify-between overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img
-            src="/wide-office-hero.jpg"
+        <img
+            src="/img/login_hero.jpeg"
             alt="Office Desk"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
             onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=2000'
+              (e.target as HTMLImageElement).src = '/img/login_hero.jpeg'
             }}
           />
           <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
@@ -118,7 +116,7 @@ export default function ResetPasswordPage() {
         </div>
 
         <div className="z-20 flex flex-col gap-4">
-          <p className="text-sm text-gray-400 font-medium">@2026</p>
+          <p className="text-sm text-gray-400 font-medium">@2026 Digifile</p>
         </div>
       </div>
 

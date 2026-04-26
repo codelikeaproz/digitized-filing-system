@@ -37,6 +37,8 @@ const ACTION_OPTIONS = [
   { value: "CREATE_USER", label: "Create User" },
   { value: "UPDATE_USER", label: "Update User" },
   { value: "DELETE_USER", label: "Delete User" },
+  { value: "PASSWORD_RESET_REQUEST", label: "Password Reset Request" },
+  { value: "PASSWORD_RESET_SUCCESS", label: "Password Reset Success" },
   { value: "RENAME_FOLDER", label: "Rename Folder" },
   { value: "RENAME_DOCUMENT", label: "Rename Document" },
   { value: "DELETE_FOLDER", label: "Delete Folder" },

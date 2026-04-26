@@ -22,5 +22,7 @@ urlpatterns = [
     path("auth/update-password", UpdatePasswordView.as_view(), name="update-password"),
     path("auth/update-password/", UpdatePasswordView.as_view(), name="update-password-slash"),
     path("auth/forgot-password", ForgotPasswordView.as_view(), name="forgot-password"),
+    path("auth/forgot-password/", ForgotPasswordView.as_view(), name="forgot-password-slash"),
     path("auth/reset-password", ResetPasswordView.as_view(), name="reset-password"),
+    path("auth/reset-password/", ResetPasswordView.as_view(), name="reset-password-slash"),
 ] + router.urls
