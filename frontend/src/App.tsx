@@ -10,6 +10,7 @@ import { ProtectedRoute, RoleRoute } from "@/components/ProtectedRoute";
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
 const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+            <Route path="/set-password/:uid/:token" element={<SetPasswordPage />} />
             <Route path="/error/429" element={<Error429Page />} />
             <Route path="/error/500" element={<Error500Page />} />
             <Route 
@@ -54,7 +56,7 @@ export default function App() {
                 </RoleRoute>
               } />
               <Route path="users" element={
-                <RoleRoute allowedRoles={['admin']}>
+                <RoleRoute allowedRoles={['admin', 'dept_head']}>
                   <UsersPage />
                 </RoleRoute>
               } />

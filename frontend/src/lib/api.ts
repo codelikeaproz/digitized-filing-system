@@ -149,6 +149,10 @@ class ApiService {
     return this.post<{ message: string }>("/api/auth/reset-password/", data);
   }
 
+  setPassword(data: any) {
+    return this.post<{ message: string }>("/api/auth/set-password/", data);
+  }
+
   // Specialized for FormData (Uploads)
   async upload<T>(endpoint: string, formData: FormData): Promise<T> {
     const headers = this.getHeaders() as Record<string, string>;

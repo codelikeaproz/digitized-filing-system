@@ -1,0 +1,66 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: dfs_mysql
+    restart: always
+    environment:
+      MYSQL_DATABASE: dfs_project
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_USER: dfs_user
+      MYSQL_PASSWORD: dfs_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dfs_backend
+    env_file:
+      - ./.env
+    environment:
+      DB_ENGINE: mysql
+      DB_NAME: dfs_project
+      DB_USER: dfs_user
+      DB_PASSWORD: dfs_password
+      DB_HOST: db
+      DB_PORT: 3306
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_media:/app/media
+    depends_on:
+      - db
+    command: >
+      sh -c "
+      until nc -z db 3306; do
+        echo 'Waiting for MySQL...';
+        sleep 2;
+      done;
+      python manage.py migrate &&
+      python manage.py runserver 0.0.0.0:8000
+      "
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dfs_frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  backend_media:
+  frontend_node_modules:

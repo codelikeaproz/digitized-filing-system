@@ -35,7 +35,11 @@ const ACTION_OPTIONS = [
   { value: "DOWNLOAD_DOCUMENT", label: "Download" },
   { value: "EXPORT_AUDIT_CSV", label: "Export CSV" },
   { value: "CREATE_USER", label: "Create User" },
+  { value: "SEND_ACTIVATION_EMAIL", label: "Send Activation Email" },
+  { value: "ACTIVATE_ACCOUNT", label: "Activate Account" },
   { value: "UPDATE_USER", label: "Update User" },
+  { value: "DEACTIVATE_USER", label: "Deactivate User" },
+  { value: "ACTIVATE_USER", label: "Activate User" },
   { value: "DELETE_USER", label: "Delete User" },
   { value: "PASSWORD_RESET_REQUEST", label: "Password Reset Request" },
   { value: "PASSWORD_RESET_SUCCESS", label: "Password Reset Success" },
@@ -246,6 +250,8 @@ export default function AuditLogsPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
+            title="Action"
+            name="action"
             value={actionFilter}
             onChange={(e) => handleFilterChange(setActionFilter, e.target.value)}
             className="h-9 px-3 py-1 rounded-md border border-input text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -256,6 +262,7 @@ export default function AuditLogsPage() {
             ))}
           </select>
           <select
+            title="Role"
             value={roleFilter}
             onChange={(e) => handleFilterChange(setRoleFilter, e.target.value)}
             className="h-9 px-3 py-1 rounded-md border border-input text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -266,6 +273,7 @@ export default function AuditLogsPage() {
             <option value="staff">Staff</option>
           </select>
           <select
+            title="Org Unit"
             value={orgUnitFilter}
             onChange={(e) => handleFilterChange(setOrgUnitFilter, e.target.value)}
             className="h-9 px-3 py-1 rounded-md border border-input text-sm focus:outline-none focus:ring-1 focus:ring-ring max-w-[150px]"

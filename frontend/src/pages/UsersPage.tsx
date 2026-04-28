@@ -34,7 +34,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { logAudit } from '@/lib/audit';
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatManilaDate } from '@/lib/time';
 
@@ -48,6 +47,7 @@ type User = {
   orgUnitId?: string;
   orgUnitName?: string;
   isLastActiveAdmin?: boolean;
+  hasUsablePassword?: boolean;
 };
 
 export default function UsersPage() {
@@ -65,9 +65,11 @@ export default function UsersPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   
   // Form State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [statusTargetUser, setStatusTargetUser] = useState<User | null>(null);
   const [orgUnits, setOrgUnits] = useState<{id: string, name: string}[]>([]);
   const [formData, setFormData] = useState({
     fullName: '',
@@ -79,8 +81,23 @@ export default function UsersPage() {
   });
   
   const { user: currentUser } = useAuth();
+  const currentUserRole = currentUser?.role?.toLowerCase();
+  const isAdmin = currentUserRole === 'admin';
+  const isDeptHead = currentUserRole === 'dept_head';
+  const currentUserOrgUnitId = currentUser?.orgUnitId ? String(currentUser.orgUnitId) : '';
   const isSelectedLastActiveAdmin = Boolean(selectedUser?.isLastActiveAdmin);
   const lastAdminMessage = 'At least one active Admin must remain in the system.';
+
+  const canManageUser = (target: User) => {
+    if (isAdmin) return true;
+    return isDeptHead && target.role === 'staff' && String(target.orgUnitId || '') === currentUserOrgUnitId;
+  };
+
+  const isPendingActivation = (target: User) => !target.isActive && target.hasUsablePassword === false;
+
+  const canDeleteUser = (target: User) => {
+    return isAdmin && target.id !== currentUser?.id && !target.isLastActiveAdmin;
+  };
 
   const fetchUsers = async () => {
     try {
@@ -90,8 +107,13 @@ export default function UsersPage() {
         page_size: pageSize,
       };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (roleFilter !== 'all') params.role = roleFilter;
-      if (orgUnitFilter !== 'all') params.orgUnitId = orgUnitFilter;
+      if (isDeptHead) {
+        params.role = 'staff';
+        if (currentUserOrgUnitId) params.orgUnitId = currentUserOrgUnitId;
+      } else {
+        if (roleFilter !== 'all') params.role = roleFilter;
+        if (orgUnitFilter !== 'all') params.orgUnitId = orgUnitFilter;
+      }
 
       const data = await api.get<PaginatedResponse<User>>('/api/users', params);
       setUsers(data.results);
@@ -105,6 +127,10 @@ export default function UsersPage() {
 
   const fetchOrgUnits = async () => {
     try {
+      if (isDeptHead && currentUserOrgUnitId) {
+        setOrgUnits([{ id: currentUserOrgUnitId, name: currentUser?.orgUnitName || 'Assigned Org Unit' }]);
+        return;
+      }
       const data = await api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 });
       setOrgUnits(data.results);
     } catch (error) {
@@ -114,11 +140,11 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [currentPage, pageSize, debouncedSearch, roleFilter, orgUnitFilter]);
+  }, [currentPage, pageSize, debouncedSearch, roleFilter, orgUnitFilter, currentUserRole, currentUserOrgUnitId]);
 
   useEffect(() => {
     fetchOrgUnits();
-  }, []);
+  }, [currentUserRole, currentUserOrgUnitId]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -152,18 +178,28 @@ export default function UsersPage() {
   };
 
   const handleOpenAdd = () => {
-    setFormData({ fullName: '', email: '', role: 'staff', orgUnitId: orgUnits[0]?.id || '', password: '', isActive: true });
+    setFormData({
+      fullName: '',
+      email: '',
+      role: 'staff',
+      orgUnitId: isDeptHead ? currentUserOrgUnitId : orgUnits[0]?.id || '',
+      password: '',
+      isActive: true
+    });
     setIsAddModalOpen(true);
   };
 
   const handleOpenEdit = (user: User) => {
+    if (!canManageUser(user)) {
+      toast.error('You can only manage staff within your organization.');
+      return;
+    }
     setSelectedUser(user);
     setFormData({ 
       fullName: user.fullName, 
       email: user.email, 
-      role: user.role, 
-      // @ts-ignore
-      orgUnitId: user.orgUnitId || '',
+      role: isDeptHead ? 'staff' : user.role,
+      orgUnitId: isDeptHead ? currentUserOrgUnitId : user.orgUnitId || '',
       password: '', // blank intentionally
       isActive: user.isActive 
     });
@@ -171,6 +207,10 @@ export default function UsersPage() {
   };
 
   const handleOpenDelete = (user: User) => {
+    if (!canDeleteUser(user)) {
+      toast.error(user.isLastActiveAdmin ? lastAdminMessage : 'Only Admin users can delete user accounts.');
+      return;
+    }
     if (user.isLastActiveAdmin) {
       toast.error(lastAdminMessage);
       return;
@@ -183,8 +223,10 @@ export default function UsersPage() {
     e.preventDefault();
     try {
       const payload = {
-        ...formData,
-        orgUnitId: formData.role === 'admin' ? null : formData.orgUnitId,
+        fullName: formData.fullName,
+        email: formData.email,
+        role: isDeptHead ? 'staff' : formData.role,
+        orgUnitId: isDeptHead ? currentUserOrgUnitId : formData.role === 'admin' ? null : formData.orgUnitId,
       };
 
       const newUser = await api.post<User>('/api/users', payload);
@@ -194,18 +236,8 @@ export default function UsersPage() {
         setCurrentPage(1);
       }
       
-      const roleDisplay = payload.role === 'admin' ? 'Admin' : (payload.role === 'dept_head' ? 'Dept Head' : 'Staff');
-      const targetOrg = orgUnits.find(o => o.id === newUser.orgUnitId);
-      
-      await logAudit(
-        'CREATE_USER', 
-        `Created user: ${newUser.email} as ${roleDisplay}${targetOrg ? ` under ${targetOrg.name}` : ''}`,
-        targetOrg?.name,
-        'user',
-        newUser.email
-      );
-
       toast.success('User created successfully');
+      toast.info('Activation email sent. The user must set their own password before login.');
       setIsAddModalOpen(false);
     } catch (error: any) {
       toast.error(error.message || 'Failed to create user');
@@ -223,30 +255,13 @@ export default function UsersPage() {
       // Omit password if blank
       const payload = {
         ...formData,
-        orgUnitId: formData.role === 'admin' ? null : formData.orgUnitId,
+        role: isDeptHead ? 'staff' : formData.role,
+        orgUnitId: isDeptHead ? currentUserOrgUnitId : formData.role === 'admin' ? null : formData.orgUnitId,
       } as any;
       if (!payload.password) delete payload.password;
       
       const updatedUser = await api.put<User>(`/api/users/${selectedUser.id}`, payload);
       await fetchUsers();
-      
-      const roleDisplay = payload.role === 'admin' ? 'Admin' : (payload.role === 'dept_head' ? 'Dept Head' : 'Staff');
-      const targetOrg = orgUnits.find(o => o.id === updatedUser.orgUnitId);
-      let details = `Updated user: ${updatedUser.email}`;
-      if (selectedUser.role !== updatedUser.role) {
-        const oldRole = selectedUser.role === 'admin' ? 'Admin' : (selectedUser.role === 'dept_head' ? 'Dept Head' : 'Staff');
-        details += ` role from ${oldRole} to ${roleDisplay}`;
-      } else {
-        details += ` settings`;
-      }
-
-      await logAudit(
-        'UPDATE_USER', 
-        details,
-        targetOrg?.name,
-        'user',
-        updatedUser.email
-      );
 
       toast.success('User updated successfully');
       setIsEditModalOpen(false);
@@ -255,7 +270,7 @@ export default function UsersPage() {
     }
   };
 
-  const handleToggleStatus = async (user: User) => {
+  const handleOpenStatusModal = (user: User) => {
     if (user.id === currentUser?.id) {
       toast.error('You cannot deactivate your own account.');
       return;
@@ -264,22 +279,29 @@ export default function UsersPage() {
       toast.error(lastAdminMessage);
       return;
     }
-    
-    try {
-      await api.patch(`/api/users/${user.id}/status`, { isActive: !user.isActive });
-      await fetchUsers();
-      
-      const action = !user.isActive ? 'ACTIVATE_USER' : 'DEACTIVATE_USER';
-      const targetOrg = orgUnits.find(o => o.id === user.orgUnitId);
-      await logAudit(
-        action,
-        `${!user.isActive ? 'Activated' : 'Deactivated'} user: ${user.email}`,
-        targetOrg?.name,
-        'user',
-        user.email
-      );
+    if (isPendingActivation(user)) {
+      toast.error('This account is pending activation. The user must set their password from the email link.');
+      return;
+    }
+    if (!canManageUser(user)) {
+      toast.error('You can only manage staff within your organization.');
+      return;
+    }
 
-      toast.success(`User ${!user.isActive ? 'activated' : 'deactivated'} successfully`);
+    setStatusTargetUser(user);
+    setIsStatusModalOpen(true);
+  };
+
+  const handleConfirmStatusChange = async () => {
+    if (!statusTargetUser) return;
+    try {
+      const action = statusTargetUser.isActive ? 'deactivate' : 'activate';
+      await api.patch(`/api/users/${statusTargetUser.id}/${action}`);
+      await fetchUsers();
+
+      toast.success(`User ${!statusTargetUser.isActive ? 'activated' : 'deactivated'} successfully`);
+      setIsStatusModalOpen(false);
+      setStatusTargetUser(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to update user status');
     }
@@ -295,15 +317,6 @@ export default function UsersPage() {
     try {
       await api.delete(`/api/users/${selectedUser.id}`);
       await fetchUsers();
-      
-      const targetOrg = orgUnits.find(o => o.id === selectedUser.orgUnitId);
-      await logAudit(
-        'DELETE_USER',
-        `Deleted user: ${selectedUser.email}`,
-        targetOrg?.name,
-        'user',
-        selectedUser.email
-      );
 
       toast.success('User deleted successfully');
       setIsDeleteModalOpen(false);
@@ -344,26 +357,34 @@ export default function UsersPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <select
-              value={roleFilter}
-              onChange={(e) => handleRoleFilterChange(e.target.value as 'all' | 'admin' | 'dept_head' | 'staff')}
-              className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none"
-            >
-              <option value="all">All Roles</option>
-              <option value="admin">Admin Only</option>
-              <option value="dept_head">Dept Head Only</option>
-              <option value="staff">Staff Only</option>
-            </select>
-            <select
-              value={orgUnitFilter}
-              onChange={(e) => handleOrgUnitFilterChange(e.target.value)}
-              className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none max-w-[200px]"
-            >
-              <option value="all">All Org Units</option>
-              {orgUnits.map(ou => (
-                <option key={ou.id} value={ou.id}>{ou.name}</option>
-              ))}
-            </select>
+            {isAdmin ? (
+              <>
+                <select
+                  value={roleFilter}
+                  onChange={(e) => handleRoleFilterChange(e.target.value as 'all' | 'admin' | 'dept_head' | 'staff')}
+                  className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="admin">Admin Only</option>
+                  <option value="dept_head">Dept Head Only</option>
+                  <option value="staff">Staff Only</option>
+                </select>
+                <select
+                  value={orgUnitFilter}
+                  onChange={(e) => handleOrgUnitFilterChange(e.target.value)}
+                  className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none max-w-[200px]"
+                >
+                  <option value="all">All Org Units</option>
+                  {orgUnits.map(ou => (
+                    <option key={ou.id} value={ou.id}>{ou.name}</option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <div className="h-10 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
+                Org Unit: <span className="font-semibold text-gray-800">{currentUser?.orgUnitName || 'Assigned Org Unit'}</span>
+              </div>
+            )}
           </div>
           <div className="text-sm font-medium text-gray-500">
             {userCount} Users Total
@@ -432,6 +453,10 @@ export default function UsersPage() {
                         <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">
                           <CheckCircle2 className="mr-1 h-3 w-3" /> Active
                         </Badge>
+                      ) : isPendingActivation(user) ? (
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">
+                          <XCircle className="mr-1 h-3 w-3" /> Pending Activation
+                        </Badge>
                       ) : (
                         <Badge variant="secondary" className="bg-gray-100 text-gray-600 hover:bg-gray-100 border-gray-200">
                           <XCircle className="mr-1 h-3 w-3" /> Inactive
@@ -453,32 +478,34 @@ export default function UsersPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
-                            onClick={() => handleToggleStatus(user)}
-                            disabled={user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
+                            onClick={() => handleOpenStatusModal(user)}
+                            disabled={!canManageUser(user) || isPendingActivation(user) || user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
                           >
                             <span className="flex items-center">
                               {user.isActive ? (
                                 <>
-                                  <XCircle className="mr-2 h-4 w-4 text-orange-500" /> Deactivate 
+                                  <XCircle className="mr-2 h-4 w-4 text-orange-500" /> Deactivate Account
                                 </>
                               ) : (
                                 <>
-                                  <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Activate
+                                  <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Activate Account
                                 </>
                               )}
                             </span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleOpenEdit(user)}>
+                          <DropdownMenuItem onClick={() => handleOpenEdit(user)} disabled={!canManageUser(user)}>
                             <Edit className="mr-2 h-4 w-4 text-blue-500" /> Edit
                           </DropdownMenuItem>
-                          {user.id !== currentUser?.id && <DropdownMenuSeparator />}
-                          <DropdownMenuItem 
-                            className="text-destructive focus:bg-destructive/10"
-                            onClick={() => handleOpenDelete(user)}
-                            disabled={user.id === currentUser?.id || Boolean(user.isLastActiveAdmin)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                          </DropdownMenuItem>
+                          {isAdmin && user.id !== currentUser?.id && <DropdownMenuSeparator />}
+                          {isAdmin && (
+                            <DropdownMenuItem 
+                              className="text-destructive focus:bg-destructive/10"
+                              onClick={() => handleOpenDelete(user)}
+                              disabled={!canDeleteUser(user)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -540,13 +567,18 @@ export default function UsersPage() {
                   name="role"
                   value={formData.role}
                   onChange={handleInputChange}
-                  disabled={isEditModalOpen && isSelectedLastActiveAdmin}
+                  disabled={isDeptHead || (isEditModalOpen && isSelectedLastActiveAdmin)}
                   className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="staff">Staff</option>
-                  <option value="dept_head">Department Head</option>
-                  <option value="admin">Admin</option>
+                  {isAdmin && <option value="dept_head">Department Head</option>}
+                  {isAdmin && <option value="admin">Admin</option>}
                 </select>
+                {isDeptHead && (
+                  <p className="text-xs text-gray-500">
+                    Department Heads can create and edit Staff accounts only.
+                  </p>
+                )}
                 {isEditModalOpen && isSelectedLastActiveAdmin && (
                   <p className="text-xs text-amber-700">
                     This role cannot be changed because at least one active Admin must remain.
@@ -566,7 +598,8 @@ export default function UsersPage() {
                     value={formData.orgUnitId}
                     onChange={handleInputChange}
                     required
-                    className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    disabled={isDeptHead}
+                    className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">Select Organization Unit</option>
                     {orgUnits.map(ou => (
@@ -574,21 +607,17 @@ export default function UsersPage() {
                     ))}
                   </select>
                 )}
+                {isDeptHead && (
+                  <p className="text-xs text-gray-500">
+                    Organization Unit is locked to your assigned scope.
+                  </p>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Password {isEditModalOpen && <span className="text-gray-400 font-normal">(Leave blank to keep unchanged)</span>}
-                </label>
-                <Input 
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required={isAddModalOpen}
-                  className="h-11 rounded-xl"
-                  placeholder="••••••••"
-                />
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                {isAddModalOpen
+                  ? 'No default password will be created. The user will receive an activation email to set their own password.'
+                  : 'Passwords are not edited here. Users must use account activation or password reset to set their password.'}
               </div>
 
               <div className="pt-4 flex justify-end gap-3">
@@ -611,6 +640,46 @@ export default function UsersPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activate / Deactivate Confirmation Modal */}
+      {isStatusModalOpen && statusTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              {statusTargetUser.isActive ? (
+                <XCircle className="h-6 w-6 text-amber-600" />
+              ) : (
+                <CheckCircle2 className="h-6 w-6 text-green-600" />
+              )}
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">
+              {statusTargetUser.isActive ? 'Deactivate Account?' : 'Activate Account?'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Are you sure you want to {statusTargetUser.isActive ? 'deactivate' : 'activate'}{' '}
+              <span className="font-semibold text-gray-700">{statusTargetUser.fullName}</span>?
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsStatusModalOpen(false);
+                  setStatusTargetUser(null);
+                }}
+                className="h-11 rounded-xl flex-1 border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmStatusChange}
+                className="h-11 rounded-xl flex-1 bg-[#0A4D27] hover:bg-[#083E1D] text-white"
+              >
+                Confirm
+              </Button>
+            </div>
           </div>
         </div>
       )}

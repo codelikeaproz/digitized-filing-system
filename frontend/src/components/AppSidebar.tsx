@@ -42,6 +42,7 @@ const adminMenuItems = [
 
 const deptHeadMenuItems = [
   ...defaultMenuItems.slice(0, 2),
+  { title: "User Management", icon: Users, url: "/users" },
   { title: "Recycle Bin", icon: Archive, url: "/recycle-bin" },
   ...defaultMenuItems.slice(2),
 ];
