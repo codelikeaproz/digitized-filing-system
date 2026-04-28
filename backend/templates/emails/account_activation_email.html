@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activate Your DigiFile Account</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9fafb;
+            color: #374151;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        .wrapper {
+            width: 100%;
+            padding: 40px 0;
+            background-color: #f9fafb;
+        }
+        .container {
+            max-width: 520px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+        .header {
+            background-color: #0A4D27;
+            color: #ffffff;
+            padding: 28px 40px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 800;
+        }
+        .content {
+            padding: 36px 40px;
+        }
+        .content h2 {
+            margin: 0 0 16px;
+            font-size: 20px;
+            color: #111827;
+        }
+        .content p {
+            margin: 0 0 20px;
+            font-size: 15px;
+        }
+        .button-wrap {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #0A4D27;
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-weight: 700;
+        }
+        .fallback {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 20px;
+            word-break: break-all;
+            color: #6b7280;
+            font-size: 13px;
+        }
+        .fallback a {
+            color: #0A4D27;
+        }
+        .footer {
+            background-color: #f3f4f6;
+            color: #6b7280;
+            text-align: center;
+            padding: 20px 40px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <h1>DigiFile</h1>
+            </div>
+            <div class="content">
+                <h2>Activate Your Account</h2>
+                <p>Hello {{ user_display_name }},</p>
+                <p>You have been added to the system. Click the link below to set your password and activate your account.</p>
+                <div class="button-wrap">
+                    <a href="{{ activation_link }}" class="button">Set Password</a>
+                </div>
+                <p>If you did not expect this invitation, you can ignore this email.</p>
+                <div class="fallback">
+                    <p>If the button does not work, copy and paste this link into your browser:</p>
+                    <a href="{{ activation_link }}">{{ activation_link }}</a>
+                </div>
+            </div>
+            <div class="footer">
+                <p>&copy; 2026. All rights reserved.</p>
+                <p>This is an automated message, please do not reply.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

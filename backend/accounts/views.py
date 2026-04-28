@@ -5,12 +5,14 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.db import models
+from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,7 +22,13 @@ from auditlogs.models import log_audit
 from config.pagination import StandardResultsSetPagination
 
 from .models import User
-from .serializers import ForgotPasswordSerializer, PasswordChangeSerializer, PasswordResetConfirmSerializer, UserSerializer
+from .serializers import (
+    AccountActivationSetPasswordSerializer,
+    ForgotPasswordSerializer,
+    PasswordChangeSerializer,
+    PasswordResetConfirmSerializer,
+    UserSerializer,
+)
 from .throttles import LoginRateThrottle
 
 logger = logging.getLogger(__name__)
@@ -38,7 +46,12 @@ def role_label(role):
 class CreateUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        return Response(
+            {"message": "Public registration is disabled. User accounts must be created by an authorized Admin or Department Head."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
 
 class LoginView(APIView):
@@ -51,7 +64,7 @@ class LoginView(APIView):
             email=request.data.get("email"),
             password=request.data.get("password"),
         )
-        if not user or not user.is_active_status:
+        if not user or not user.is_active or not user.is_active_status:
             return Response({"error": "Invalid email or password."}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)
@@ -105,7 +118,7 @@ class ForgotPasswordView(APIView):
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data["email"].strip().lower()
-        user = User.objects.filter(email__iexact=email, is_active_status=True).first()
+        user = User.objects.filter(email__iexact=email, is_active=True, is_active_status=True).first()
         if user:
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
@@ -162,6 +175,35 @@ class ResetPasswordView(APIView):
         return Response({"message": "Password reset successful. Please login."})
 
 
+class SetPasswordView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = AccountActivationSetPasswordSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if not serializer.is_valid():
+            errors = serializer.errors
+            message = errors.get("message") if isinstance(errors, dict) else None
+            if isinstance(message, list):
+                message = message[0]
+            return Response(
+                {"message": str(message or "Account activation failed."), "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = serializer.save()
+        log_audit(
+            user,
+            "ACTIVATE_ACCOUNT",
+            f"User activated account: {user.email}",
+            target_type="User",
+            target_name=user.email,
+            target_org_unit=user.org_unit.name if user.org_unit else "Global Access",
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response({"message": "Account activated successfully. Please login."})
+
+
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     pagination_class = StandardResultsSetPagination
@@ -178,7 +220,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().get_serializer(*args, **kwargs)
 
     def _active_admin_count(self):
-        return User.objects.filter(role="admin", is_active_status=True).count()
+        return User.objects.filter(role="admin", is_active=True, is_active_status=True).count()
 
     def _is_last_active_admin(self, user):
         return user.role == "admin" and user.is_active_status and self._active_admin_count() == 1
@@ -192,6 +234,66 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def _last_admin_response(self):
         return Response({"message": LAST_ACTIVE_ADMIN_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _forbidden(self, message="You are not allowed to perform this action."):
+        return Response({"message": message}, status=status.HTTP_403_FORBIDDEN)
+
+    def _target_org_name(self, user):
+        return user.org_unit.name if user.org_unit else "Global Access"
+
+    def _can_dept_head_manage(self, actor, target):
+        return (
+            actor.role == "dept_head"
+            and actor.org_unit_id is not None
+            and target.role == "staff"
+            and target.org_unit_id == actor.org_unit_id
+        )
+
+    def _enforce_manage_permission(self, target):
+        actor = self.request.user
+        if actor.role == "admin":
+            return None
+        if actor.role == "dept_head" and self._can_dept_head_manage(actor, target):
+            return None
+        if actor.role == "dept_head":
+            return self._forbidden("You can only manage staff within your organization.")
+        return self._forbidden("Staff users cannot manage user accounts.")
+
+    def _normalize_dept_head_create_data(self, data):
+        actor = self.request.user
+        normalized = data.copy()
+        if actor.role != "dept_head":
+            return normalized
+        if not actor.org_unit_id:
+            return normalized
+        normalized["role"] = "staff"
+        normalized["orgUnitId"] = str(actor.org_unit_id)
+        normalized.pop("org_unit", None)
+        return normalized
+
+    def _normalize_dept_head_update_data(self, data):
+        actor = self.request.user
+        normalized = data.copy()
+        if actor.role != "dept_head":
+            return normalized
+        normalized["role"] = "staff"
+        normalized["orgUnitId"] = str(actor.org_unit_id)
+        normalized.pop("org_unit", None)
+        return normalized
+
+    def _validate_dept_head_update_payload(self, data):
+        actor = self.request.user
+        if actor.role != "dept_head":
+            return None
+
+        requested_role = data.get("role")
+        if requested_role is not None and requested_role != "staff":
+            return self._forbidden("Department Heads cannot assign Admin or Dept Head roles.")
+
+        requested_org_unit = data.get("orgUnitId", data.get("org_unit"))
+        if requested_org_unit not in (None, "", str(actor.org_unit_id), actor.org_unit_id):
+            return self._forbidden("You cannot move users outside your organization.")
+        return None
 
     def _serializer_error_response(self, errors):
         message = errors
@@ -220,6 +322,14 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = User.objects.select_related("org_unit").order_by("email")
+        actor = self.request.user
+        if actor.role == "admin":
+            pass
+        elif actor.role == "dept_head" and actor.org_unit_id:
+            queryset = queryset.filter(org_unit_id=actor.org_unit_id)
+        else:
+            return User.objects.none()
+
         search = self.request.query_params.get("search")
         role = self.request.query_params.get("role")
         org_unit_id = self.request.query_params.get("orgUnitId")
@@ -236,12 +346,72 @@ class UserViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(org_unit_id=org_unit_id)
         return queryset
 
+    def get_object(self):
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        user = get_object_or_404(
+            User.objects.select_related("org_unit"),
+            **{self.lookup_field: lookup_value},
+        )
+
+        actor = self.request.user
+        if actor.role == "admin":
+            return user
+        if actor.role == "dept_head" and actor.org_unit_id and user.org_unit_id == actor.org_unit_id:
+            return user
+        raise PermissionDenied("You can only access users within your organization.")
+
     def perform_create(self, serializer):
         user = serializer.save()
-        log_audit(self.request.user, "CREATE_USER", f"Created user: {user.email}")
+        log_audit(
+            self.request.user,
+            "CREATE_USER",
+            f"Created user account: {user.email}",
+            target_type="User",
+            target_name=user.email,
+            target_org_unit=self._target_org_name(user),
+        )
+        self._send_activation_email(user)
+
+    def _send_activation_email(self, user):
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        activation_link = f"{settings.FRONTEND_URL}/set-password/{uid}/{token}"
+        context = {
+            "user": user,
+            "user_display_name": user.get_full_name() or user.email,
+            "activation_link": activation_link,
+        }
+        html_message = render_to_string("emails/account_activation_email.html", context)
+        text_message = strip_tags(html_message)
+        try:
+            email_message = EmailMultiAlternatives(
+                subject="Account Activation",
+                body=text_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[user.email],
+            )
+            email_message.attach_alternative(html_message, "text/html")
+            email_message.send(fail_silently=False)
+            log_audit(
+                self.request.user,
+                "SEND_ACTIVATION_EMAIL",
+                f"Sent activation email to {user.email}",
+                target_type="User",
+                target_name=user.email,
+                target_org_unit=self._target_org_name(user),
+            )
+        except Exception:
+            logger.exception("Failed to send activation email for user id %s", user.pk)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        if request.user.role == "staff":
+            return self._forbidden("Staff users cannot create user accounts.")
+        if request.user.role == "dept_head" and not request.user.org_unit_id:
+            return self._forbidden("Department Head account has no assigned organization unit.")
+
+        data = self._normalize_dept_head_create_data(request.data)
+        serializer = self.get_serializer(data=data)
         if not serializer.is_valid():
             return self._serializer_error_response(serializer.errors)
         self.perform_create(serializer)
@@ -259,24 +429,51 @@ class UserViewSet(viewsets.ModelViewSet):
                 self.request.user,
                 "UPDATE_USER",
                 f"Updated user role: {old_name} from {role_label(old_role)} to {role_label(user.role)}",
+                target_type="User",
+                target_name=user.email,
+                target_org_unit=self._target_org_name(user),
             )
         elif old_name != new_name or old_email != user.email:
-            log_audit(self.request.user, "UPDATE_USER", f"Updated user: {old_name} to {new_name}")
+            log_audit(
+                self.request.user,
+                "UPDATE_USER",
+                f"Updated user: {old_name} to {new_name}",
+                target_type="User",
+                target_name=user.email,
+                target_org_unit=self._target_org_name(user),
+            )
         else:
-            log_audit(self.request.user, "UPDATE_USER", f"Updated user: {user.email}")
+            log_audit(
+                self.request.user,
+                "UPDATE_USER",
+                f"Updated user: {user.email}",
+                target_type="User",
+                target_name=user.email,
+                target_org_unit=self._target_org_name(user),
+            )
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         user = self.get_object()
-        if self._would_remove_last_active_admin(user, request.data):
+        permission_response = self._enforce_manage_permission(user)
+        if permission_response:
+            return permission_response
+        payload_response = self._validate_dept_head_update_payload(request.data)
+        if payload_response:
+            return payload_response
+
+        data = self._normalize_dept_head_update_data(request.data)
+        if self._would_remove_last_active_admin(user, data):
             return self._last_admin_response()
-        serializer = self.get_serializer(user, data=request.data, partial=partial)
+        serializer = self.get_serializer(user, data=data, partial=partial)
         if not serializer.is_valid():
             return self._serializer_error_response(serializer.errors)
         self.perform_update(serializer)
         return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
+        if request.user.role != "admin":
+            return self._forbidden("Only Admin users can delete user accounts.")
         user = self.get_object()
         if self._is_last_active_admin(user):
             return self._last_admin_response()
@@ -284,18 +481,58 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"error": "You cannot delete your own account."}, status=status.HTTP_400_BAD_REQUEST)
         email = user.email
         user.delete()
-        log_audit(request.user, "DELETE_USER", f"Deleted user: {email}")
+        log_audit(request.user, "DELETE_USER", f"Deleted user: {email}", target_type="User", target_name=email)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def partial_update(self, request, *args, **kwargs):
         user = self.get_object()
-        if self._would_remove_last_active_admin(user, request.data):
+        permission_response = self._enforce_manage_permission(user)
+        if permission_response:
+            return permission_response
+        payload_response = self._validate_dept_head_update_payload(request.data)
+        if payload_response:
+            return payload_response
+
+        data = self._normalize_dept_head_update_data(request.data)
+        if self._would_remove_last_active_admin(user, data):
             return self._last_admin_response()
-        if "isActive" in request.data:
-            user.is_active_status = self._as_bool(request.data["isActive"])
-            user.save(update_fields=["is_active_status"])
-            return Response(UserSerializer(user).data)
-        return super().partial_update(request, *args, **kwargs)
+        if "isActive" in data:
+            return self._set_active_status(user, self._as_bool(data["isActive"]))
+        serializer = self.get_serializer(user, data=data, partial=True)
+        if not serializer.is_valid():
+            return self._serializer_error_response(serializer.errors)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def _set_active_status(self, user, is_active):
+        permission_response = self._enforce_manage_permission(user)
+        if permission_response:
+            return permission_response
+
+        if self._is_last_active_admin(user) and not is_active:
+            return self._last_admin_response()
+        if user == self.request.user and not is_active:
+            return Response({"message": "You cannot deactivate your own account."}, status=status.HTTP_400_BAD_REQUEST)
+        if is_active and not user.has_usable_password():
+            return Response(
+                {"message": "User must set a password through the activation link before the account can be activated."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.is_active = is_active
+        user.is_active_status = is_active
+        user.save(update_fields=["is_active", "is_active_status"])
+        action = "ACTIVATE_USER" if is_active else "DEACTIVATE_USER"
+        verb = "Activated" if is_active else "Deactivated"
+        log_audit(
+            self.request.user,
+            action,
+            f"{verb} user: {user.email}",
+            target_type="User",
+            target_name=user.email,
+            target_org_unit=self._target_org_name(user),
+        )
+        return Response(UserSerializer(user).data)
 
     @action(detail=True, methods=["patch"], url_path="status")
     def status(self, request, pk=None):
@@ -303,10 +540,12 @@ class UserViewSet(viewsets.ModelViewSet):
         requested_active = request.data.get("isActive")
         if requested_active is None:
             return Response({"message": "isActive is required."}, status=status.HTTP_400_BAD_REQUEST)
-        if self._is_last_active_admin(user) and requested_active is not None and not self._as_bool(requested_active):
-            return self._last_admin_response()
-        if user == request.user and requested_active is not None and not self._as_bool(requested_active):
-            return Response({"error": "You cannot deactivate your own account."}, status=status.HTTP_400_BAD_REQUEST)
-        user.is_active_status = self._as_bool(requested_active)
-        user.save(update_fields=["is_active_status"])
-        return Response(UserSerializer(user).data)
+        return self._set_active_status(user, self._as_bool(requested_active))
+
+    @action(detail=True, methods=["patch"], url_path="deactivate")
+    def deactivate(self, request, pk=None):
+        return self._set_active_status(self.get_object(), False)
+
+    @action(detail=True, methods=["patch"], url_path="activate")
+    def activate(self, request, pk=None):
+        return self._set_active_status(self.get_object(), True)

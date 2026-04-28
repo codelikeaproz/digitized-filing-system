@@ -21,6 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
     isActive = serializers.BooleanField(source="is_active_status", required=False)
     createdAt = serializers.SerializerMethodField()
     isLastActiveAdmin = serializers.SerializerMethodField()
+    hasUsablePassword = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -35,6 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
             "isActive",
             "createdAt",
             "isLastActiveAdmin",
+            "hasUsablePassword",
         ]
         extra_kwargs = {"password": {"write_only": True, "required": False}}
 
@@ -45,9 +47,12 @@ class UserSerializer(serializers.ModelSerializer):
         return format_local_datetime(obj.date_joined)
 
     def get_isLastActiveAdmin(self, obj):
-        if obj.role != "admin" or not obj.is_active_status:
+        if obj.role != "admin" or not obj.is_active or not obj.is_active_status:
             return False
-        return User.objects.filter(role="admin", is_active_status=True).count() == 1
+        return User.objects.filter(role="admin", is_active=True, is_active_status=True).count() == 1
+
+    def get_hasUsablePassword(self, obj):
+        return obj.has_usable_password()
 
     def validate(self, attrs):
         role = attrs.get("role", getattr(self.instance, "role", "staff"))
@@ -82,21 +87,21 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         full_name = self.initial_data.get("fullName")
-        password = validated_data.pop("password", None)
+        validated_data.pop("password", None)
         user = User(**validated_data)
         self._apply_full_name(user, full_name)
-        user.set_password(password)
+        user.is_active = False
+        user.is_active_status = False
+        user.set_unusable_password()
         user.save()
         return user
 
     def update(self, instance, validated_data):
         full_name = self.initial_data.get("fullName")
-        password = validated_data.pop("password", None)
+        validated_data.pop("password", None)
         for key, value in validated_data.items():
             setattr(instance, key, value)
         self._apply_full_name(instance, full_name)
-        if password:
-            instance.set_password(password)
         instance.save()
         return instance
 
@@ -139,6 +144,52 @@ class PasswordChangeSerializer(serializers.Serializer):
 
 class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
+
+
+class AccountActivationSetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+    confirm_password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    default_error_messages = {
+        "invalid_link": "Invalid or expired activation link.",
+    }
+
+    def validate(self, attrs):
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs["uid"]))
+            user = User.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist, binascii.Error, DjangoUnicodeDecodeError):
+            raise serializers.ValidationError({"message": self.error_messages["invalid_link"]})
+
+        if not default_token_generator.check_token(user, attrs["token"]):
+            raise serializers.ValidationError({"message": self.error_messages["invalid_link"]})
+
+        if attrs["password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"message": "Password and confirm password do not match."})
+
+        try:
+            validate_password(attrs["password"], user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                {
+                    "message": "Password does not meet security requirements.",
+                    "errors": list(exc.messages),
+                }
+            ) from exc
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data["user"]
+        user.set_password(self.validated_data["password"])
+        user.is_active = True
+        user.is_active_status = True
+        user.save(update_fields=["password", "is_active", "is_active_status"])
+        password_changed(self.validated_data["password"], user)
+        return user
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):

@@ -7,6 +7,7 @@ from .views import (
     LoginView,
     MeView,
     ResetPasswordView,
+    SetPasswordView,
     UpdatePasswordView,
     UserViewSet,
 )
@@ -25,4 +26,6 @@ urlpatterns = [
     path("auth/forgot-password/", ForgotPasswordView.as_view(), name="forgot-password-slash"),
     path("auth/reset-password", ResetPasswordView.as_view(), name="reset-password"),
     path("auth/reset-password/", ResetPasswordView.as_view(), name="reset-password-slash"),
+    path("auth/set-password", SetPasswordView.as_view(), name="set-password"),
+    path("auth/set-password/", SetPasswordView.as_view(), name="set-password-slash"),
 ] + router.urls
