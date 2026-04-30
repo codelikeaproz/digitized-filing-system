@@ -513,12 +513,12 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                 </div>
               </div>
 
-              {/* Row 4: Title / Requestor Name (full width) */}
+              {/* Row 4: Title / Requisitioner Name (full width) */}
               <div className="space-y-2">
-                <Label htmlFor="docTitle" className="text-xs font-semibold uppercase text-muted-foreground">Title / Requestor Name</Label>
+                <Label htmlFor="docTitle" className="text-xs font-semibold uppercase text-muted-foreground">Requisitioner Name</Label>
                 <Input 
                   id="docTitle" 
-                  placeholder="Enter document title or name of requestor" 
+                  placeholder="Enter document title or requisitioner name"
                   value={docTitle} 
                   onChange={(e) => setDocTitle(e.target.value)}
                   className="h-10"
