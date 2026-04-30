@@ -323,16 +323,17 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   }, [state, activeScanJob?.id, onOpenChange]);
 
   const isScanWaiting = state === "waiting-scan";
-  const shouldProtectDialogClose = isScanWaiting || isProcessing;
+  const shouldHideCloseButton = isScanWaiting || isProcessing;
+  const shouldPreventAccidentalClose = state === "category-entry" || state === "manual-upload" || isScanWaiting || isProcessing;
 
   const handleDialogOpenChange = (nextOpen: boolean, eventDetails?: { reason?: string }) => {
     if (
       !nextOpen
-      && shouldProtectDialogClose
+      && shouldPreventAccidentalClose
       && eventDetails?.reason
       && eventDetails.reason !== "close-press"
     ) {
-      toast.info("Use Cancel to stop the scan job first.");
+      toast.info(isScanWaiting ? "Use Cancel to stop the scan job first." : "Use Cancel or Close to exit this form.");
       return;
     }
     if (!nextOpen && activeScanJob && state === "waiting-scan") {
@@ -347,11 +348,11 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
     <Dialog
       open={open}
       onOpenChange={handleDialogOpenChange}
-      disablePointerDismissal={shouldProtectDialogClose}
+      disablePointerDismissal={shouldPreventAccidentalClose}
     >
       <DialogContent
         className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
-        showCloseButton={!shouldProtectDialogClose}
+        showCloseButton={!shouldHideCloseButton}
       >
         <DialogHeader>
           <DialogTitle>
