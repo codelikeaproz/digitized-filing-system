@@ -1,3 +1,4 @@
+// Set password page for first-time account activation.
 import React, { useState } from 'react';
 import { CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";

@@ -1,3 +1,4 @@
+// Audit logs page for viewing system activity.
 import React, { useState, useEffect } from "react";
 import { 
   Table, 

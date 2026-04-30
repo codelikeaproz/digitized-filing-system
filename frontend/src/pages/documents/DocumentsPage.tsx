@@ -1,3 +1,4 @@
+// Documents page for browsing folders and managing files.
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderNavigation } from "@/components/FolderNavigation";
 import { DocumentTable } from "@/components/DocumentTable";

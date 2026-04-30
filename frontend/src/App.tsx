@@ -7,19 +7,19 @@ import { CategoryProvider } from "@/contexts/CategoryContext";
 import { ProtectedRoute, RoleRoute } from "@/components/ProtectedRoute";
 
 // Lazy load pages
-const LoginPage = lazy(() => import("./pages/LoginPage"));
-const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
-const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
-const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
-const DashboardPage = lazy(() => import("./pages/DashboardPage"));
-const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
-const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const UsersPage = lazy(() => import("./pages/UsersPage"));
-const RecycleBinPage = lazy(() => import("./pages/RecycleBinPage"));
-const OrgUnitsPage = lazy(() => import("./pages/OrgUnitsPage"));
-const Error429Page = lazy(() => import("./pages/Error429Page"));
-const Error500Page = lazy(() => import("./pages/Error500Page"));
+const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
+const SetPasswordPage = lazy(() => import("./pages/auth/SetPasswordPage"));
+const DashboardPage = lazy(() => import("./pages/dashboard/DashboardPage"));
+const DocumentsPage = lazy(() => import("./pages/documents/DocumentsPage"));
+const AuditLogsPage = lazy(() => import("./pages/auditlogs/AuditLogsPage"));
+const SettingsPage = lazy(() => import("./pages/settings/SettingsPage"));
+const UsersPage = lazy(() => import("./pages/users/UsersPage"));
+const RecycleBinPage = lazy(() => import("./pages/recyclebin/RecycleBinPage"));
+const OrgUnitsPage = lazy(() => import("./pages/orgunits/OrgUnitsPage"));
+const Error429Page = lazy(() => import("./pages/errors/Error429Page"));
+const Error500Page = lazy(() => import("./pages/errors/Error500Page"));
 
 // Layout
 import AppShell from "./layouts/AppShell";

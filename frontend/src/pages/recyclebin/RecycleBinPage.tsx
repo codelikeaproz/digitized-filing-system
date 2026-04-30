@@ -1,3 +1,4 @@
+// Recycle bin page for restoring or deleting removed files.
 import React, { useState, useEffect } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';

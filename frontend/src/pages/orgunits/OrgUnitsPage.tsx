@@ -1,3 +1,4 @@
+// Org units page for managing departments and units.
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
