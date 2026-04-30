@@ -1,0 +1,13 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "api_token": "change-me-local-scanner-token",
+  "station_id": "SCANNER-PC-01",
+  "station_name": "Scanner PC 01",
+  "incoming_dir": "C:\\DFS_Scanner\\Incoming",
+  "uploaded_dir": "C:\\DFS_Scanner\\Uploaded",
+  "failed_dir": "C:\\DFS_Scanner\\Failed",
+  "unmatched_dir": "C:\\DFS_Scanner\\Unmatched",
+  "poll_seconds": 3,
+  "stable_seconds": 2,
+  "max_upload_retries": 3
+}

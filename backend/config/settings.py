@@ -204,6 +204,7 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+SCANNER_BRIDGE_TOKEN = os.getenv("SCANNER_BRIDGE_TOKEN", "change-me-local-scanner-token")
 
 # Password reset links expire after 30 minutes.
 PASSWORD_RESET_TIMEOUT = 60 * 30

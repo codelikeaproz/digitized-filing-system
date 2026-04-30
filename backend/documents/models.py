@@ -109,3 +109,71 @@ class Document(models.Model):
         self.deleted_at = timezone.now()
         self.deleted_by = user
         self.save(update_fields=["is_deleted", "deleted_at", "deleted_by"])
+
+
+class ScannerStation(models.Model):
+    STATUS_CHOICES = [
+        ("CONNECTED", "Connected"),
+        ("NOT_DETECTED", "Not Detected"),
+        ("ERROR", "Error"),
+    ]
+
+    station_id = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="NOT_DETECTED")
+    watched_folder = models.CharField(max_length=500, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["station_id"]
+
+    def __str__(self):
+        return self.name or self.station_id
+
+
+class ScanJob(models.Model):
+    STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("WAITING_FOR_SCAN", "Waiting for Scan"),
+        ("UPLOADING", "Uploading"),
+        ("COMPLETED", "Completed"),
+        ("FAILED", "Failed"),
+        ("CANCELLED", "Cancelled"),
+    ]
+
+    station_id = models.CharField(max_length=100)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    folder = models.ForeignKey(Folder, on_delete=models.PROTECT, related_name="scan_jobs")
+    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="scan_jobs")
+    uploaded_document = models.OneToOneField(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scan_job",
+    )
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="PENDING")
+    code = models.CharField(max_length=100)
+    title = models.CharField(max_length=255, blank=True)
+    requestor = models.CharField(max_length=255, blank=True)
+    description = models.CharField(max_length=50, blank=True)
+    keywords = models.JSONField(default=list, blank=True)
+    original_filename = models.CharField(max_length=255, blank=True)
+    sha256 = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["station_id", "status", "created_at"]),
+            models.Index(fields=["sha256"]),
+        ]
+
+    def __str__(self):
+        return f"{self.station_id} - {self.code} - {self.status}"

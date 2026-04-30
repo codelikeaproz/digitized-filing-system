@@ -10,6 +10,13 @@ from .views import (
     RecycleBinAPIView,
     RecycleBinDeleteAPIView,
     RecycleBinRestoreAPIView,
+    PendingScanJobAPIView,
+    ScanJobDetailAPIView,
+    ScanJobFailAPIView,
+    ScanJobListCreateAPIView,
+    ScanJobUploadAPIView,
+    ScannerStationHeartbeatAPIView,
+    ScannerStationListAPIView,
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -20,6 +27,13 @@ router.register("documents", DocumentViewSet, basename="document")
 urlpatterns = [
     path("dashboard/stats", DashboardStatsAPIView.as_view(), name="dashboard-stats"),
     path("documents/upload", DocumentUploadView.as_view(), name="document-upload"),
+    path("scanner/stations", ScannerStationListAPIView.as_view(), name="scanner-stations"),
+    path("scanner/stations/heartbeat", ScannerStationHeartbeatAPIView.as_view(), name="scanner-heartbeat"),
+    path("scan-jobs", ScanJobListCreateAPIView.as_view(), name="scan-jobs"),
+    path("scan-jobs/pending", PendingScanJobAPIView.as_view(), name="scan-job-pending"),
+    path("scan-jobs/<int:pk>", ScanJobDetailAPIView.as_view(), name="scan-job-detail"),
+    path("scan-jobs/<int:pk>/upload", ScanJobUploadAPIView.as_view(), name="scan-job-upload"),
+    path("scan-jobs/<int:pk>/fail", ScanJobFailAPIView.as_view(), name="scan-job-fail"),
     path(
         "documents/<int:pk>/download/",
         DocumentViewSet.as_view({"get": "download"}),

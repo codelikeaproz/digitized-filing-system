@@ -1,7 +1,8 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from config.timezone_utils import format_local_datetime
-from .models import Category, Document, Folder
+from .models import Category, Document, Folder, ScanJob, ScannerStation
 
 
 RESERVED_FOLDER_NAMES = {"all files", "root", "trash", "recycle bin"}
@@ -155,3 +156,99 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def get_created_at(self, obj):
         return self.get_createdAt(obj)
+
+
+class ScannerStationSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(read_only=True)
+    stationId = serializers.CharField(source="station_id")
+    watchedFolder = serializers.CharField(source="watched_folder", required=False, allow_blank=True)
+    lastSeenAt = serializers.SerializerMethodField()
+    errorMessage = serializers.CharField(source="error_message", required=False, allow_blank=True)
+    isOnline = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScannerStation
+        fields = [
+            "id",
+            "stationId",
+            "name",
+            "status",
+            "watchedFolder",
+            "lastSeenAt",
+            "errorMessage",
+            "isOnline",
+        ]
+
+    def get_lastSeenAt(self, obj):
+        return format_local_datetime(obj.last_seen_at)
+
+    def get_isOnline(self, obj):
+        if not obj.last_seen_at:
+            return False
+        return (timezone.now() - obj.last_seen_at).total_seconds() <= 30 and obj.status == "CONNECTED"
+
+
+class ScanJobSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(read_only=True)
+    stationId = serializers.CharField(source="station_id")
+    folderId = serializers.CharField(source="folder_id")
+    categoryId = serializers.CharField(source="category_id")
+    documentId = serializers.CharField(source="uploaded_document_id", read_only=True)
+    folderName = serializers.CharField(source="folder.name", read_only=True)
+    categoryName = serializers.CharField(source="category.name", read_only=True)
+    originalFilename = serializers.CharField(source="original_filename", read_only=True)
+    errorMessage = serializers.CharField(source="error_message", read_only=True)
+    createdAt = serializers.SerializerMethodField()
+    updatedAt = serializers.SerializerMethodField()
+    completedAt = serializers.SerializerMethodField()
+    document = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScanJob
+        fields = [
+            "id",
+            "stationId",
+            "folderId",
+            "folderName",
+            "categoryId",
+            "categoryName",
+            "documentId",
+            "document",
+            "status",
+            "code",
+            "title",
+            "requestor",
+            "description",
+            "keywords",
+            "originalFilename",
+            "sha256",
+            "errorMessage",
+            "createdAt",
+            "updatedAt",
+            "completedAt",
+        ]
+        read_only_fields = [
+            "status",
+            "documentId",
+            "document",
+            "originalFilename",
+            "sha256",
+            "errorMessage",
+            "createdAt",
+            "updatedAt",
+            "completedAt",
+        ]
+
+    def get_createdAt(self, obj):
+        return format_local_datetime(obj.created_at)
+
+    def get_updatedAt(self, obj):
+        return format_local_datetime(obj.updated_at)
+
+    def get_completedAt(self, obj):
+        return format_local_datetime(obj.completed_at)
+
+    def get_document(self, obj):
+        if not obj.uploaded_document:
+            return None
+        return DocumentSerializer(obj.uploaded_document, context=self.context).data

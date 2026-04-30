@@ -44,6 +44,8 @@ import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { Folder } from "@/types";
 
+const SCANNER_STATION_ID = import.meta.env.VITE_SCANNER_STATION_ID || "SCANNER-PC-01";
+
 interface UploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -51,7 +53,24 @@ interface UploadDialogProps {
   selectedFolderPath?: string;
 }
 
-type WorkflowState = 'choose' | 'detecting' | 'scanning' | 'manual-upload' | 'category-entry' | 'success' | 'no-scanner';
+type WorkflowState = 'choose' | 'detecting' | 'scanning' | 'manual-upload' | 'category-entry' | 'waiting-scan' | 'success' | 'scan-failed';
+
+interface ScannerStation {
+  stationId: string;
+  name?: string;
+  status: "CONNECTED" | "NOT_DETECTED" | "ERROR";
+  lastSeenAt?: string | null;
+  errorMessage?: string;
+  watchedFolder?: string;
+  isOnline?: boolean;
+}
+
+interface ScanJob {
+  id: string;
+  stationId: string;
+  status: "PENDING" | "WAITING_FOR_SCAN" | "UPLOADING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  errorMessage?: string;
+}
 
 export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFolderPath }: UploadDialogProps) {
   const { user } = useAuth();
@@ -72,6 +91,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [scannerMessage, setScannerMessage] = useState("");
+  const [scannerStatus, setScannerStatus] = useState<ScannerStation | null>(null);
+  const [activeScanJob, setActiveScanJob] = useState<ScanJob | null>(null);
+  const scannerOnline = Boolean(scannerStatus?.isOnline);
 
   const reset = () => {
     setState('choose');
@@ -87,6 +109,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
     setIsProcessing(false);
     setProgress(0);
     setScannerMessage("");
+    setActiveScanJob(null);
   };
 
   useEffect(() => {
@@ -95,8 +118,15 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
     } else {
       setTargetFolderId(selectedFolderId || "");
       fetchFolders();
+      fetchScannerStatus();
     }
   }, [open, selectedFolderId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const interval = window.setInterval(fetchScannerStatus, 3000);
+    return () => window.clearInterval(interval);
+  }, [open]);
 
   const fetchFolders = async () => {
     try {
@@ -104,6 +134,16 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       setFolders(folderList);
     } catch (error) {
       console.error("Failed to load folders:", error);
+    }
+  };
+
+  const fetchScannerStatus = async () => {
+    try {
+      const stations = await api.get<ScannerStation[]>("/api/scanner/stations");
+      setScannerStatus(stations.find(station => station.stationId === SCANNER_STATION_ID) || null);
+    } catch (error) {
+      console.error("Failed to load scanner status:", error);
+      setScannerStatus(null);
     }
   };
 
@@ -149,38 +189,16 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   } as any);
 
   const handleStartScan = async () => {
-    setState('detecting');
-    setScannerMessage("Scanner simulation: checking Epson L5290...");
-    await new Promise(r => setTimeout(r, 1500));
-    setScannerMessage("Scanner detected. Ready to scan.");
-    toast.success("Scanner detected. Ready to scan.");
-    await new Promise(r => setTimeout(r, 1000));
-    setState('scanning');
-    startScanning();
-  };
-
-  const startScanning = async () => {
-    setProgress(0);
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 300);
-
-    await new Promise(r => setTimeout(r, 3500));
-    
-    const mockFileName = `SCN_${Date.now()}`;
-    const mockFile = new File(["scanned content"], mockFileName + ".pdf", { type: "application/pdf" });
-    setFile(mockFile);
-    setCustomFileName(mockFileName);
-    setDocTitle(mockFileName);
     setSource('Scanned');
+    setFile(null);
+    setCustomFileName(`SCN_${Date.now()}`);
+    setDocTitle("");
+    setScannerMessage(
+      scannerOnline
+        ? "Scanner bridge is connected. Enter metadata, then scan using Epson Scan 2."
+        : "Scanner bridge has not reported as connected. You can still create a job, but the bridge must be running to upload."
+    );
     setState('category-entry');
-    toast.success("Document successfully scanned.");
   };
 
   const addKeyword = () => {
@@ -195,7 +213,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   };
 
   const handleSave = async () => {
-    if (!file) {
+    if (source === "Uploaded" && !file) {
       toast.error("File is missing.");
       return;
     }
@@ -230,8 +248,26 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
         return;
       }
 
+      if (source === "Scanned") {
+        const scanJob = await api.post<ScanJob>("/api/scan-jobs", {
+          stationId: SCANNER_STATION_ID,
+          title: finalName,
+          requestor: docTitle,
+          categoryId,
+          folderId: targetFolderId,
+          code: docCode,
+          description,
+          keywords,
+        });
+        setActiveScanJob(scanJob);
+        setScannerMessage("Scan job created. Use Epson Scan 2 and save the PDF to the bridge incoming folder.");
+        setState("waiting-scan");
+        toast.success("Scan job created. Waiting for scanned PDF.");
+        return;
+      }
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file as File);
       formData.append("title", finalName);
       formData.append("requestor", docTitle);
       formData.append("categoryId", categoryId);
@@ -246,10 +282,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
 
       await api.upload("/api/documents/upload", formData);
 
-      await logAudit(
-        source === 'Scanned' ? "SCAN" : "UPLOAD", 
-        `Uploaded: ${finalName} to ${physicalLocation} [Code: ${docCode}]`
-      );
+      await logAudit("UPLOAD", `Uploaded: ${finalName} to ${physicalLocation} [Code: ${docCode}]`);
       
       setState('success');
       toast.success("Document uploaded successfully");
@@ -262,15 +295,71 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
     }
   };
 
+  useEffect(() => {
+    if (state !== "waiting-scan" || !activeScanJob) return;
+
+    const interval = window.setInterval(async () => {
+      try {
+        const job = await api.get<ScanJob>(`/api/scan-jobs/${activeScanJob.id}`);
+        setActiveScanJob(job);
+
+        if (job.status === "COMPLETED") {
+          setState("success");
+          toast.success("Scanned document uploaded successfully");
+          window.clearInterval(interval);
+          setTimeout(() => onOpenChange(false), 1800);
+        } else if (job.status === "FAILED" || job.status === "CANCELLED") {
+          setState("scan-failed");
+          setScannerMessage(job.errorMessage || "Scanner bridge failed to upload the PDF.");
+          window.clearInterval(interval);
+        }
+      } catch (error: any) {
+        console.error("Scan job polling failed:", error);
+      }
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [state, activeScanJob?.id, onOpenChange]);
+
+  const isScanWaiting = state === "waiting-scan";
+  const shouldProtectDialogClose = isScanWaiting || isProcessing;
+
+  const handleDialogOpenChange = (nextOpen: boolean, eventDetails?: { reason?: string }) => {
+    if (
+      !nextOpen
+      && shouldProtectDialogClose
+      && eventDetails?.reason
+      && eventDetails.reason !== "close-press"
+    ) {
+      toast.info("Use Cancel to stop the scan job first.");
+      return;
+    }
+    if (!nextOpen && activeScanJob && state === "waiting-scan") {
+      api.patch(`/api/scan-jobs/${activeScanJob.id}`, {}).catch((error) => {
+        console.error("Failed to cancel scan job:", error);
+      });
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={handleDialogOpenChange}
+      disablePointerDismissal={shouldProtectDialogClose}
+    >
+      <DialogContent
+        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+        showCloseButton={!shouldProtectDialogClose}
+      >
         <DialogHeader>
           <DialogTitle>
             {state === 'choose' && "Digitization Source"}
             {state === 'manual-upload' && "File Upload"}
             {state === 'category-entry' && "Document Metadata"}
+            {state === 'waiting-scan' && "Waiting for Epson Scan"}
             {state === 'success' && "Filing Complete"}
+            {state === 'scan-failed' && "Scan Failed"}
             {state === 'detecting' && "Scanner Detection"}
             {state === 'scanning' && "Digitizing..."}
           </DialogTitle>
@@ -281,15 +370,25 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
 
         <div className="py-2">
           {state === 'choose' && (
-            <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                <span className="font-semibold text-muted-foreground">Scanner Station</span>
+                <span className={cn(
+                  "font-bold",
+                  scannerOnline ? "text-green-700" : "text-amber-700"
+                )}>
+                  {SCANNER_STATION_ID} - {scannerOnline ? "Bridge Connected" : "Bridge Not Running"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
               <Button 
                 variant="outline" 
                 className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
                 onClick={handleStartScan}
               >
                 <Scan className="h-8 w-8 text-primary" />
-                <span>Scan via WiFi</span>
-                <span className="text-[10px] text-muted-foreground">Epson L5290 Series</span>
+                <span>Scan with Epson</span>
+                <span className="text-[10px] text-muted-foreground">USB / LAN / WiFi supported</span>
               </Button>
               <Button 
                 variant="outline" 
@@ -300,6 +399,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                 <span>Manual Upload</span>
                 <span className="text-[10px] text-muted-foreground">Accepts PDF only</span>
               </Button>
+              </div>
             </div>
           )}
 
@@ -343,11 +443,16 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
           {state === 'category-entry' && (
             <div className="space-y-4 pb-4">
               {/* Row 1: Original Source (full width) */}
+              {source === "Scanned" && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  This creates a pending scan record only. Start the Scanner Bridge, then scan in Epson Scan 2 and save the PDF to the incoming folder.
+                </div>
+              )}
               <div className="bg-muted/30 border rounded-lg p-3 flex items-center gap-3">
                 <FileText className="h-10 w-10 text-primary" />
                 <div className="flex-1 min-w-0">
-                  <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Original Source</Label>
-                  <p className="text-sm font-semibold truncate">{file?.name}</p>
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">{source === "Scanned" ? "Scan Source" : "Original Source"}</Label>
+                  <p className="text-sm font-semibold truncate">{source === "Scanned" ? "Epson Scan 2 PDF output" : file?.name}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">{(file?.size || 0) / 1024 / 1024 < 1 ? `${((file?.size || 0) / 1024).toFixed(1)} KB` : `${((file?.size || 0) / 1024 / 1024).toFixed(1)} MB`} • PDF Document</p>
                 </div>
               </div>
@@ -486,6 +591,46 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
             </div>
           )}
 
+          {state === 'waiting-scan' && (
+            <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <div className="space-y-2">
+                <p className="text-lg font-bold">Waiting for PDF</p>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Scan with Epson Scan 2, then save the PDF to the incoming folder.
+                </p>
+                <div className="mx-auto max-w-md rounded-md border bg-muted/30 p-3 text-left text-xs text-muted-foreground">
+                  <div><span className="font-semibold text-foreground">Station:</span> {SCANNER_STATION_ID}</div>
+                  <div><span className="font-semibold text-foreground">Bridge:</span> {scannerOnline ? "Connected" : "Not detected or not sending heartbeat"}</div>
+                  <div><span className="font-semibold text-foreground">Incoming folder:</span> {scannerStatus?.watchedFolder || "C:\\DFS_Scanner\\Incoming"}</div>
+                  {!scannerOnline && (
+                    <div className="mt-2 text-amber-700">
+                      Start Scanner Bridge before scanning.
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground max-w-md">
+                  Keep this open. Use Cancel to stop this job.
+                </p>
+                <p className="text-xs font-mono text-muted-foreground">
+                  Job #{activeScanJob?.id} - {activeScanJob?.status}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {state === 'scan-failed' && (
+            <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
+              <AlertCircle className="h-12 w-12 text-destructive" />
+              <div className="space-y-2">
+                <p className="text-lg font-bold">Scanner upload failed</p>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  {scannerMessage || "Check the scanner bridge log and try scanning again."}
+                </p>
+              </div>
+            </div>
+          )}
+
           {state === 'success' && (
             <div className="flex flex-col items-center justify-center py-10 space-y-4">
               <CheckCircle2 className="h-16 w-16 text-green-500 animate-in zoom-in duration-500" />
@@ -499,14 +644,14 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
 
         {!isProcessing && state !== 'success' && (
           <DialogFooter className="pt-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => handleDialogOpenChange(false)}>Cancel</Button>
             {state === 'category-entry' && (
               <Button 
                 onClick={handleSave} 
                 disabled={!categoryId || !targetFolderId || !docTitle || !docCode.trim()}
                 className="bg-[#0A4D27] hover:bg-[#083E1D] text-white min-w-32 h-10 rounded-lg"
               >
-                Confirm and Save Filing
+                {source === "Scanned" ? "Create Scan Job" : "Confirm and Save Filing"}
               </Button>
             )}
           </DialogFooter>
