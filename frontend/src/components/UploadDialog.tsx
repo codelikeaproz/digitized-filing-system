@@ -45,6 +45,7 @@ import { api } from "@/lib/api";
 import { Folder } from "@/types";
 
 const SCANNER_STATION_ID = import.meta.env.VITE_SCANNER_STATION_ID || "SCANNER-PC-01";
+const SCANNER_STATION_LABEL = "Scanner";
 
 interface UploadDialogProps {
   open: boolean;
@@ -377,7 +378,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                   "font-bold",
                   scannerOnline ? "text-green-700" : "text-amber-700"
                 )}>
-                  {SCANNER_STATION_ID} - {scannerOnline ? "Bridge Connected" : "Bridge Not Running"}
+                  {SCANNER_STATION_LABEL} - {scannerOnline ? "Bridge Connected" : "Bridge Not Running"}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -600,7 +601,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                   Scan with Epson Scan 2, then save the PDF to the incoming folder.
                 </p>
                 <div className="mx-auto max-w-md rounded-md border bg-muted/30 p-3 text-left text-xs text-muted-foreground">
-                  <div><span className="font-semibold text-foreground">Station:</span> {SCANNER_STATION_ID}</div>
+                  <div><span className="font-semibold text-foreground">Station:</span> {SCANNER_STATION_LABEL}</div>
                   <div><span className="font-semibold text-foreground">Bridge:</span> {scannerOnline ? "Connected" : "Not detected or not sending heartbeat"}</div>
                   <div><span className="font-semibold text-foreground">Incoming folder:</span> {scannerStatus?.watchedFolder || "C:\\DFS_Scanner\\Incoming"}</div>
                   {!scannerOnline && (

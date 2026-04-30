@@ -313,3 +313,20 @@ docker compose up
 - Store uploaded media in persistent storage.
 - Do not commit `.env`.
 - Use a non-root MySQL user in production.
+
+
+
+
+## 10. Optional Dev Tooling
+
+To enable the React Grab MCP client in development, add this script inside `frontend/index.html`:
+
+```html
+<!-- React Grab MCP Client for the small dev overlay in the top-right corner. -->
+<script type="module">
+  if (import.meta.env.DEV) {
+    import("react-grab");
+    import("@react-grab/mcp/client");
+  }
+</script>
+```
