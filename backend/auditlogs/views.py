@@ -1,5 +1,8 @@
 import csv
+import io
+import zipfile
 from datetime import datetime, time
+from xml.sax.saxutils import escape
 
 from django.http import HttpResponse
 from django.db.models import Q
@@ -103,6 +106,124 @@ class AuditLogViewSet(viewsets.ModelViewSet):
                 filters.append(f"{display_key}={value}")
         return ", ".join(filters)
 
+    def _audit_export_rows(self, rows):
+        export_rows = []
+        for log in rows:
+            user = log.user
+            name = user.get_full_name() or user.email if user else "System"
+            role = getattr(user, "role", None) or "System"
+            org_unit = log.target_org_unit or (user.org_unit.name if user and user.org_unit else "Global Access")
+            export_rows.append(
+                [
+                    format_local_datetime(log.created_at),
+                    name,
+                    role.replace("_", " ").upper(),
+                    org_unit.upper(),
+                    log.action.upper(),
+                    log.details,
+                ]
+            )
+        return export_rows
+
+    def _build_audit_xlsx(self, rows):
+        headers = ["TIMESTAMP", "NAME", "ROLE", "ORG UNIT", "ACTION", "DETAILS"]
+        data_rows = [headers, *self._audit_export_rows(rows)]
+        column_widths = [24, 24, 18, 24, 28, 72]
+
+        def cell_ref(row_index, column_index):
+            column_name = ""
+            index = column_index
+            while index:
+                index, remainder = divmod(index - 1, 26)
+                column_name = chr(65 + remainder) + column_name
+            return f"{column_name}{row_index}"
+
+        def cell_xml(value, row_index, column_index, style_id):
+            text = escape(str(value or ""))
+            return (
+                f'<c r="{cell_ref(row_index, column_index)}" t="inlineStr" s="{style_id}">'
+                f"<is><t>{text}</t></is></c>"
+            )
+
+        sheet_rows = []
+        for row_index, row in enumerate(data_rows, start=1):
+            style_id = 1 if row_index == 1 else 2
+            cells = "".join(
+                cell_xml(value, row_index, column_index, style_id)
+                for column_index, value in enumerate(row, start=1)
+            )
+            row_height = ' ht="24" customHeight="1"' if row_index == 1 else ""
+            sheet_rows.append(f'<row r="{row_index}"{row_height}>{cells}</row>')
+
+        cols = "".join(
+            f'<col min="{index}" max="{index}" width="{width}" customWidth="1"/>'
+            for index, width in enumerate(column_widths, start=1)
+        )
+        last_row = max(len(data_rows), 1)
+        sheet_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:F{last_row}"/>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <cols>{cols}</cols>
+  <sheetData>{''.join(sheet_rows)}</sheetData>
+  <autoFilter ref="A1:F{last_row}"/>
+</worksheet>'''
+        styles_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="3">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF0A4D27"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFD7E5D8"/></left><right style="thin"><color rgb="FFD7E5D8"/></right><top style="thin"><color rgb="FFD7E5D8"/></top><bottom style="thin"><color rgb="FFD7E5D8"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="3">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>'''
+        workbook_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="AUDIT LOGS" sheetId="1" r:id="rId1"/></sheets>
+</workbook>'''
+        workbook_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>'''
+        root_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>'''
+        content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>'''
+
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("[Content_Types].xml", content_types)
+            archive.writestr("_rels/.rels", root_rels)
+            archive.writestr("xl/workbook.xml", workbook_xml)
+            archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+            archive.writestr("xl/styles.xml", styles_xml)
+            archive.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        return output.getvalue()
+
     @action(detail=False, methods=["get"], url_path="export-csv")
     def export_csv(self, request):
         queryset = self._apply_filters(
@@ -141,6 +262,35 @@ class AuditLogViewSet(viewsets.ModelViewSet):
             timestamp = f'="{format_local_datetime(log.created_at)}"'
             writer.writerow([timestamp, name, role, org_unit, log.action, log.details])
 
+        return response
+
+    @action(detail=False, methods=["get"], url_path="export-xlsx")
+    def export_xlsx(self, request):
+        queryset = self._apply_filters(
+            AuditLog.objects.select_related("user", "user__org_unit").order_by("-created_at")
+        )
+        rows = list(queryset)
+        filter_details = self._export_filter_details()
+
+        audit_details = "Exported audit logs Excel"
+        if filter_details:
+            audit_details = f"{audit_details} with filters: {filter_details}"
+        log_audit(
+            request.user,
+            "EXPORT_AUDIT_XLSX",
+            audit_details,
+            target_type="AuditLog",
+            target_name="audit_logs.xlsx",
+            target_org_unit=request.user.org_unit.name if getattr(request.user, "org_unit", None) else None,
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+
+        today = timezone.localdate().isoformat()
+        response = HttpResponse(
+            self._build_audit_xlsx(rows),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="audit_logs_{today}.xlsx"'
         return response
 
     def perform_create(self, serializer):

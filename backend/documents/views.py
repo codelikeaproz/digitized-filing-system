@@ -270,9 +270,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        completed_scan_jobs = ScanJob.objects.filter(category=category, status="COMPLETED")
+        if completed_scan_jobs.exists():
+            return Response(
+                {
+                    "error": "Cannot delete category because it is used by completed scan jobs.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         category_name = category.name
         category_org_unit = category.org_unit.name if category.org_unit else None
         with transaction.atomic():
+            ScanJob.objects.filter(category=category).exclude(status="COMPLETED").delete()
             category.delete()
             log_audit(
                 request.user,
