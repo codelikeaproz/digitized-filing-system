@@ -81,7 +81,7 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
         <TableHeader>
           <TableRow>
             <TableHead className="w-[25%]">Title</TableHead>
-            <TableHead>Requestor</TableHead>
+            <TableHead>Requisitioner</TableHead>
             <TableHead>Category</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Status</TableHead>

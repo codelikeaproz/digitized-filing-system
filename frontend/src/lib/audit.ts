@@ -8,6 +8,7 @@ export type AuditAction =
   | "DOWNLOAD"
   | "DOWNLOAD_DOCUMENT"
   | "EXPORT_AUDIT_CSV"
+  | "EXPORT_AUDIT_XLSX"
   | "CREATE_FOLDER" 
   | "DELETE_FOLDER" 
   | "ARCHIVE_DOCUMENT"

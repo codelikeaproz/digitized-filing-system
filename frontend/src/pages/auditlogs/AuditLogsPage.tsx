@@ -1,3 +1,4 @@
+// Audit logs page for viewing system activity.
 import React, { useState, useEffect } from "react";
 import { 
   Table, 
@@ -34,6 +35,7 @@ const ACTION_OPTIONS = [
   { value: "SCAN", label: "Scan" },
   { value: "DOWNLOAD_DOCUMENT", label: "Download" },
   { value: "EXPORT_AUDIT_CSV", label: "Export CSV" },
+  { value: "EXPORT_AUDIT_XLSX", label: "Export Excel" },
   { value: "CREATE_USER", label: "Create User" },
   { value: "SEND_ACTIVATION_EMAIL", label: "Send Activation Email" },
   { value: "ACTIVATE_ACCOUNT", label: "Activate Account" },
@@ -168,14 +170,14 @@ export default function AuditLogsPage() {
     return `Until ${formatShortDate(endDate)}`;
   };
 
-  const handleExportCsv = async () => {
+  const handleExportXlsx = async () => {
     setIsExporting(true);
     try {
       const query = new URLSearchParams();
       Object.entries(buildFilterParams(false)).forEach(([key, value]) => {
         query.set(key, String(value));
       });
-      const url = `${BACKEND_URL}/api/audit-logs/export-csv/${query.toString() ? `?${query.toString()}` : ""}`;
+      const url = `${BACKEND_URL}/api/audit-logs/export-xlsx/${query.toString() ? `?${query.toString()}` : ""}`;
       const token = localStorage.getItem("auth_token");
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -190,12 +192,12 @@ export default function AuditLogsPage() {
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = window.document.createElement("a");
       link.href = downloadUrl;
-      link.download = `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `audit_logs_${new Date().toISOString().slice(0, 10)}.xlsx`;
       window.document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
-      toast.success("Audit logs CSV exported");
+      toast.success("Audit logs Excel exported");
     } catch (error: any) {
       toast.error(error.message || "Failed to export audit logs");
     } finally {
@@ -223,7 +225,8 @@ export default function AuditLogsPage() {
       case 'SCAN': return <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-700 font-bold">{formattedAction}</Badge>;
       case 'Routing': return <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-700">{formattedAction}</Badge>;
       case 'DOWNLOAD_DOCUMENT': return <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">{formattedAction}</Badge>;
-      case 'EXPORT_AUDIT_CSV': return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{formattedAction}</Badge>;
+      case 'EXPORT_AUDIT_CSV':
+      case 'EXPORT_AUDIT_XLSX': return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{formattedAction}</Badge>;
       default: return <Badge variant="outline">{formattedAction}</Badge>;
     }
   };
@@ -295,11 +298,11 @@ export default function AuditLogsPage() {
           <Button
             variant="outline"
             className="gap-2 h-9 px-3 py-1 rounded-md text-sm font-normal"
-            onClick={handleExportCsv}
+            onClick={handleExportXlsx}
             disabled={isExporting}
           >
             {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {isExporting ? "Exporting..." : "Export CSV"}
+            {isExporting ? "Exporting..." : "Export Excel"}
           </Button>
         </div>
       </div>

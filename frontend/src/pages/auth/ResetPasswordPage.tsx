@@ -1,3 +1,4 @@
+// Reset password page for setting a new password from a reset link.
 import React, { useState } from 'react';
 import { Building2, Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Button } from "@/components/ui/button";

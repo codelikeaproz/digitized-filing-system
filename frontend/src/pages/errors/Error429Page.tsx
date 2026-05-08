@@ -1,3 +1,4 @@
+// Error 429 page for too many request responses.
 import React from 'react';
 import ErrorPage from './ErrorPage';
 

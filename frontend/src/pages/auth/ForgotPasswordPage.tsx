@@ -1,3 +1,4 @@
+// Forgot password page for requesting a reset link.
 import React, { useState } from 'react';
 import { ArrowLeft, Building2, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button, buttonVariants } from "@/components/ui/button";

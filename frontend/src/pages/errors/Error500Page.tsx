@@ -1,3 +1,4 @@
+// Error 500 page for server error responses.
 import React from 'react';
 import ErrorPage from './ErrorPage';
 

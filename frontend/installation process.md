@@ -118,3 +118,19 @@ To match this repo’s style (high-level checklist):
 - **`@/` import not found**
   - This repo uses `@` alias in `vite.config.js`. If you recreate the project, add the alias again.
 
+
+
+
+## Optional React Grab Dev Tool
+
+To enable the React Grab MCP client in development, place this inside `frontend/index.html`:
+
+```html
+<!-- React Grab MCP Client for the small dev overlay in the top-right corner. -->
+<script type="module">
+  if (import.meta.env.DEV) {
+    import("react-grab");
+    import("@react-grab/mcp/client");
+  }
+</script>
+```

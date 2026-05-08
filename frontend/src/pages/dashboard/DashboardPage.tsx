@@ -1,3 +1,4 @@
+// Dashboard page for viewing filing system statistics.
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Files, UploadCloud, Scan, Building2, Loader2, Users } from "lucide-react";

@@ -1,3 +1,4 @@
+// Login page for user authentication.
 import React, { useState } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from "@/components/ui/button"

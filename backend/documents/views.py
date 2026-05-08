@@ -1,7 +1,10 @@
 import json
 import posixpath
 import re
+import secrets
+from datetime import timedelta
 
+from django.conf import settings
 from django.http import FileResponse
 from django.db import transaction
 from django.db.models import Count, Q
@@ -11,13 +14,21 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from auditlogs.models import log_audit
 
-from .models import Category, Document, Folder
-from .serializers import CategorySerializer, DocumentSerializer, FolderSerializer, RESERVED_FOLDER_NAMES
+from .models import Category, Document, Folder, ScanJob, ScannerStation
+from .serializers import (
+    CategorySerializer,
+    DocumentSerializer,
+    FolderSerializer,
+    RESERVED_FOLDER_NAMES,
+    ScanJobSerializer,
+    ScannerStationSerializer,
+)
 from .services import permanently_delete_folder, restore_folder, soft_delete_folder
 from accounts.models import User
 from config.pagination import StandardResultsSetPagination
@@ -50,6 +61,9 @@ def assert_recycle_bin_access(user, folder_or_document):
 
 
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+MAX_PDF_UPLOAD_SIZE = 50 * 1024 * 1024
+SCAN_JOB_ACTIVE_STATUSES = ["PENDING", "WAITING_FOR_SCAN", "UPLOADING"]
+SCAN_JOB_STALE_AFTER_MINUTES = 10
 
 
 def normalize_pdf_filename(value):
@@ -67,6 +81,78 @@ def normalize_pdf_filename(value):
     if not raw_name:
         raise ValidationError({"file_name": "File name cannot be empty."})
     return f"{raw_name}.pdf"
+
+
+def parse_keywords(value):
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def validate_pdf_upload(upload):
+    if not upload:
+        raise ValidationError({"file": "PDF file is required."})
+    if not upload.name.lower().endswith(".pdf"):
+        raise ValidationError({"file": "Only PDF files are supported."})
+    if getattr(upload, "size", 0) <= 0:
+        raise ValidationError({"file": "PDF file is empty."})
+    if upload.size > MAX_PDF_UPLOAD_SIZE:
+        raise ValidationError({"file": "PDF file exceeds the 50MB limit."})
+
+    position = upload.tell() if hasattr(upload, "tell") else None
+    header = upload.read(4)
+    if hasattr(upload, "seek"):
+        upload.seek(position or 0)
+    if header != b"%PDF":
+        raise ValidationError({"file": "Uploaded file is not a valid PDF."})
+
+
+def assert_scanner_bridge(request):
+    expected_token = settings.SCANNER_BRIDGE_TOKEN
+    received_token = request.headers.get("X-Scanner-Token", "")
+    if not expected_token or not secrets.compare_digest(received_token, expected_token):
+        raise PermissionDenied("Invalid scanner bridge token.")
+
+
+def scan_job_queryset_for_user(user):
+    queryset = ScanJob.objects.select_related(
+        "folder",
+        "folder__org_unit",
+        "category",
+        "uploaded_document",
+    )
+    if getattr(user, "role", None) == "admin":
+        return queryset
+
+    org_unit = getattr(user, "org_unit", None)
+    if not org_unit:
+        return queryset.none()
+
+    if getattr(user, "role", None) == "dept_head":
+        return queryset.filter(folder__org_unit_id__in=org_unit_scope_ids(user))
+    return queryset.filter(folder__org_unit_id=org_unit.id)
+
+
+def cancel_stale_scan_jobs(station_id=None):
+    cutoff = timezone.now() - timedelta(minutes=SCAN_JOB_STALE_AFTER_MINUTES)
+    queryset = ScanJob.objects.filter(
+        status__in=SCAN_JOB_ACTIVE_STATUSES,
+        updated_at__lt=cutoff,
+    )
+    if station_id:
+        queryset = queryset.filter(station_id=station_id)
+    return queryset.update(
+        status="CANCELLED",
+        error_message="Cancelled automatically because the scan job timed out.",
+    )
 
 
 def normalize_folder_name(value):
@@ -184,9 +270,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        completed_scan_jobs = ScanJob.objects.filter(category=category, status="COMPLETED")
+        if completed_scan_jobs.exists():
+            return Response(
+                {
+                    "error": "Cannot delete category because it is used by completed scan jobs.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         category_name = category.name
         category_org_unit = category.org_unit.name if category.org_unit else None
         with transaction.atomic():
+            ScanJob.objects.filter(category=category).exclude(status="COMPLETED").delete()
             category.delete()
             log_audit(
                 request.user,
@@ -503,10 +599,12 @@ class DocumentUploadView(APIView):
         upload = request.FILES.get("file")
         if not upload:
             return Response({"error": "File is required."}, status=status.HTTP_400_BAD_REQUEST)
+        validate_pdf_upload(upload)
 
         folder = Folder.objects.filter(pk=request.data.get("folderId"), is_deleted=False).first()
         if not folder:
             return Response({"error": "Target folder is required."}, status=status.HTTP_400_BAD_REQUEST)
+        assert_folder_write_access(request.user, folder)
 
         category = Category.objects.filter(pk=request.data.get("categoryId")).first()
         if not category:
@@ -517,10 +615,10 @@ class DocumentUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            keywords = json.loads(request.data.get("keywords", "[]"))
-        except json.JSONDecodeError:
-            keywords = []
+        keywords = parse_keywords(request.data.get("keywords", "[]"))
+        source = request.data.get("source", "Uploaded")
+        if source not in {"Uploaded", "Scanned"}:
+            return Response({"error": "Invalid document source."}, status=status.HTTP_400_BAD_REQUEST)
 
         document = Document.objects.create(
             title=request.data.get("title") or upload.name,
@@ -535,12 +633,260 @@ class DocumentUploadView(APIView):
             keywords=keywords,
             filing_year=timezone.now().year,
             status="Received",
-            source=request.data.get("source", "Uploaded"),
+            source=source,
             mime_type=getattr(upload, "content_type", "") or "application/octet-stream",
             file_size=upload.size,
         )
-        log_audit(request.user, "UPLOAD", f"Uploaded: {document.title} to {document.file_path}")
+        audit_message = (
+            f"Scanned document uploaded: {document.title}"
+            if source == "Scanned"
+            else f"Uploaded document: {document.title}"
+        )
+        log_audit(request.user, "UPLOAD", f"{audit_message} to {document.file_path}")
         return Response(DocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class ScannerStationListAPIView(APIView):
+    def get(self, request):
+        stations = ScannerStation.objects.all()
+        return Response(ScannerStationSerializer(stations, many=True).data)
+
+
+class ScannerStationHeartbeatAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        assert_scanner_bridge(request)
+        station_id = (
+            request.data.get("station_id")
+            or request.headers.get("X-Scanner-Station")
+            or ""
+        ).strip()
+        if not station_id:
+            return Response({"message": "station_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        station, _ = ScannerStation.objects.update_or_create(
+            station_id=station_id,
+            defaults={
+                "name": request.data.get("name") or station_id,
+                "status": request.data.get("status") or "CONNECTED",
+                "watched_folder": request.data.get("watched_folder") or "",
+                "last_seen_at": timezone.now(),
+                "error_message": request.data.get("error_message") or "",
+            },
+        )
+        return Response(ScannerStationSerializer(station).data)
+
+
+class ScanJobListCreateAPIView(APIView):
+    def get(self, request):
+        queryset = scan_job_queryset_for_user(request.user).order_by("-created_at")[:50]
+        return Response(ScanJobSerializer(queryset, many=True, context={"request": request}).data)
+
+    def post(self, request):
+        folder = Folder.objects.filter(pk=request.data.get("folderId"), is_deleted=False).first()
+        if not folder:
+            return Response({"message": "Target folder is required."}, status=status.HTTP_400_BAD_REQUEST)
+        assert_folder_write_access(request.user, folder)
+
+        category = Category.objects.filter(pk=request.data.get("categoryId")).first()
+        if not category:
+            return Response({"message": "Valid category is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
+            return Response(
+                {"message": "Category must belong to the selected folder's Org Unit."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        station_id = (request.data.get("stationId") or "").strip()
+        if not station_id:
+            return Response({"message": "Scanner station is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cancel_stale_scan_jobs(station_id)
+        code = (request.data.get("code") or "").strip()
+        if not code:
+            return Response({"message": "Document Code is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        active_job = ScanJob.objects.filter(
+            station_id=station_id,
+            status__in=SCAN_JOB_ACTIVE_STATUSES,
+        ).first()
+        if active_job:
+            return Response(
+                {
+                    "message": "This scanner station already has an active scan job.",
+                    "activeJobId": str(active_job.id),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        job = ScanJob.objects.create(
+            station_id=station_id,
+            created_by=request.user,
+            folder=folder,
+            category=category,
+            status="WAITING_FOR_SCAN",
+            code=code,
+            title=(request.data.get("title") or "").strip(),
+            requestor=(request.data.get("requestor") or "").strip(),
+            description=(request.data.get("description") or "").strip()[:50],
+            keywords=parse_keywords(request.data.get("keywords", [])),
+        )
+        log_audit(
+            request.user,
+            "CREATE_SCAN_JOB",
+            f"Created scan job for station {station_id}: {code}",
+            target_type="ScanJob",
+            target_name=code,
+            target_org_unit=folder.org_unit.name if folder.org_unit else None,
+        )
+        return Response(ScanJobSerializer(job, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class ScanJobDetailAPIView(APIView):
+    def get(self, request, pk):
+        job = scan_job_queryset_for_user(request.user).filter(pk=pk).first()
+        if not job:
+            return Response({"message": "Scan job not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ScanJobSerializer(job, context={"request": request}).data)
+
+    def patch(self, request, pk):
+        job = scan_job_queryset_for_user(request.user).filter(pk=pk).first()
+        if not job:
+            return Response({"message": "Scan job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if job.status in ["COMPLETED", "CANCELLED"]:
+            return Response({"message": "Scan job can no longer be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+        job.status = "CANCELLED"
+        job.error_message = "Cancelled by user."
+        job.save(update_fields=["status", "error_message", "updated_at"])
+        return Response(ScanJobSerializer(job, context={"request": request}).data)
+
+
+class PendingScanJobAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        assert_scanner_bridge(request)
+        cancel_stale_scan_jobs()
+        station_id = (
+            request.query_params.get("station_id")
+            or request.headers.get("X-Scanner-Station")
+            or ""
+        ).strip()
+        if not station_id:
+            return Response({"message": "station_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        job = ScanJob.objects.select_related("folder", "category").filter(
+            station_id=station_id,
+            status="WAITING_FOR_SCAN",
+        ).order_by("created_at").first()
+        if not job:
+            return Response({})
+        return Response(ScanJobSerializer(job).data)
+
+
+class ScanJobUploadAPIView(APIView):
+    permission_classes = [AllowAny]
+    parser_classes = (MultiPartParser, FormParser)
+
+    @transaction.atomic
+    def post(self, request, pk):
+        assert_scanner_bridge(request)
+        upload = request.FILES.get("file")
+        validate_pdf_upload(upload)
+
+        station_id = request.headers.get("X-Scanner-Station") or request.data.get("station_id") or ""
+        sha256 = (request.data.get("sha256") or "").strip()
+        original_filename = (request.data.get("original_filename") or upload.name or "").strip()
+
+        job = ScanJob.objects.select_for_update().select_related("folder", "category", "created_by").filter(pk=pk).first()
+        if not job:
+            return Response({"message": "Scan job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if station_id and station_id != job.station_id:
+            return Response({"message": "Scan job is assigned to a different station."}, status=status.HTTP_403_FORBIDDEN)
+        if job.status not in ["WAITING_FOR_SCAN", "PENDING", "FAILED"]:
+            return Response({"message": f"Scan job cannot accept uploads while {job.status}."}, status=status.HTTP_400_BAD_REQUEST)
+
+        duplicate_query = ScanJob.objects.filter(status="COMPLETED")
+        if sha256:
+            duplicate_query = duplicate_query.filter(sha256=sha256)
+            if duplicate_query.exists():
+                job.status = "FAILED"
+                job.error_message = "Duplicate scanned PDF detected."
+                job.sha256 = sha256
+                job.original_filename = original_filename
+                job.save(update_fields=["status", "error_message", "sha256", "original_filename", "updated_at"])
+                return Response({"message": "Duplicate scanned PDF detected."}, status=status.HTTP_409_CONFLICT)
+
+        title = normalize_pdf_filename(job.title or original_filename or f"{job.code}.pdf")
+        if Document.objects.filter(folder=job.folder, is_deleted=False, title__iexact=title).exists():
+            job.status = "FAILED"
+            job.error_message = "A document with this file name already exists in the target folder."
+            job.original_filename = original_filename
+            job.sha256 = sha256
+            job.save(update_fields=["status", "error_message", "original_filename", "sha256", "updated_at"])
+            return Response({"message": job.error_message}, status=status.HTTP_409_CONFLICT)
+
+        job.status = "UPLOADING"
+        job.save(update_fields=["status", "updated_at"])
+
+        document = Document.objects.create(
+            title=title,
+            file=upload,
+            file_path=job.folder.get_full_path(),
+            folder=job.folder,
+            category=job.category,
+            uploader=job.created_by,
+            code=job.code,
+            requestor=job.requestor or None,
+            description=job.description or None,
+            keywords=job.keywords,
+            filing_year=timezone.now().year,
+            status="Received",
+            source="Scanned",
+            mime_type=getattr(upload, "content_type", "") or "application/pdf",
+            file_size=upload.size,
+        )
+        job.uploaded_document = document
+        job.status = "COMPLETED"
+        job.original_filename = original_filename
+        job.sha256 = sha256
+        job.error_message = ""
+        job.completed_at = timezone.now()
+        job.save(
+            update_fields=[
+                "uploaded_document",
+                "status",
+                "original_filename",
+                "sha256",
+                "error_message",
+                "completed_at",
+                "updated_at",
+            ]
+        )
+        log_audit(
+            job.created_by,
+            "SCAN_UPLOAD",
+            f"Uploaded scanned PDF: {title} from station {job.station_id}",
+            target_type="Document",
+            target_name=title,
+            target_org_unit=job.folder.org_unit.name if job.folder.org_unit else None,
+        )
+        return Response(DocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class ScanJobFailAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def patch(self, request, pk):
+        assert_scanner_bridge(request)
+        job = ScanJob.objects.filter(pk=pk).first()
+        if not job:
+            return Response({"message": "Scan job not found."}, status=status.HTTP_404_NOT_FOUND)
+        job.status = "FAILED"
+        job.error_message = (request.data.get("error_message") or "Scanner bridge reported a failure.")[:1000]
+        job.save(update_fields=["status", "error_message", "updated_at"])
+        return Response(ScanJobSerializer(job).data)
 
 
 class RecycleBinAPIView(APIView):
