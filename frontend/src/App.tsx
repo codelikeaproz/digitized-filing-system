@@ -24,6 +24,7 @@ const Error500Page = lazy(() => import("./pages/errors/Error500Page"));
 // Layout
 import AppShell from "./layouts/AppShell";
 import AutoLogout from "./components/AutoLogout";
+import { PublicAssistantMount } from "@/components/assistant/public/PublicAssistantMount";
 
 export default function App() {
   return (
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
+        <PublicAssistantMount />
         <Toaster />
       </BrowserRouter>
     </AuthProvider>

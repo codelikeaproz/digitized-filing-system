@@ -76,8 +76,8 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
   };
 
   return (
-    <div className="rounded-md border bg-card">
-      <Table>
+    <div className="min-w-0 overflow-hidden rounded-md border bg-card">
+      <Table className="min-w-[760px]">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[25%]">Title</TableHead>
@@ -125,7 +125,7 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
                   </div>
                 </TableCell>
                 <TableCell className="max-w-[150px] truncate">{doc.requestor || "—"}</TableCell>
-                <TableCell>{doc.category}</TableCell>
+                <TableCell className="max-w-[160px] truncate">{doc.category}</TableCell>
                 <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">
                   {doc.filePath}
                 </TableCell>

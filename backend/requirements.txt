@@ -11,3 +11,4 @@ PyMySQL
 python-dotenv
 cryptography
 # gunicorn
+pypdf

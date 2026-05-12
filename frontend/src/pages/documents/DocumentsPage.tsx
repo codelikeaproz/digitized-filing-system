@@ -35,6 +35,8 @@ import { useAuth } from "@/lib/auth-context";
 import { api, PaginatedResponse } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { PaginationControls } from "@/components/PaginationControls";
+import { DocumentAssistant } from "@/components/assistant/documents/DocumentAssistant";
+import { AssistantMatchedDocument } from "@/components/assistant/documents/ChatDocumentCard";
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -182,6 +184,38 @@ export default function DocumentsPage() {
     setCurrentPage(1);
   };
 
+  const findFolderById = useCallback(
+    (folderId?: string) => {
+      if (!folderId) return null;
+      return flatFolders.find((folder) => String(folder.id) === String(folderId)) || null;
+    },
+    [flatFolders]
+  );
+
+  const handleAssistantViewDocument = useCallback(async (matchedDocument: AssistantMatchedDocument) => {
+    const existingDocument = documents.find((document) => String(document.id) === String(matchedDocument.id));
+    if (existingDocument) {
+      setPreviewDoc(existingDocument);
+      return;
+    }
+
+    try {
+      const document = await api.get<DocType>(`/api/documents/${matchedDocument.id}`);
+      setPreviewDoc(document);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to open document preview");
+    }
+  }, [documents]);
+
+  const handleAssistantOpenFolder = useCallback((matchedDocument: AssistantMatchedDocument) => {
+    const folder = findFolderById(matchedDocument.folderId);
+    if (!folder) {
+      toast.error("Folder is not available in your current folder tree.");
+      return;
+    }
+    handleSelectFolder(folder);
+  }, [findFolderById]);
+
   // Fetch Documents
   const fetchDocuments = async (silent = false, searchArg?: string) => {
     if (!silent) setIsRefreshing(true);
@@ -226,9 +260,9 @@ export default function DocumentsPage() {
   }, [documents, categories]);
 
   return (
-    <div className="flex gap-6">
+    <div className="flex min-w-0 flex-col gap-6 lg:flex-row">
       {/* Left Sidebar: Folders */}
-      <div className="w-64 flex-shrink-0 border-right pr-6 min-h-[calc(100vh-120px)]">
+      <div className="min-h-[240px] w-full flex-shrink-0 border-right lg:min-h-[calc(100vh-120px)] lg:w-64 lg:pr-6">
         <FolderNavigation 
           folders={folders} 
           onSelect={handleSelectFolder} 
@@ -237,8 +271,8 @@ export default function DocumentsPage() {
       </div>
 
       {/* Right Content: Documents */}
-      <div className="flex-1 flex flex-col gap-6">
-        <div className="flex items-center justify-between">
+      <div className="flex min-w-0 flex-1 flex-col gap-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="space-y-1">
             <Breadcrumb>
               <BreadcrumbList>
@@ -284,11 +318,11 @@ export default function DocumentsPage() {
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <CategorySelect 
               value={categoryFilter} 
               onValueChange={handleCategoryChange} 
-              className="w-[200px]"
+              className="w-full sm:w-[200px]"
               showAllOption
               orgUnitId={isOrgUnitNode ? selectedFolder?.orgUnitId : selectedFolder?.orgUnitId}
             />
@@ -315,7 +349,7 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        <div>
+        <div className="relative min-w-0">
           {isInitialLoading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/50 backdrop-blur-sm z-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
@@ -371,6 +405,10 @@ export default function DocumentsPage() {
         onOpenChange={setIsUploadOpen} 
         selectedFolderId={isVirtualFolder || isOrgUnitNode ? undefined : selectedFolder?.id} 
         selectedFolderPath={isVirtualFolder ? 'All Files' : isOrgUnitNode ? selectedFolder?.name : folderPath.map(f => f.name).join(' > ') || 'All Files'}
+      />
+      <DocumentAssistant
+        onViewDocument={handleAssistantViewDocument}
+        onOpenFolder={handleAssistantOpenFolder}
       />
 
       <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDoc(null)}>

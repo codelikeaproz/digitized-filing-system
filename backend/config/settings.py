@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     "orgunits",
     "documents",
     "auditlogs",
+    "ai",
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -205,6 +206,9 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 SCANNER_BRIDGE_TOKEN = os.getenv("SCANNER_BRIDGE_TOKEN", "change-me-local-scanner-token")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 
 # Password reset links expire after 30 minutes.
 PASSWORD_RESET_TIMEOUT = 60 * 30

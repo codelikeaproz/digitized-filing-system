@@ -86,6 +86,10 @@ class Document(models.Model):
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="Uploaded")
     mime_type = models.CharField(max_length=100, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
+    extracted_text = models.TextField(blank=True)
+    ai_summary = models.TextField(blank=True)
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    last_indexed_at = models.DateTimeField(null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
     deleted_by = models.ForeignKey(
@@ -171,8 +175,8 @@ class ScanJob(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["station_id", "status", "created_at"]),
-            models.Index(fields=["sha256"]),
+            models.Index(fields=["station_id", "status", "created_at"], name="documents_s_station_25d655_idx"),
+            models.Index(fields=["sha256"], name="documents_s_sha256_409f25_idx"),
         ]
 
     def __str__(self):

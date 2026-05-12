@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from auditlogs.models import log_audit
+from ai.services.extraction_service import index_document_text
 
 from .models import Category, Document, Folder, ScanJob, ScannerStation
 from .serializers import (
@@ -642,6 +643,7 @@ class DocumentUploadView(APIView):
             if source == "Scanned"
             else f"Uploaded document: {document.title}"
         )
+        index_document_text(document)
         log_audit(request.user, "UPLOAD", f"{audit_message} to {document.file_path}")
         return Response(DocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
@@ -847,6 +849,7 @@ class ScanJobUploadAPIView(APIView):
             mime_type=getattr(upload, "content_type", "") or "application/pdf",
             file_size=upload.size,
         )
+        index_document_text(document)
         job.uploaded_document = document
         job.status = "COMPLETED"
         job.original_filename = original_filename

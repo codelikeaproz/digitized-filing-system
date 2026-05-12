@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User } from "../types";
 import { api } from "./api";
 import { toast } from "sonner";
+import { clearDocumentAssistantSession } from "@/lib/assistant/session";
 
 interface AuthContextType {
   user: User | null;
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
+    clearDocumentAssistantSession();
     setUser(null);
     toast.info("Logged out successfully");
   };
