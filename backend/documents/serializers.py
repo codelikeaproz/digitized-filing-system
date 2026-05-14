@@ -1,11 +1,37 @@
 from rest_framework import serializers
 from django.utils import timezone
+import re
 
 from config.timezone_utils import format_local_datetime
 from .models import Category, Document, Folder, ScanJob, ScannerStation
 
 
 RESERVED_FOLDER_NAMES = {"all files", "root", "trash", "recycle bin"}
+DOCUMENT_CODE_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
+
+
+def normalize_document_code(value):
+    code = (value or "").strip().upper()
+    if not code:
+        raise serializers.ValidationError("Document Code is required.")
+    if not DOCUMENT_CODE_PATTERN.fullmatch(code):
+        raise serializers.ValidationError("Document Code can contain letters, numbers, and hyphens only.")
+    return code
+
+
+def ensure_unique_document_code(code, *, document_id=None):
+    queryset = Document.objects.filter(code__iexact=code)
+    if document_id:
+        queryset = queryset.exclude(pk=document_id)
+    if queryset.exists():
+        raise serializers.ValidationError("Document Code is already used.")
+
+    active_scan_job_exists = ScanJob.objects.filter(
+        code__iexact=code,
+        status__in=["PENDING", "WAITING_FOR_SCAN", "UPLOADING"],
+    ).exists()
+    if active_scan_job_exists:
+        raise serializers.ValidationError("Document Code is already used by an active scan job.")
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -162,6 +188,11 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def get_created_at(self, obj):
         return self.get_createdAt(obj)
+
+    def validate_code(self, value):
+        code = normalize_document_code(value)
+        ensure_unique_document_code(code, document_id=getattr(self.instance, "pk", None))
+        return code
 
 
 class ScannerStationSerializer(serializers.ModelSerializer):

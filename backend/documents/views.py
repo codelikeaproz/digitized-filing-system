@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.http import FileResponse
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.core.files.storage import default_storage
 from django.utils import timezone
@@ -25,7 +25,9 @@ from .models import Category, Document, Folder, ScanJob, ScannerStation
 from .serializers import (
     CategorySerializer,
     DocumentSerializer,
+    ensure_unique_document_code,
     FolderSerializer,
+    normalize_document_code,
     RESERVED_FOLDER_NAMES,
     ScanJobSerializer,
     ScannerStationSerializer,
@@ -114,6 +116,18 @@ def validate_pdf_upload(upload):
         upload.seek(position or 0)
     if header != b"%PDF":
         raise ValidationError({"file": "Uploaded file is not a valid PDF."})
+
+
+def validate_new_document_code(value):
+    try:
+        code = normalize_document_code(value)
+        ensure_unique_document_code(code)
+    except ValidationError as exc:
+        detail = exc.detail
+        if isinstance(detail, list) and detail:
+            return None, str(detail[0])
+        return None, str(detail)
+    return code, None
 
 
 def assert_scanner_bridge(request):
@@ -634,23 +648,30 @@ class DocumentUploadView(APIView):
         if source not in {"Uploaded", "Scanned"}:
             return Response({"error": "Invalid document source."}, status=status.HTTP_400_BAD_REQUEST)
 
-        document = Document.objects.create(
-            title=request.data.get("title") or upload.name,
-            file=upload,
-            file_path=request.data.get("filePath", folder.get_full_path()),
-            folder=folder,
-            category=category,
-            uploader=request.user if request.user.is_authenticated else None,
-            code=request.data.get("code") or None,
-            requestor=request.data.get("requestor") or None,
-            description=request.data.get("description") or None,
-            keywords=keywords,
-            filing_year=timezone.now().year,
-            status="Received",
-            source=source,
-            mime_type=getattr(upload, "content_type", "") or "application/octet-stream",
-            file_size=upload.size,
-        )
+        code, code_error = validate_new_document_code(request.data.get("code"))
+        if code_error:
+            return Response({"message": code_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            document = Document.objects.create(
+                title=request.data.get("title") or upload.name,
+                file=upload,
+                file_path=request.data.get("filePath", folder.get_full_path()),
+                folder=folder,
+                category=category,
+                uploader=request.user if request.user.is_authenticated else None,
+                code=code,
+                requestor=request.data.get("requestor") or None,
+                description=request.data.get("description") or None,
+                keywords=keywords,
+                filing_year=timezone.now().year,
+                status="Received",
+                source=source,
+                mime_type=getattr(upload, "content_type", "") or "application/octet-stream",
+                file_size=upload.size,
+            )
+        except IntegrityError:
+            return Response({"message": "Document Code is already used."}, status=status.HTTP_409_CONFLICT)
         audit_message = (
             f"Scanned document uploaded: {document.title}"
             if source == "Scanned"
@@ -718,9 +739,9 @@ class ScanJobListCreateAPIView(APIView):
             return Response({"message": "Scanner station is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         cancel_stale_scan_jobs(station_id)
-        code = (request.data.get("code") or "").strip()
-        if not code:
-            return Response({"message": "Document Code is required."}, status=status.HTTP_400_BAD_REQUEST)
+        code, code_error = validate_new_document_code(request.data.get("code"))
+        if code_error:
+            return Response({"message": code_error}, status=status.HTTP_400_BAD_REQUEST)
 
         active_job = ScanJob.objects.filter(
             station_id=station_id,
@@ -822,6 +843,14 @@ class ScanJobUploadAPIView(APIView):
         if job.status not in ["WAITING_FOR_SCAN", "PENDING", "FAILED"]:
             return Response({"message": f"Scan job cannot accept uploads while {job.status}."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if Document.objects.filter(code__iexact=job.code).exists():
+            job.status = "FAILED"
+            job.error_message = "Document Code is already used."
+            job.original_filename = original_filename
+            job.sha256 = sha256
+            job.save(update_fields=["status", "error_message", "original_filename", "sha256", "updated_at"])
+            return Response({"message": job.error_message}, status=status.HTTP_409_CONFLICT)
+
         duplicate_query = ScanJob.objects.filter(status="COMPLETED")
         if sha256:
             duplicate_query = duplicate_query.filter(sha256=sha256)
@@ -845,23 +874,31 @@ class ScanJobUploadAPIView(APIView):
         job.status = "UPLOADING"
         job.save(update_fields=["status", "updated_at"])
 
-        document = Document.objects.create(
-            title=title,
-            file=upload,
-            file_path=job.folder.get_full_path(),
-            folder=job.folder,
-            category=job.category,
-            uploader=job.created_by,
-            code=job.code,
-            requestor=job.requestor or None,
-            description=job.description or None,
-            keywords=job.keywords,
-            filing_year=timezone.now().year,
-            status="Received",
-            source="Scanned",
-            mime_type=getattr(upload, "content_type", "") or "application/pdf",
-            file_size=upload.size,
-        )
+        try:
+            document = Document.objects.create(
+                title=title,
+                file=upload,
+                file_path=job.folder.get_full_path(),
+                folder=job.folder,
+                category=job.category,
+                uploader=job.created_by,
+                code=job.code,
+                requestor=job.requestor or None,
+                description=job.description or None,
+                keywords=job.keywords,
+                filing_year=timezone.now().year,
+                status="Received",
+                source="Scanned",
+                mime_type=getattr(upload, "content_type", "") or "application/pdf",
+                file_size=upload.size,
+            )
+        except IntegrityError:
+            job.status = "FAILED"
+            job.error_message = "Document Code is already used."
+            job.original_filename = original_filename
+            job.sha256 = sha256
+            job.save(update_fields=["status", "error_message", "original_filename", "sha256", "updated_at"])
+            return Response({"message": job.error_message}, status=status.HTTP_409_CONFLICT)
         index_document_text(document)
         job.uploaded_document = document
         job.status = "COMPLETED"

@@ -46,6 +46,7 @@ import { Folder } from "@/types";
 
 const SCANNER_STATION_ID = import.meta.env.VITE_SCANNER_STATION_ID || "SCANNER-PC-01";
 const SCANNER_STATION_LABEL = "Scanner";
+const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9-]+$/;
 
 interface UploadDialogProps {
   open: boolean;
@@ -82,6 +83,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   const [file, setFile] = useState<File | null>(null);
   const [customFileName, setCustomFileName] = useState("");
   const [docCode, setDocCode] = useState("");
+  const [docCodeError, setDocCodeError] = useState("");
   const [docTitle, setDocTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -95,12 +97,16 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   const [scannerStatus, setScannerStatus] = useState<ScannerStation | null>(null);
   const [activeScanJob, setActiveScanJob] = useState<ScanJob | null>(null);
   const scannerOnline = Boolean(scannerStatus?.isOnline);
+  const trimmedDocCode = docCode.trim();
+  const isDocumentCodeValid = !trimmedDocCode || DOCUMENT_CODE_PATTERN.test(trimmedDocCode);
+  const documentCodeInlineError = docCodeError || (!isDocumentCodeValid ? "Document Code can contain letters, numbers, and hyphens only." : "");
 
   const reset = () => {
     setState('choose');
     setFile(null);
     setCustomFileName("");
     setDocCode("");
+    setDocCodeError("");
     setDocTitle("");
     setDescription("");
     setCategoryId("");
@@ -219,7 +225,11 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       return;
     }
     if (!docCode.trim()) {
-      toast.error("Document Code is required.");
+      setDocCodeError("Document Code is required.");
+      return;
+    }
+    if (!DOCUMENT_CODE_PATTERN.test(docCode.trim())) {
+      setDocCodeError("Document Code can contain letters, numbers, and hyphens only.");
       return;
     }
     if (!categoryId) {
@@ -256,7 +266,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
           requestor: docTitle,
           categoryId,
           folderId: targetFolderId,
-          code: docCode,
+          code: trimmedDocCode,
           description,
           keywords,
         });
@@ -277,7 +287,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       formData.append("uploaderId", user.id);
       formData.append("filePath", physicalLocation);
       formData.append("source", source);
-      formData.append("code", docCode);
+      formData.append("code", trimmedDocCode);
       formData.append("description", description);
       formData.append("keywords", JSON.stringify(keywords));
 
@@ -290,7 +300,12 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       setTimeout(() => onOpenChange(false), 2000);
     } catch (error: any) {
       console.error("Upload Error:", error);
-      toast.error(error.message || "Upload failed.");
+      const message = error.message || "Upload failed.";
+      if (message.toLowerCase().includes("document code")) {
+        setDocCodeError(message);
+        return;
+      }
+      toast.error(message);
     } finally {
       setIsProcessing(false);
     }
@@ -505,12 +520,22 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                   </Label>
                   <Input 
                     id="docCode" 
-                    placeholder="e.g. LGL-2023-001" 
+                    placeholder="e.g. LGL2023001"
                     value={docCode} 
-                    onChange={(e) => setDocCode(e.target.value)}
-                    className="h-10"
+                    onChange={(e) => {
+                      setDocCode(e.target.value.toUpperCase());
+                      setDocCodeError("");
+                    }}
+                    className={cn("h-10", documentCodeInlineError && "border-destructive focus-visible:ring-destructive")}
+                    aria-invalid={Boolean(documentCodeInlineError)}
+                    aria-describedby={documentCodeInlineError ? "docCode-error" : undefined}
                     required
                   />
+                  {documentCodeInlineError && (
+                    <p id="docCode-error" className="text-[11px] text-destructive font-medium">
+                      {documentCodeInlineError}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -650,7 +675,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
             {state === 'category-entry' && (
               <Button 
                 onClick={handleSave} 
-                disabled={!categoryId || !targetFolderId || !docTitle || !docCode.trim()}
+                disabled={!categoryId || !targetFolderId || !docTitle || !trimmedDocCode || !isDocumentCodeValid}
                 className="bg-[#0A4D27] hover:bg-[#083E1D] text-white min-w-32 h-10 rounded-lg"
               >
                 {source === "Scanned" ? "Create Scan Job" : "Confirm and Save Filing"}

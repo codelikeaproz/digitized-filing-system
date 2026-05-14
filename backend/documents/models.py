@@ -77,7 +77,7 @@ class Document(models.Model):
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name="documents")
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name="documents")
     uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    code = models.CharField(max_length=100, null=True, blank=True)
+    code = models.CharField(max_length=100, unique=True, null=True, blank=True)
     requestor = models.CharField(max_length=255, null=True, blank=True)
     description = models.CharField(max_length=50, null=True, blank=True)
     keywords = models.JSONField(default=list, blank=True)

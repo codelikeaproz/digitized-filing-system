@@ -73,6 +73,46 @@ Default dev URL:
 - Backend: `http://127.0.0.1:8000/`
 - Admin: `http://127.0.0.1:8000/admin/`
 
+## Docker Dev Reset (MySQL)
+
+Use this only for local development when records are dummy/test data. This deletes the Docker MySQL volume and recreates all tables from the current clean migrations.
+
+From the repo root:
+
+```powershell
+docker compose down -v
+docker compose up --build
+```
+
+Wait until backend logs show:
+
+```text
+Waiting for MySQL...
+Applying migrations...
+Starting development server at http://0.0.0.0:8000/
+```
+
+Then create a new Admin account:
+
+```powershell
+docker compose exec backend python manage.py createsuperuser
+```
+
+Recommended first admin:
+
+```text
+Role: admin
+Org Unit: leave empty / null
+```
+
+After creating the superuser, open:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+- Admin: `http://localhost:8000/admin/`
+
+Do not run `docker compose down -v` if you need to keep real records.
+
 ## API endpoints (from `backend/config/urls.py`)
 
 - **Register**: `POST /api/user/register`

@@ -169,8 +169,21 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "Upload failed");
+      const text = await response.text();
+      let errorData: any = {};
+      try {
+        errorData = text ? JSON.parse(text) : {};
+      } catch {
+        errorData = {};
+      }
+
+      const message =
+        errorData.message ||
+        errorData.error ||
+        errorData.detail ||
+        text ||
+        "Upload failed";
+      throw new Error(message);
     }
 
     const contentType = response.headers.get("content-type");
