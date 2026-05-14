@@ -39,6 +39,12 @@ class CategorySerializer(serializers.ModelSerializer):
     def validate_orgUnitId(self, value):
         return value or None
 
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Category name cannot be empty.")
+        return name
+
 
 class FolderSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)

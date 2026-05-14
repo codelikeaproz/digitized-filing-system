@@ -259,6 +259,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer.save()
         log_audit(self.request.user, "CREATE_CATEGORY", f"Created category: {serializer.instance.name}")
 
+    def perform_update(self, serializer):
+        old_name = serializer.instance.name
+        category = serializer.save()
+        if old_name != category.name:
+            log_audit(
+                self.request.user,
+                "UPDATE_CATEGORY",
+                f"Renamed category: {old_name} to {category.name}",
+                target_type="category",
+                target_name=category.name,
+                target_org_unit=category.org_unit.name if category.org_unit else None,
+            )
+
     def destroy(self, request, *args, **kwargs):
         category = self.get_object()
         assert_category_delete_access(request.user, category)
@@ -1066,7 +1079,7 @@ class DashboardStatsAPIView(APIView):
                 "total_documents": docs.count(),
                 "uploaded_files": docs.filter(source="Uploaded").count(),
                 "scanned_files": docs.filter(source="Scanned").count(),
-                "total_org_units": OrgUnit.objects.count(),
+                "total_org_units": OrgUnit.objects.filter(is_deleted=False).count(),
                 "total_users": User.objects.count(),
             }
         )

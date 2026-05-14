@@ -54,13 +54,15 @@ export function CategorySelect({
   showAllOption = false,
   orgUnitId
 }: CategorySelectProps) {
-  const { categories, addCategory, deleteCategory } = useCategories();
+  const { categories, addCategory, updateCategory, deleteCategory } = useCategories();
   const { user } = useAuth();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [targetOrgUnit, setTargetOrgUnit] = useState<string>(orgUnitId || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState("");
 
   const [orgUnits, setOrgUnits] = useState<{id: string, name: string}[]>([]);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
@@ -129,6 +131,29 @@ export function CategorySelect({
         onValueChange('');
       }
       setCategoryToDelete(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleStartRenameCategory = (category: Category) => {
+    setEditingCategoryId(category.id);
+    setEditingCategoryName(category.name);
+  };
+
+  const handleCancelRenameCategory = () => {
+    setEditingCategoryId(null);
+    setEditingCategoryName("");
+  };
+
+  const handleRenameCategory = async () => {
+    if (!editingCategoryId || !editingCategoryName.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const updated = await updateCategory(editingCategoryId, editingCategoryName);
+      if (updated) {
+        handleCancelRenameCategory();
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -259,9 +284,22 @@ export function CategorySelect({
                 const documentLabel = `${documentCount} ${documentCount === 1 ? "document" : "documents"}`;
                 
                 return (
-                  <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm">{c.name}</span>
+                  <div key={c.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card/50">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      {editingCategoryId === c.id ? (
+                        <Input
+                          value={editingCategoryName}
+                          onChange={(e) => setEditingCategoryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameCategory();
+                            if (e.key === 'Escape') handleCancelRenameCategory();
+                          }}
+                          className="h-9"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="font-medium text-sm truncate">{c.name}</span>
+                      )}
                       <span className="text-xs text-muted-foreground mt-1">
                         {documentLabel}
                       </span>
@@ -273,6 +311,32 @@ export function CategorySelect({
                     </div>
                     
                     <div className="flex items-center gap-2">
+                      {editingCategoryId === c.id ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleRenameCategory}
+                            disabled={isSubmitting || !editingCategoryName.trim()}
+                            className="text-[#0A4D27] hover:text-[#0A4D27] hover:bg-[#0A4D27]/10"
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={handleCancelRenameCategory} disabled={isSubmitting}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleStartRenameCategory(c)}
+                          disabled={!canDelete}
+                          className="text-muted-foreground hover:text-[#0A4D27]"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
                       {inUse ? (
                         <TooltipProvider>
                           <Tooltip>

@@ -6,10 +6,10 @@ import { Network, Plus, Trash2, Edit, Loader2, FolderTree } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth-context';
-import { logAudit } from '@/lib/audit';
 import { PaginationControls } from '@/components/PaginationControls';
 import { PaginatedResponse } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
+import type { OrgType, OrgUnit } from '@/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,29 +29,28 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-type OrgUnit = {
-  id: string;
-  name: string;
-  parentId: string | null;
-  type: string | null;
-  createdAt: string;
-};
-
 export default function OrgUnitsPage() {
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [allOrgUnits, setAllOrgUnits] = useState<OrgUnit[]>([]);
+  const [orgTypes, setOrgTypes] = useState<OrgType[]>([]);
   const [orgUnitCount, setOrgUnitCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [isTypeLoading, setIsTypeLoading] = useState(true);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', parentId: '', type: 'Department' });
+  const [formData, setFormData] = useState({ name: '', parentId: '', orgTypeId: '' });
+  const [typeFormData, setTypeFormData] = useState({ name: '', is_active: true });
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [ouToDelete, setOuToDelete] = useState<OrgUnit | null>(null);
+  const [typeToDelete, setTypeToDelete] = useState<OrgType | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  
+  const [isSavingType, setIsSavingType] = useState(false);
+
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
@@ -80,13 +79,34 @@ export default function OrgUnitsPage() {
     }
   };
 
+  const fetchOrgTypes = async () => {
+    try {
+      setIsTypeLoading(true);
+      const data = await api.get<OrgType[] | PaginatedResponse<OrgType>>('/api/org-types/', { includeInactive: 'true' });
+      const results = Array.isArray(data) ? data : data.results;
+      setOrgTypes([...results].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to fetch org types');
+    } finally {
+      setIsTypeLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrgUnits();
   }, [currentPage, pageSize]);
 
   useEffect(() => {
     fetchAllOrgUnits();
+    fetchOrgTypes();
   }, []);
+
+  useEffect(() => {
+    const firstActiveType = orgTypes.find(type => type.is_active);
+    if (isModalOpen && !formData.orgTypeId && firstActiveType) {
+      setFormData(prev => ({ ...prev, orgTypeId: firstActiveType.id }));
+    }
+  }, [isModalOpen, formData.orgTypeId, orgTypes]);
 
   const handlePageSizeChange = (nextPageSize: number) => {
     setPageSize(nextPageSize);
@@ -98,18 +118,38 @@ export default function OrgUnitsPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleTypeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setTypeFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
   const handleOpenAdd = () => {
-    setFormData({ name: '', parentId: '', type: 'Department' });
+    setFormData({ name: '', parentId: '', orgTypeId: orgTypes.find(type => type.is_active)?.id || '' });
     setIsEditMode(false);
     setEditId(null);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (ou: OrgUnit) => {
-    setFormData({ name: ou.name, parentId: ou.parentId || '', type: ou.type || 'Department' });
+    setFormData({ name: ou.name, parentId: ou.parentId || '', orgTypeId: getOrgTypeId(ou) });
     setIsEditMode(true);
     setEditId(ou.id);
     setIsModalOpen(true);
+  };
+
+  const resetTypeForm = () => {
+    setTypeFormData({ name: '', is_active: true });
+    setEditingTypeId(null);
+  };
+
+  const handleOpenTypeManager = () => {
+    resetTypeForm();
+    setIsTypeModalOpen(true);
+  };
+
+  const handleEditType = (type: OrgType) => {
+    setEditingTypeId(type.id);
+    setTypeFormData({ name: type.name, is_active: type.is_active });
   };
 
   const handleDelete = async () => {
@@ -132,28 +172,19 @@ export default function OrgUnitsPage() {
     e.preventDefault();
     try {
       if (isEditMode && editId) {
-        const updatedOu = await api.put<OrgUnit>(`/api/org-units/${editId}/`, {
-          ...formData,
+        await api.put<OrgUnit>(`/api/org-units/${editId}/`, {
+          name: formData.name,
           parentId: formData.parentId || null,
-          type: formData.type || null
+          org_type_id: formData.orgTypeId || null,
         });
         await fetchOrgUnits();
         await fetchAllOrgUnits();
-        
-        await logAudit(
-          'UPDATE_ORG_UNIT',
-          `Updated OrgUnit: ${formData.name}`,
-          updatedOu.name,
-          'org_unit',
-          formData.name
-        );
-        
         toast.success('Org Unit updated successfully');
       } else {
         await api.post<OrgUnit>('/api/org-units/', {
-          ...formData,
+          name: formData.name,
           parentId: formData.parentId || null,
-          type: formData.type || null
+          org_type_id: formData.orgTypeId || null,
         });
         if (currentPage === 1) {
           await fetchOrgUnits();
@@ -169,14 +200,65 @@ export default function OrgUnitsPage() {
     }
   };
 
-  // Helper to resolve parent name
+  const handleTypeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingType(true);
+    const payload = {
+      name: typeFormData.name,
+      is_active: typeFormData.is_active,
+    };
+
+    try {
+      const savedType = editingTypeId
+        ? await api.put<OrgType>(`/api/org-types/${editingTypeId}/`, payload)
+        : await api.post<OrgType>('/api/org-types/', payload);
+
+      toast.success(editingTypeId ? 'Org Type updated successfully' : 'Org Type added successfully');
+      resetTypeForm();
+      await fetchOrgTypes();
+      if (savedType.is_active) {
+        setFormData(prev => ({ ...prev, orgTypeId: savedType.id }));
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save org type');
+    } finally {
+      setIsSavingType(false);
+    }
+  };
+
+  const handleDeleteType = async () => {
+    if (!typeToDelete) return;
+    setIsDeleting(true);
+    try {
+      await api.delete(`/api/org-types/${typeToDelete.id}/`);
+      await fetchOrgTypes();
+      toast.success('Org Type deleted successfully');
+      setTypeToDelete(null);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete org type');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const getParentName = (parentId: string | null) => {
     if (!parentId) return 'None (Root)';
     const parent = allOrgUnits.find(ou => ou.id === parentId);
     return parent ? parent.name : 'Unknown';
   };
 
-  // Option items avoiding the currently edited OrgUnit as parent
+  const getOrgTypeId = (orgUnit: OrgUnit) => {
+    const directId = orgUnit.orgTypeId || (orgUnit.org_type_id ? String(orgUnit.org_type_id) : '');
+    if (directId) return directId;
+    return orgTypes.find(type => type.name === orgUnit.type)?.id || '';
+  };
+
+  const getOrgTypeName = (orgUnit: OrgUnit) => {
+    return orgUnit.orgTypeName || orgUnit.org_type_name || orgUnit.type || 'Unassigned';
+  };
+
+  const activeOrgTypes = orgTypes.filter(type => type.is_active);
+
   const parentOptions = allOrgUnits.filter(ou => !isEditMode || ou.id !== editId);
 
   if (!isAdmin) {
@@ -191,9 +273,9 @@ export default function OrgUnitsPage() {
             <Network className="h-8 w-8 text-[#0A4D27]" />
             Organization Units
           </h1>
-          <p className="text-gray-500 mt-1">Manage Colleges, Departments, Offices, and Units.</p>
+          <p className="text-gray-500 mt-1">Manage organization structure and database-driven types.</p>
         </div>
-        <Button 
+        <Button
           onClick={handleOpenAdd}
           className="bg-[#0A4D27] hover:bg-[#083E1D] text-white gap-2 h-11 px-6 rounded-xl shadow-sm"
         >
@@ -217,8 +299,8 @@ export default function OrgUnitsPage() {
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-[#0A4D27]" />
-                     Loading structure...
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-[#0A4D27]" />
+                    Loading structure...
                   </TableCell>
                 </TableRow>
               ) : orgUnits.length === 0 ? (
@@ -235,7 +317,7 @@ export default function OrgUnitsPage() {
                       {ou.name}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{ou.type || 'Unit'}</Badge>
+                      <Badge variant="outline">{getOrgTypeName(ou)}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {getParentName(ou.parentId)}
@@ -264,18 +346,17 @@ export default function OrgUnitsPage() {
         />
       </div>
 
-      {/* Add/Edit Modal Overlay */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100">
               <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Organization Unit' : 'Add New Organization Unit'}</h2>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-2">
                 <label htmlFor="org-unit-name" className="text-sm font-medium text-gray-700">Name</label>
-                <Input 
+                <Input
                   id="org-unit-name"
                   name="name"
                   value={formData.name}
@@ -287,24 +368,35 @@ export default function OrgUnitsPage() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="org-unit-type" className="text-sm font-medium text-gray-700">Type</label>
-                <select 
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="org-unit-type" className="text-sm font-medium text-gray-700">Type</label>
+                  <button
+                    type="button"
+                    onClick={handleOpenTypeManager}
+                    className="text-sm font-medium text-[#0A4D27] hover:underline"
+                  >
+                    Add Type
+                  </button>
+                </div>
+                <select
                   id="org-unit-type"
-                  name="type"
-                  value={formData.type}
+                  name="orgTypeId"
+                  value={formData.orgTypeId}
                   onChange={handleInputChange}
+                  required
+                  disabled={isTypeLoading || activeOrgTypes.length === 0}
                   className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                 >
-                  <option value="College">College</option>
-                  <option value="Department">Department</option>
-                  <option value="Office">Office</option>
-                  <option value="Unit">Unit</option>
+                  <option value="">{isTypeLoading ? 'Loading types...' : 'Select Org Type'}</option>
+                  {activeOrgTypes.map(type => (
+                    <option key={type.id} value={type.id}>{type.name}</option>
+                  ))}
                 </select>
               </div>
 
               <div className="space-y-2">
                 <label htmlFor="org-unit-parent" className="text-sm font-medium text-gray-700">Parent (Optional)</label>
-                <select 
+                <select
                   id="org-unit-parent"
                   name="parentId"
                   value={formData.parentId}
@@ -319,16 +411,17 @@ export default function OrgUnitsPage() {
               </div>
 
               <div className="pt-4 flex justify-end gap-3">
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => setIsModalOpen(false)}
                   className="h-11 rounded-xl px-6"
                 >
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
+                  disabled={!formData.orgTypeId || isTypeLoading}
                   className="h-11 rounded-xl px-6 bg-[#0A4D27] hover:bg-[#083E1D] text-white"
                 >
                   {isEditMode ? 'Save Changes' : 'Create'}
@@ -339,7 +432,118 @@ export default function OrgUnitsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Alert */}
+      {isTypeModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-7 py-6 border-b border-gray-100">
+              <h2 className="text-xl font-bold leading-tight text-gray-900">Organization Types</h2>
+              <p className="text-sm text-muted-foreground mt-1">Add or disable simple type names used by Org Units.</p>
+            </div>
+
+            <div className="px-7 py-6 space-y-6">
+              <form onSubmit={handleTypeSubmit} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                  <div className="space-y-2">
+                    <label htmlFor="org-type-name" className="text-sm font-medium text-gray-700">Type Name</label>
+                    <Input
+                      id="org-type-name"
+                      name="name"
+                      value={typeFormData.name}
+                      onChange={handleTypeInputChange}
+                      required
+                      className="h-11 rounded-xl"
+                      placeholder="e.g. Institute"
+                    />
+                  </div>
+
+                  <label className="flex h-11 items-center gap-2 text-sm text-gray-700">
+                    <input
+                      name="is_active"
+                      type="checkbox"
+                      checked={typeFormData.is_active}
+                      onChange={handleTypeInputChange}
+                      className="h-4 w-4 accent-[#0A4D27]"
+                    />
+                    Active
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="submit"
+                    disabled={isSavingType}
+                    className="h-11 rounded-xl px-5 bg-[#0A4D27] hover:bg-[#083E1D] text-white sm:min-w-[120px]"
+                  >
+                    {isSavingType ? 'Saving...' : editingTypeId ? 'Save Type' : 'Add Type'}
+                  </Button>
+                  {editingTypeId && (
+                    <Button type="button" variant="outline" onClick={resetTypeForm} className="h-11 rounded-xl px-5 sm:min-w-[120px]">
+                      Cancel Edit
+                    </Button>
+                  )}
+                </div>
+              </form>
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#526B57]">Existing Types</h3>
+                <div className="border rounded-xl overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isTypeLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="h-20 text-center text-muted-foreground">
+                            <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-[#0A4D27]" />
+                            Loading types...
+                          </TableCell>
+                        </TableRow>
+                      ) : orgTypes.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="h-20 text-center text-muted-foreground">
+                            No Org Types found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        orgTypes.map(type => (
+                          <TableRow key={type.id}>
+                            <TableCell className="font-medium">{type.name}</TableCell>
+                            <TableCell>
+                              <Badge variant={type.is_active ? 'outline' : 'secondary'}>
+                                {type.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button type="button" variant="ghost" size="sm" onClick={() => handleEditType(type)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setTypeToDelete(type)}>
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-7 py-4 border-t border-gray-100 flex justify-end">
+              <Button type="button" variant="outline" onClick={() => setIsTypeModalOpen(false)} className="h-11 rounded-xl px-6">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AlertDialog open={!!ouToDelete} onOpenChange={(open) => !open && !isDeleting && setOuToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -351,12 +555,34 @@ export default function OrgUnitsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleDelete(); }}
               disabled={isDeleting}
               className="bg-red-600 text-white hover:bg-red-700 hover:text-white focus:ring-red-600"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!typeToDelete} onOpenChange={(open) => !open && !isDeleting && setTypeToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Organization Type</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the Org Type <strong>{typeToDelete?.name}</strong>?
+              This only works if no Org Units are using it. If it is already used, edit it and uncheck Active instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteType(); }}
+              disabled={isDeleting}
+              className="bg-red-600 text-white hover:bg-red-700 hover:text-white focus:ring-red-600"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

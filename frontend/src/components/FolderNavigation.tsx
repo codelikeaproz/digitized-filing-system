@@ -156,6 +156,16 @@ export function FolderNavigation({ folders, onSelect, selectedId }: { folders: a
   const [folderName, setFolderName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const findNodeById = (nodes: any[], id?: string): any | null => {
+    if (!id) return null;
+    for (const node of nodes) {
+      if (String(node.id) === String(id)) return node;
+      const found = findNodeById(node.children || node.folders || [], id);
+      if (found) return found;
+    }
+    return null;
+  };
+
   const handleAction = async () => {
     if ((dialogType === "create" || dialogType === "rename") && !folderName.trim()) return;
     if ((dialogType === "rename" || dialogType === "delete") && (targetFolder?.isVirtual || targetFolder?.is_virtual || targetFolder?.type === "org_unit")) return;
@@ -207,6 +217,23 @@ export function FolderNavigation({ folders, onSelect, selectedId }: { folders: a
     setDialogType('create');
   };
 
+  const openCreateFromToolbar = () => {
+    const selectedNode = findNodeById(nodes, selectedId);
+    const canUseSelectedNode = selectedNode && !selectedNode.isVirtual && !selectedNode.is_virtual;
+
+    if (canUseSelectedNode) {
+      openCreate(selectedNode);
+      return;
+    }
+
+    if (user?.role === "admin") {
+      toast.error("Select an Org Unit first, then create a folder inside it.");
+      return;
+    }
+
+    openCreate();
+  };
+
   const openRename = (folder: any) => {
     if (folder.isVirtual || folder.is_virtual || folder.type === "org_unit") return;
     setTargetFolder(folder);
@@ -226,7 +253,7 @@ export function FolderNavigation({ folders, onSelect, selectedId }: { folders: a
     <div className="space-y-4">
       <div className="flex items-center justify-between px-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Folders</h3>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openCreate()}>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openCreateFromToolbar}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>

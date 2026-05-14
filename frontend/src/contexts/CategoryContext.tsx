@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { api, PaginatedResponse } from "@/lib/api";
-import { logAudit } from "@/lib/audit";
 import type { Category } from "@/types";
 
 interface CategoryContextType {
@@ -75,17 +74,8 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     if (!trimmedName) return false;
 
     try {
-      const existingCategory = categories.find(c => c.id === id);
       const updatedCategory = normalizeCategory(await api.put<Category>(`/api/categories/${id}`, { name: trimmedName }));
       setCategories(prev => prev.map(c => c.id === id ? updatedCategory : c).sort((a, b) => a.name.localeCompare(b.name)));
-      
-      await logAudit(
-        "UPDATE_CATEGORY", 
-        `Updated Category: ${existingCategory?.name || 'Unknown'} to ${trimmedName}`,
-        undefined,
-        'category',
-        trimmedName
-      );
 
       toast.success(`Category renamed to "${updatedCategory.name}".`);
       return true;

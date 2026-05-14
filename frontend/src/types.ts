@@ -16,6 +16,26 @@ export interface Department {
   name: string;
 }
 
+export interface OrgType {
+  id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface OrgUnit {
+  id: string;
+  name: string;
+  parentId: string | null;
+  type?: string | null;
+  org_type_id?: string | number | null;
+  org_type_name?: string | null;
+  orgTypeId?: string | null;
+  orgTypeName?: string | null;
+  createdAt: string;
+}
+
 export type DocumentStatus = 'Received';
 
 export interface Folder {
