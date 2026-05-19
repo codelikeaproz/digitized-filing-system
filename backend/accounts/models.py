@@ -1,5 +1,7 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -38,11 +40,29 @@ class User(AbstractUser):
         related_name="users",
     )
     is_active_status = models.BooleanField(default=True)
+    activation_email_sent_at = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+    @property
+    def activation_expires_at(self):
+        if not self.activation_email_sent_at:
+            return None
+        return self.activation_email_sent_at + timezone.timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT)
+
+    @property
+    def activation_status(self):
+        if self.is_active and self.is_active_status:
+            return "active"
+        if self.has_usable_password():
+            return "inactive"
+        expires_at = self.activation_expires_at
+        if expires_at and timezone.now() > expires_at:
+            return "expired"
+        return "pending"
 
     def __str__(self):
         return self.email

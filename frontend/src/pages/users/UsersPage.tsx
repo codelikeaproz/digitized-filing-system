@@ -14,7 +14,8 @@ import {
   CheckCircle2,
   XCircle,
   MoreVertical,
-  Mail
+  Mail,
+  ClockAlert
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +51,9 @@ type User = {
   orgUnitName?: string;
   isLastActiveAdmin?: boolean;
   hasUsablePassword?: boolean;
+  activationStatus?: 'active' | 'pending' | 'expired' | 'inactive';
+  activationEmailSentAt?: string | null;
+  activationExpiresAt?: string | null;
 };
 
 export default function UsersPage() {
@@ -95,7 +99,10 @@ export default function UsersPage() {
     return isDeptHead && target.role === 'staff' && String(target.orgUnitId || '') === currentUserOrgUnitId;
   };
 
-  const isPendingActivation = (target: User) => !target.isActive && target.hasUsablePassword === false;
+  const isPendingActivation = (target: User) => (
+    target.activationStatus ? target.activationStatus === 'pending' : !target.isActive && target.hasUsablePassword === false
+  );
+  const isActivationExpired = (target: User) => target.activationStatus === 'expired';
 
   const canDeleteUser = (target: User) => {
     return isAdmin && target.id !== currentUser?.id && !target.isLastActiveAdmin;
@@ -281,7 +288,7 @@ export default function UsersPage() {
       toast.error(lastAdminMessage);
       return;
     }
-    if (isPendingActivation(user)) {
+    if (isPendingActivation(user) || isActivationExpired(user)) {
       toast.error('This account is pending activation. The user must set their password from the email link.');
       return;
     }
@@ -314,8 +321,8 @@ export default function UsersPage() {
       toast.error('You can only manage staff within your organization.');
       return;
     }
-    if (!isPendingActivation(user)) {
-      toast.error('Activation email can only be resent to pending accounts.');
+    if (!isPendingActivation(user) && !isActivationExpired(user)) {
+      toast.error('Activation email can only be resent to pending or expired activation accounts.');
       return;
     }
 
@@ -473,6 +480,14 @@ export default function UsersPage() {
                         <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">
                           <CheckCircle2 className="mr-1 h-3 w-3" /> Active
                         </Badge>
+                      ) : isActivationExpired(user) ? (
+                        <Badge
+                          variant="secondary"
+                          className="bg-red-100 text-red-700 hover:bg-red-100 border-red-200"
+                          title={user.activationExpiresAt ? `Expired at ${user.activationExpiresAt}` : undefined}
+                        >
+                          <ClockAlert className="mr-1 h-3 w-3" /> Activation Expired
+                        </Badge>
                       ) : isPendingActivation(user) ? (
                         <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">
                           <XCircle className="mr-1 h-3 w-3" /> Pending Activation
@@ -499,7 +514,7 @@ export default function UsersPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
                             onClick={() => handleOpenStatusModal(user)}
-                            disabled={!canManageUser(user) || isPendingActivation(user) || user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
+                            disabled={!canManageUser(user) || isPendingActivation(user) || isActivationExpired(user) || user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
                           >
                             <span className="flex items-center">
                               {user.isActive ? (
@@ -513,7 +528,7 @@ export default function UsersPage() {
                               )}
                             </span>
                           </DropdownMenuItem>
-                          {isPendingActivation(user) && (
+                          {(isPendingActivation(user) || isActivationExpired(user)) && (
                             <DropdownMenuItem onClick={() => handleResendActivation(user)} disabled={!canManageUser(user)}>
                               <Mail className="mr-2 h-4 w-4 text-emerald-600" /> Resend Activation Email
                             </DropdownMenuItem>

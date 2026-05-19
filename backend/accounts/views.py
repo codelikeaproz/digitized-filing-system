@@ -7,6 +7,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import models
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -393,6 +394,8 @@ class UserViewSet(viewsets.ModelViewSet):
             )
             email_message.attach_alternative(html_message, "text/html")
             email_message.send(fail_silently=False)
+            user.activation_email_sent_at = timezone.now()
+            user.save(update_fields=["activation_email_sent_at"])
             log_audit(
                 self.request.user,
                 "SEND_ACTIVATION_EMAIL",

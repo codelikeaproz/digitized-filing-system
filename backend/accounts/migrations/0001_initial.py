@@ -30,6 +30,7 @@ class Migration(migrations.Migration):
                 ('email', models.EmailField(max_length=254, unique=True)),
                 ('role', models.CharField(choices=[('admin', 'Admin'), ('dept_head', 'Department Head'), ('staff', 'Staff')], default='staff', max_length=20)),
                 ('is_active_status', models.BooleanField(default=True)),
+                ('activation_email_sent_at', models.DateTimeField(blank=True, null=True)),
                 ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
                 ('org_unit', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='users', to='orgunits.orgunit')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),

@@ -22,6 +22,9 @@ class UserSerializer(serializers.ModelSerializer):
     createdAt = serializers.SerializerMethodField()
     isLastActiveAdmin = serializers.SerializerMethodField()
     hasUsablePassword = serializers.SerializerMethodField()
+    activationStatus = serializers.CharField(source="activation_status", read_only=True)
+    activationEmailSentAt = serializers.SerializerMethodField()
+    activationExpiresAt = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -37,6 +40,9 @@ class UserSerializer(serializers.ModelSerializer):
             "createdAt",
             "isLastActiveAdmin",
             "hasUsablePassword",
+            "activationStatus",
+            "activationEmailSentAt",
+            "activationExpiresAt",
         ]
         extra_kwargs = {"password": {"write_only": True, "required": False}}
 
@@ -53,6 +59,17 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_hasUsablePassword(self, obj):
         return obj.has_usable_password()
+
+    def get_activationEmailSentAt(self, obj):
+        if not obj.activation_email_sent_at:
+            return None
+        return format_local_datetime(obj.activation_email_sent_at)
+
+    def get_activationExpiresAt(self, obj):
+        expires_at = obj.activation_expires_at
+        if not expires_at:
+            return None
+        return format_local_datetime(expires_at)
 
     def validate(self, attrs):
         role = attrs.get("role", getattr(self.instance, "role", "staff"))
