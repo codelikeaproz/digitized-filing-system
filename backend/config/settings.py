@@ -59,6 +59,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "login": "5/minute",
+        "activation_email": "3/hour",
     },
     "EXCEPTION_HANDLER": "config.exceptions.custom_exception_handler",
 }

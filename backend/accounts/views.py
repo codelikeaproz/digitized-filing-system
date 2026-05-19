@@ -29,7 +29,7 @@ from .serializers import (
     PasswordResetConfirmSerializer,
     UserSerializer,
 )
-from .throttles import LoginRateThrottle
+from .throttles import ActivationEmailRateThrottle, LoginRateThrottle
 
 logger = logging.getLogger(__name__)
 LAST_ACTIVE_ADMIN_MESSAGE = "At least one active Admin must remain in the system."
@@ -549,3 +549,24 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path="activate")
     def activate(self, request, pk=None):
         return self._set_active_status(self.get_object(), True)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="resend-activation",
+        throttle_classes=[ActivationEmailRateThrottle],
+    )
+    def resend_activation(self, request, pk=None):
+        user = self.get_object()
+        permission_response = self._enforce_manage_permission(user)
+        if permission_response:
+            return permission_response
+
+        if user.is_active or user.is_active_status or user.has_usable_password():
+            return Response(
+                {"message": "Activation email can only be resent to pending accounts."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        self._send_activation_email(user)
+        return Response({"message": "Activation email resent successfully."})

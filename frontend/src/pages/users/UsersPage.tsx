@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   CheckCircle2,
   XCircle,
-  MoreVertical
+  MoreVertical,
+  Mail
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -308,6 +309,24 @@ export default function UsersPage() {
     }
   };
 
+  const handleResendActivation = async (user: User) => {
+    if (!canManageUser(user)) {
+      toast.error('You can only manage staff within your organization.');
+      return;
+    }
+    if (!isPendingActivation(user)) {
+      toast.error('Activation email can only be resent to pending accounts.');
+      return;
+    }
+
+    try {
+      const response = await api.post<{ message: string }>(`/api/users/${user.id}/resend-activation`);
+      toast.success(response.message || 'Activation email resent successfully.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to resend activation email');
+    }
+  };
+
   const handleDelete = async () => {
     if (!selectedUser) return;
     if (selectedUser.isLastActiveAdmin) {
@@ -494,6 +513,11 @@ export default function UsersPage() {
                               )}
                             </span>
                           </DropdownMenuItem>
+                          {isPendingActivation(user) && (
+                            <DropdownMenuItem onClick={() => handleResendActivation(user)} disabled={!canManageUser(user)}>
+                              <Mail className="mr-2 h-4 w-4 text-emerald-600" /> Resend Activation Email
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => handleOpenEdit(user)} disabled={!canManageUser(user)}>
                             <Edit className="mr-2 h-4 w-4 text-blue-500" /> Edit
                           </DropdownMenuItem>
