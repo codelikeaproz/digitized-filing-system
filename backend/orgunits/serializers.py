@@ -3,6 +3,8 @@ from django.utils.text import slugify
 from rest_framework import serializers
 
 from config.timezone_utils import format_local_datetime
+from accounts.models import User
+from documents.models import Document, Folder
 from .models import OrgType, OrgUnit
 
 
@@ -72,6 +74,12 @@ class OrgUnitSerializer(serializers.ModelSerializer):
     orgTypeId = serializers.SerializerMethodField()
     orgTypeName = serializers.SerializerMethodField()
     createdAt = serializers.SerializerMethodField()
+    userCount = serializers.SerializerMethodField()
+    folderCount = serializers.SerializerMethodField()
+    documentCount = serializers.SerializerMethodField()
+    childCount = serializers.SerializerMethodField()
+    canDelete = serializers.SerializerMethodField()
+    deleteBlockReason = serializers.SerializerMethodField()
 
     class Meta:
         model = OrgUnit
@@ -86,6 +94,12 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             "orgTypeName",
             "is_deleted",
             "createdAt",
+            "userCount",
+            "folderCount",
+            "documentCount",
+            "childCount",
+            "canDelete",
+            "deleteBlockReason",
         ]
 
     def validate_parentId(self, value):
@@ -119,3 +133,43 @@ class OrgUnitSerializer(serializers.ModelSerializer):
 
     def get_createdAt(self, obj):
         return format_local_datetime(obj.created_at)
+
+    def get_userCount(self, obj):
+        return User.objects.filter(org_unit=obj).count()
+
+    def get_folderCount(self, obj):
+        return Folder.objects.filter(org_unit=obj, is_deleted=False).count()
+
+    def get_documentCount(self, obj):
+        return Document.objects.filter(folder__org_unit=obj, is_deleted=False).count()
+
+    def get_childCount(self, obj):
+        return OrgUnit.objects.filter(parent=obj, is_deleted=False).count()
+
+    def get_canDelete(self, obj):
+        return (
+            self.get_userCount(obj) == 0
+            and self.get_folderCount(obj) == 0
+            and self.get_documentCount(obj) == 0
+            and self.get_childCount(obj) == 0
+        )
+
+    def get_deleteBlockReason(self, obj):
+        reasons = []
+        user_count = self.get_userCount(obj)
+        folder_count = self.get_folderCount(obj)
+        document_count = self.get_documentCount(obj)
+        child_count = self.get_childCount(obj)
+
+        if user_count:
+            reasons.append(f"{user_count} user{'s' if user_count != 1 else ''}")
+        if folder_count:
+            reasons.append(f"{folder_count} folder{'s' if folder_count != 1 else ''}")
+        if document_count:
+            reasons.append(f"{document_count} document{'s' if document_count != 1 else ''}")
+        if child_count:
+            reasons.append(f"{child_count} sub-unit{'s' if child_count != 1 else ''}")
+
+        if not reasons:
+            return ""
+        return f"Cannot delete while this Org Unit contains {', '.join(reasons)}."

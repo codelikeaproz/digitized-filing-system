@@ -257,6 +257,11 @@ export default function OrgUnitsPage() {
     return orgUnit.orgTypeName || orgUnit.org_type_name || orgUnit.type || 'Unassigned';
   };
 
+  const canDeleteOrgUnit = (orgUnit: OrgUnit) => orgUnit.canDelete !== false;
+  const getDeleteBlockReason = (orgUnit: OrgUnit) => (
+    orgUnit.deleteBlockReason || 'Cannot delete while this Org Unit contains users, folders, documents, or sub-units.'
+  );
+
   const activeOrgTypes = orgTypes.filter(type => type.is_active);
 
   const parentOptions = allOrgUnits.filter(ou => !isEditMode || ou.id !== editId);
@@ -326,8 +331,15 @@ export default function OrgUnitsPage() {
                       <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(ou)}>
                         <Edit className="h-4 w-4 text-muted-foreground hover:text-blue-600" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setOuToDelete(ou)}>
-                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => canDeleteOrgUnit(ou) ? setOuToDelete(ou) : toast.info(getDeleteBlockReason(ou))}
+                        disabled={!canDeleteOrgUnit(ou)}
+                        title={!canDeleteOrgUnit(ou) ? getDeleteBlockReason(ou) : 'Delete Org Unit'}
+                        className="disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 className={`h-4 w-4 ${canDeleteOrgUnit(ou) ? 'text-muted-foreground hover:text-red-500' : 'text-muted-foreground'}`} />
                       </Button>
                     </TableCell>
                   </TableRow>

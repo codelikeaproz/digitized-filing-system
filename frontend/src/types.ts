@@ -34,6 +34,12 @@ export interface OrgUnit {
   orgTypeId?: string | null;
   orgTypeName?: string | null;
   createdAt: string;
+  userCount?: number;
+  folderCount?: number;
+  documentCount?: number;
+  childCount?: number;
+  canDelete?: boolean;
+  deleteBlockReason?: string;
 }
 
 export type DocumentStatus = 'Received';
