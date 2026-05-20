@@ -46,6 +46,7 @@ import { Folder } from "@/types";
 
 const SCANNER_STATION_ID = import.meta.env.VITE_SCANNER_STATION_ID || "SCANNER-PC-01";
 const SCANNER_STATION_LABEL = "Scanner";
+const SCANNER_ENABLED = import.meta.env.VITE_ENABLE_SCANNER === "true";
 const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9-]+$/;
 
 interface UploadDialogProps {
@@ -125,12 +126,12 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
     } else {
       setTargetFolderId(selectedFolderId || "");
       fetchFolders();
-      fetchScannerStatus();
+      if (SCANNER_ENABLED) fetchScannerStatus();
     }
   }, [open, selectedFolderId]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !SCANNER_ENABLED) return;
     const interval = window.setInterval(fetchScannerStatus, 3000);
     return () => window.clearInterval(interval);
   }, [open]);
@@ -145,6 +146,10 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   };
 
   const fetchScannerStatus = async () => {
+    if (!SCANNER_ENABLED) {
+      setScannerStatus(null);
+      return;
+    }
     try {
       const stations = await api.get<ScannerStation[]>("/api/scanner/stations");
       setScannerStatus(stations.find(station => station.stationId === SCANNER_STATION_ID) || null);
@@ -196,6 +201,10 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   } as any);
 
   const handleStartScan = async () => {
+    if (!SCANNER_ENABLED) {
+      toast.info("Scanner integration is temporarily disabled for testing. Please use Manual Upload.");
+      return;
+    }
     setSource('Scanned');
     setFile(null);
     setCustomFileName(`SCN_${Date.now()}`);
@@ -392,20 +401,24 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                 <span className="font-semibold text-muted-foreground">Scanner Station</span>
                 <span className={cn(
                   "font-bold",
-                  scannerOnline ? "text-green-700" : "text-amber-700"
+                  !SCANNER_ENABLED ? "text-muted-foreground" : scannerOnline ? "text-green-700" : "text-amber-700"
                 )}>
-                  {SCANNER_STATION_LABEL} - {scannerOnline ? "Bridge Connected" : "Bridge Not Running"}
+                  {SCANNER_STATION_LABEL} - {!SCANNER_ENABLED ? "Disabled for Testing" : scannerOnline ? "Bridge Connected" : "Bridge Not Running"}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
               <Button 
                 variant="outline" 
-                className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
+                className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={handleStartScan}
+                disabled={!SCANNER_ENABLED}
+                title={!SCANNER_ENABLED ? "Scanner integration is temporarily disabled for testing." : undefined}
               >
                 <Scan className="h-8 w-8 text-primary" />
                 <span>Scan with Epson</span>
-                <span className="text-[10px] text-muted-foreground">USB / LAN / WiFi supported</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {SCANNER_ENABLED ? "USB / LAN / WiFi supported" : "Temporarily disabled"}
+                </span>
               </Button>
               <Button 
                 variant="outline" 

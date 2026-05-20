@@ -5,6 +5,8 @@ import { Files, UploadCloud, Scan, Building2, Loader2, Users } from "lucide-reac
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
+const SCANNER_ENABLED = import.meta.env.VITE_ENABLE_SCANNER === "true";
+
 type DashboardStats = {
   total_documents: number;
   uploaded_files: number;
@@ -20,7 +22,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState([
     { title: "Total Documents", value: "0", icon: Files, color: "text-blue-600" },
     { title: "Uploaded Files", value: "0", icon: UploadCloud, color: "text-indigo-600" },
-    { title: "Scanned Files", value: "0", icon: Scan, color: "text-purple-600" },
+    ...(SCANNER_ENABLED ? [{ title: "Scanned Files", value: "0", icon: Scan, color: "text-purple-600" }] : []),
   ]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -32,7 +34,7 @@ export default function DashboardPage() {
         let newStats = [
           { title: "Total Documents", value: data.total_documents.toString(), icon: Files, color: "text-blue-600" },
           { title: "Uploaded Files", value: data.uploaded_files.toString(), icon: UploadCloud, color: "text-indigo-600" },
-          { title: "Scanned Files", value: data.scanned_files.toString(), icon: Scan, color: "text-purple-600" },
+          ...(SCANNER_ENABLED ? [{ title: "Scanned Files", value: data.scanned_files.toString(), icon: Scan, color: "text-purple-600" }] : []),
         ];
 
         if (isAdmin) {
@@ -61,7 +63,7 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">Welcome back. Here's what's happening in your organization.</p>
       </div>
 
-      <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-3'} relative`}>
+      <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 ${isAdmin ? (SCANNER_ENABLED ? 'lg:grid-cols-5' : 'lg:grid-cols-4') : (SCANNER_ENABLED ? 'lg:grid-cols-3' : 'lg:grid-cols-2')} relative`}>
         {isLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />

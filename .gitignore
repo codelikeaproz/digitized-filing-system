@@ -20,6 +20,7 @@ backend/*.log
 backend/.env
 backend/*.env
 !backend/.env.example
+scanner_bridge/config.ini
 
 # Node / Vite
 frontend/node_modules/
