@@ -54,8 +54,11 @@ function publicAnswerFor(query: string) {
   if (normalized.includes("upload")) {
     return "DFS accepts PDF uploads through the Documents area after login. Users select a target folder, category, document code, requisitioner name, description, and keywords before saving.";
   }
-  if (normalized.includes("scan")) {
-    return "Scanning uses Epson Scan 2 to create a PDF, then the local Scanner Bridge uploads that PDF into DFS when configured by the office.";
+  if (normalized.includes("structur") || normalized.includes("organiz") || normalized.includes("categor")) {
+    return "Documents are filed under organizational units, folders, and categories. Each record has a document code, description, keywords, and metadata so staff can search and retrieve PDFs within their access scope.";
+  }
+  if (normalized.includes("scan") || normalized.includes("scanner") || normalized.includes("epson")) {
+    return "Scanner integration is not available in this release. After login, use manual PDF upload from the Documents area to file records.";
   }
   if (normalized.includes("role")) {
     return "DFS uses role-based access: Admin manages the system, Department Head oversees their OrgUnit scope, and Staff manage documents within their allowed department.";

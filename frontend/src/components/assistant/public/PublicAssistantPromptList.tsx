@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 const PUBLIC_PROMPTS = [
   "What is the Digitized Filing System?",
   "How do I upload a PDF?",
-  "How does scanning work?",
+  "How is DFS structured?",
   "What are the user roles?",
   "How do I log in?",
 ];
