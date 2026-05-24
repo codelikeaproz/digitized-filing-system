@@ -1,7 +1,32 @@
+"""
+Document Management API Views
+
+Purpose:
+    REST endpoints for categories, folders, documents, uploads, recycle bin,
+    dashboard statistics, and scanner bridge integration.
+
+Main responsibilities:
+    - OrgUnit-scoped queryset filtering for all document resources
+    - PDF upload validation (type, size, header)
+    - Soft delete / restore / permanent delete for folders and documents
+    - Role-based write and recycle-bin access checks
+    - Audit logging for mutations and downloads
+
+Access control helpers (defined in this module):
+    org_unit_scope_ids, assert_folder_write_access, assert_document_write_access,
+    assert_recycle_bin_access, assert_category_delete_access
+
+Used by frontend:
+    DocumentsPage, FolderNavigation, UploadDialog, RecycleBinPage,
+    DashboardPage, CategoryContext
+
+See also:
+    documents/services.py — folder tree soft delete / restore
+    docs/API_DOCUMENTATION.md — endpoint reference
+"""
 import json
 import posixpath
 import re
-import secrets
 from datetime import timedelta
 
 from django.conf import settings
@@ -32,6 +57,14 @@ from .serializers import (
     ScanJobSerializer,
     ScannerStationSerializer,
 )
+from .permissions import (
+    assert_category_delete_access,
+    assert_document_write_access,
+    assert_folder_write_access,
+    assert_recycle_bin_access,
+    assert_scanner_bridge,
+    org_unit_scope_ids,
+)
 from .services import permanently_delete_folder, restore_folder, soft_delete_folder
 from accounts.models import User
 from config.pagination import StandardResultsSetPagination
@@ -41,26 +74,6 @@ from orgunits.models import OrgUnit
 
 def ensure_default_folder(user=None):
     return None
-
-
-def org_unit_scope_ids(user):
-    org_unit = getattr(user, "org_unit", None)
-    if not org_unit:
-        return []
-    if getattr(user, "role", None) == "dept_head":
-        return [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
-    return [org_unit.id]
-
-
-def assert_recycle_bin_access(user, folder_or_document):
-    if getattr(user, "role", None) == "admin":
-        return
-    if getattr(user, "role", None) != "dept_head":
-        raise PermissionDenied("Staff do not have Recycle Bin access.")
-
-    folder = getattr(folder_or_document, "folder", folder_or_document)
-    if folder.org_unit_id not in org_unit_scope_ids(user):
-        raise PermissionDenied("You do not have access to this recycle bin item.")
 
 
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -101,6 +114,7 @@ def parse_keywords(value):
 
 
 def validate_pdf_upload(upload):
+    """Enforce PDF-only uploads with size and magic-byte checks."""
     if not upload:
         raise ValidationError({"file": "PDF file is required."})
     if not upload.name.lower().endswith(".pdf"):
@@ -128,13 +142,6 @@ def validate_new_document_code(value):
             return None, str(detail[0])
         return None, str(detail)
     return code, None
-
-
-def assert_scanner_bridge(request):
-    expected_token = settings.SCANNER_BRIDGE_TOKEN
-    received_token = request.headers.get("X-Scanner-Token", "")
-    if not expected_token or not secrets.compare_digest(received_token, expected_token):
-        raise PermissionDenied("Invalid scanner bridge token.")
 
 
 def scan_job_queryset_for_user(user):
@@ -181,72 +188,9 @@ def normalize_folder_name(value):
     return folder_name
 
 
-def assert_folder_write_access(user, folder):
-    role = getattr(user, "role", None)
-    if role == "admin":
-        return
-
-    org_unit = getattr(user, "org_unit", None)
-    if not org_unit:
-        raise PermissionDenied("You do not have access to this folder.")
-
-    if role == "dept_head":
-        if folder.org_unit_id in org_unit_scope_ids(user):
-            return
-        raise PermissionDenied("You do not have access to this folder.")
-
-    if role == "staff":
-        if folder.org_unit_id == org_unit.id:
-            return
-        raise PermissionDenied("You do not have access to this folder.")
-
-    raise PermissionDenied("You do not have access to this folder.")
-
-
-def assert_document_write_access(user, document):
-    role = getattr(user, "role", None)
-    if role == "admin":
-        return
-
-    org_unit = getattr(user, "org_unit", None)
-    if not org_unit:
-        raise PermissionDenied("You do not have access to this document.")
-
-    if role == "dept_head":
-        if document.folder.org_unit_id in org_unit_scope_ids(user):
-            return
-        raise PermissionDenied("You do not have access to this document.")
-
-    if role == "staff":
-        if document.folder.org_unit_id == org_unit.id:
-            return
-        raise PermissionDenied("You do not have access to this document.")
-
-    raise PermissionDenied("You do not have access to this document.")
-
-
-def assert_category_delete_access(user, category):
-    role = getattr(user, "role", None)
-    if role == "admin":
-        return
-
-    org_unit = getattr(user, "org_unit", None)
-    if not org_unit or not category.org_unit_id:
-        raise PermissionDenied("You do not have access to this category.")
-
-    if role == "dept_head":
-        if category.org_unit_id in org_unit_scope_ids(user):
-            return
-        raise PermissionDenied("You do not have access to this category.")
-
-    if role == "staff":
-        if category.org_unit_id == org_unit.id:
-            return
-        raise PermissionDenied("You do not have access to this category.")
-
-    raise PermissionDenied("You do not have access to this category.")
-
-
+# ---------------------------------------------------------------------------
+# Categories — scoped by OrgUnit; delete blocked when documents reference category
+# ---------------------------------------------------------------------------
 class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
 
@@ -324,6 +268,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return Response({"message": "Category deleted successfully"}, status=status.HTTP_200_OK)
 
 
+# ---------------------------------------------------------------------------
+# Folders — hierarchy, tree endpoint, soft delete (Staff: empty folders only)
+# ---------------------------------------------------------------------------
 class FolderViewSet(viewsets.ModelViewSet):
     serializer_class = FolderSerializer
 
@@ -361,6 +308,7 @@ class FolderViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        # Staff may delete only empty folders; Admin/Dept Head may delete with contents.
         if getattr(request.user, "role", None) == "staff":
             is_non_empty = (
                 instance.documents.filter(is_deleted=False).exists()
@@ -493,6 +441,9 @@ class FolderViewSet(viewsets.ModelViewSet):
         return Response([all_files, *self._folder_tree(folders)])
 
 
+# ---------------------------------------------------------------------------
+# Documents — list/filter, download, rename; Staff cannot DELETE
+# ---------------------------------------------------------------------------
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
     pagination_class = StandardResultsSetPagination
@@ -545,6 +496,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return queryset.order_by("-created_at")
 
     def perform_destroy(self, instance):
+        # Soft delete — item moves to Recycle Bin for Admin / Dept Head restore.
         if getattr(self.request.user, "role", None) == "staff":
             raise PermissionDenied("Staff cannot delete documents.")
         instance.soft_delete(self.request.user)
@@ -620,6 +572,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return Response(DocumentSerializer(document, context={"request": request}).data)
 
 
+# ---------------------------------------------------------------------------
+# Document upload — multipart PDF + metadata (primary upload path for frontend)
+# ---------------------------------------------------------------------------
 class DocumentUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
 
@@ -942,6 +897,9 @@ class ScanJobFailAPIView(APIView):
         return Response(ScanJobSerializer(job).data)
 
 
+# ---------------------------------------------------------------------------
+# Recycle bin — merged paginated list of soft-deleted folders and documents
+# ---------------------------------------------------------------------------
 class RecycleBinAPIView(APIView):
     pagination_class = StandardResultsSetPagination
 

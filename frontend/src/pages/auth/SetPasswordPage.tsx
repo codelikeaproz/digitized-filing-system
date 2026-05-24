@@ -1,4 +1,7 @@
-// Set password page for first-time account activation.
+/**
+ * SetPasswordPage — activate new account and set initial password.
+ * API: POST /api/auth/set-password (uid + token from activation email).
+ */
 import React, { useState } from 'react';
 import { CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";

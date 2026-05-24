@@ -1,3 +1,12 @@
+"""
+Organization unit and org type API.
+
+OrgUnitViewSet:
+    Hierarchical org structure; soft delete when no dependencies remain.
+
+OrgTypeViewSet:
+    Admin-only CRUD for database-driven org type labels used in OrgUnit forms.
+"""
 from django.db import transaction
 from django.db.models import ProtectedError
 from django.db.models import Q

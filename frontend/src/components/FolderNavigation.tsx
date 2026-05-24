@@ -1,3 +1,9 @@
+/**
+ * FolderNavigation — sidebar folder tree with create/rename/delete actions.
+ *
+ * Loads tree from GET /api/folders/tree. Folder mutations call folders API.
+ * Delete availability depends on user role (Staff: empty folders only).
+ */
 import React, { useState } from "react";
 import { Folder, ChevronRight, ChevronDown, Plus, MoreHorizontal, Pencil, Trash2, FolderPlus, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";

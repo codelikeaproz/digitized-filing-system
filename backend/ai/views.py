@@ -1,3 +1,16 @@
+"""
+Document Assistant API endpoints.
+
+POST /api/ai/chat/           — natural-language queries over accessible documents
+GET  /api/ai/search-preview/ — document match preview without LLM
+
+Processing order:
+    1. Sensitive-request guard
+    2. Direct intent (counts, lists, greetings) via intent_service
+    3. Document search + optional OpenRouter grounded answer
+
+See CHATBOT_CAPABILITIES.md for supported query types.
+"""
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -61,7 +74,7 @@ class DocumentAssistantChatAPIView(APIView):
                 target_org_unit=request.user.org_unit.name if getattr(request.user, "org_unit", None) else None,
                 ip_address=request.META.get("REMOTE_ADDR"),
             )
-            return Response({"answer": no_result_answer(), "matches": []})
+            return Response({"answer": no_result_answer(request.user, query), "matches": []})
 
         try:
             answer = call_openrouter(build_grounded_messages(query, matches), session_id=session_id)

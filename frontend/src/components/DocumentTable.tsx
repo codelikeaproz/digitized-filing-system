@@ -1,3 +1,7 @@
+/**
+ * DocumentTable — document list with preview, rename, delete (role-dependent).
+ * Used by DocumentsPage. APIs: PATCH rename, DELETE document, file_url preview.
+ */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { Eye, Download, MoreVertical, FileText, Trash2, Pencil } from 'lucide-react';

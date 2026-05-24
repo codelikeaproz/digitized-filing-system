@@ -1,4 +1,4 @@
-// Error 500 page for server error responses.
+/** Error500Page — server error fallback from api.ts redirect. */
 import React from 'react';
 import ErrorPage from './ErrorPage';
 

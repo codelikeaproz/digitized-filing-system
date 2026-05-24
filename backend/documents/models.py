@@ -1,3 +1,14 @@
+"""
+Document domain models.
+
+Defines the core filing hierarchy:
+    OrgUnit → Folder (parent/child) → Document (PDF + metadata)
+
+Also includes scanner bridge models (ScanJob, ScannerStation) for optional
+Epson / Scanner Bridge integration.
+
+Soft delete fields (is_deleted, deleted_at, deleted_by) support Recycle Bin.
+"""
 from django.conf import settings
 from django.db import models
 from django.utils import timezone

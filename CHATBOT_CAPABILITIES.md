@@ -4,7 +4,35 @@ This document describes the current capabilities and limitations of the Digitize
 
 ## Current Capabilities
 
-### 1. Count Accessible Documents
+### 1. Greetings And Help
+
+The assistant responds naturally to short conversational openers before document search runs.
+
+Example prompts:
+
+```text
+Hi
+Hello
+Hey
+Good morning
+hi, hello
+help
+what can you do
+```
+
+Example answer:
+
+```text
+Hi! I'm the Document Assistant for the Digitized Filing System. I can help you find and explore documents within your access scope.
+
+Try asking:
+- "How many files do I have?"
+- "List all documents"
+- "Show documents in Test folder"
+- "What is inside code 01-12551?"
+```
+
+### 2. Count Accessible Documents
 
 The assistant can count documents available within the logged-in user's access scope.
 
@@ -22,7 +50,7 @@ Example answer:
 You currently have 2 accessible documents.
 ```
 
-### 2. Count Documents In A Folder
+### 3. Count Documents In A Folder
 
 The assistant can count documents inside a specific accessible folder.
 
@@ -40,7 +68,7 @@ Example answer:
 Test contains 1 accessible document.
 ```
 
-### 3. Find Folders
+### 4. Find Folders
 
 The assistant can search for accessible folders by name.
 
@@ -59,7 +87,7 @@ I found these accessible folder matches:
 - Test (Path: Test, Org Unit: CISC)
 ```
 
-### 4. List Accessible Documents
+### 5. List Accessible Documents
 
 The assistant can list the first accessible documents for the current user.
 
@@ -79,7 +107,7 @@ Here are the first 2 accessible documents I found:
 - organized_demo_presentation_data.pdf (Code: 01-12551, Category: test, Folder: Test)
 ```
 
-### 5. List Documents In A Folder
+### 6. List Documents In A Folder
 
 The assistant can list documents inside a specific accessible folder.
 
@@ -98,7 +126,7 @@ Here are documents I found in Test:
 - organized_demo_presentation_data.pdf (Code: 01-12551, Category: test, Folder: Test)
 ```
 
-### 6. Find Documents By Code
+### 7. Find Documents By Code
 
 The assistant can find documents by document code, even when the code appears inside a natural sentence.
 
@@ -110,7 +138,7 @@ What is inside code 01-12551?
 What is the document 04-98391 about?
 ```
 
-### 7. PDF Content Questions
+### 8. PDF Content Questions
 
 If the PDF has extractable text, the assistant can answer questions about the PDF content through OpenRouter.
 
@@ -126,7 +154,7 @@ Important note:
 
 Image-only scanned PDFs may not work unless OCR is added. The current extractor reads selectable PDF text using `pypdf`.
 
-### 8. Keyword, Title, Category, Folder, And PDF Text Search
+### 9. Keyword, Title, Category, Folder, And PDF Text Search
 
 The assistant can search accessible documents using:
 
@@ -140,7 +168,7 @@ The assistant can search accessible documents using:
 - keywords
 - extracted PDF text
 
-### 9. Date, Month, And Filing Year Filters
+### 10. Date, Month, And Filing Year Filters
 
 The assistant can answer date-filtered count and list questions.
 
@@ -197,7 +225,7 @@ Recommended response style:
 - For list questions, show the first few matching documents and say if there are more.
 - Avoid dumping a very large list directly into the chat.
 
-### 10. Category And Requestor Filters
+### 11. Category And Requestor Filters
 
 The assistant can count or list documents by category and requestor/requisitioner.
 

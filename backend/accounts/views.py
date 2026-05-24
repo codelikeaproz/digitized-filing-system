@@ -1,3 +1,17 @@
+"""
+Authentication and user management API.
+
+Purpose:
+    Login (JWT), password reset/activation, current-user profile, and User CRUD.
+
+Role rules (UserViewSet):
+    - Admin: manage all users; cannot remove last active admin
+    - Dept Head: create/update Staff only within assigned OrgUnit
+    - Staff: no user management
+
+Used by frontend:
+    LoginPage, UsersPage, SettingsPage, auth-context.tsx
+"""
 import logging
 
 from django.conf import settings
@@ -251,6 +265,7 @@ class UserViewSet(viewsets.ModelViewSet):
         )
 
     def _enforce_manage_permission(self, target):
+        """Admin manages all; Dept Head manages Staff in same OrgUnit only."""
         actor = self.request.user
         if actor.role == "admin":
             return None

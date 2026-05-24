@@ -1,3 +1,11 @@
+"""
+Custom user model for DFS.
+
+Uses email as USERNAME_FIELD. Roles: admin, dept_head, staff.
+OrgUnit assignment required for non-admin roles (enforced in UserSerializer).
+
+Activation flow: new users start inactive until set-password link is used.
+"""
 from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager

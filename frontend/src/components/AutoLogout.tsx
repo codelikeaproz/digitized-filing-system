@@ -1,3 +1,6 @@
+/**
+ * AutoLogout — idle timeout; clears session after inactivity (default 10 min).
+ */
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useNavigate, useLocation } from 'react-router-dom';

@@ -1,3 +1,12 @@
+/**
+ * UploadDialog — PDF upload and optional scanner workflow modal.
+ *
+ * Supports:
+ * - Manual PDF upload via POST /api/documents/upload (multipart)
+ * - Scan job creation via POST /api/scan-jobs (requires scanner station)
+ *
+ * Validates document code, category, folder, and metadata before submit.
+ */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
 import { 

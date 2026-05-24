@@ -1,4 +1,8 @@
-// Org units page for managing departments and units.
+/**
+ * OrgUnitsPage — organization unit and org type management (Admin only).
+ *
+ * APIs: /api/org-units/, /api/org-types/ (CRUD, soft delete OrgUnit).
+ */
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';

@@ -1,3 +1,9 @@
+"""
+Audit log model and server-side logging helper.
+
+Call log_audit() from views after security-sensitive or user-visible actions.
+Do not log secrets, tokens, or passwords in details.
+"""
 from django.conf import settings
 from django.db import models
 
@@ -21,6 +27,7 @@ class AuditLog(models.Model):
 
 
 def log_audit(user, action, details, target_type=None, target_name=None, target_org_unit=None, ip_address=None):
+    """Persist one audit row. Safe to call with anonymous/system user."""
     return AuditLog.objects.create(
         user=user if getattr(user, "is_authenticated", False) else None,
         user_email=getattr(user, "email", "") or "system",

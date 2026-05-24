@@ -1,3 +1,7 @@
+/**
+ * CategorySelect — category picker with inline create (uses CategoryContext).
+ * APIs: GET/POST /api/categories via CategoryContext.
+ */
 import React, { useState, useEffect } from "react";
 import { 
   X, 

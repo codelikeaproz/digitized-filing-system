@@ -1,10 +1,20 @@
+"""
+Direct intent handling for the Document Assistant.
+
+Parses structured user queries (counts, lists, greetings, filters) without
+calling the LLM. Returns None when the query should fall through to search/LLM.
+
+Also provides contextual empty-state messages when folders/org units have
+no documents yet.
+"""
 import re
 
 from django.db.models import Q
 from django.utils import timezone
 
 from documents.models import Category, Folder
-from .search_service import DocumentMatch, accessible_documents_for_user, org_unit_scope_ids
+from orgunits.models import OrgUnit
+from .search_service import DocumentMatch, accessible_documents_for_user, is_list_request, org_unit_scope_ids
 
 
 MAX_DIRECT_MATCHES = 5
@@ -55,6 +65,26 @@ REQUESTOR_PATTERNS = [
 ]
 FILING_YEAR_PATTERN = re.compile(r"\bfiling\s+year\s+(20\d{2}|19\d{2})\b", re.IGNORECASE)
 YEAR_PATTERN = re.compile(r"\b(20\d{2}|19\d{2})\b")
+GREETING_PHRASES = {
+    "hi",
+    "hello",
+    "hey",
+    "howdy",
+    "hi there",
+    "hello there",
+    "hey there",
+    "good morning",
+    "good afternoon",
+    "good evening",
+}
+HELP_PHRASES = {
+    "help",
+    "what can you do",
+    "what do you do",
+    "how can you help",
+    "how can you help me",
+}
+
 FILLER_WORDS = {
     "the",
     "a",
@@ -80,6 +110,52 @@ FILLER_WORDS = {
 
 def normalize_query(query):
     return " ".join((query or "").strip().split())
+
+
+def strip_trailing_punctuation(value):
+    return re.sub(r"[!?.…,;:]+$", "", (value or "").strip())
+
+
+def is_greeting_query(query):
+    cleaned = strip_trailing_punctuation(normalize_query(query).lower())
+    if not cleaned:
+        return False
+    if cleaned in GREETING_PHRASES:
+        return True
+    parts = [strip_trailing_punctuation(part.strip()) for part in re.split(r"[,;/]+", cleaned) if part.strip()]
+    return bool(parts) and all(part in GREETING_PHRASES for part in parts)
+
+
+def is_help_query(query):
+    cleaned = strip_trailing_punctuation(normalize_query(query).lower())
+    return cleaned in HELP_PHRASES
+
+
+def greeting_answer(user):
+    display_name = (getattr(user, "get_full_name", lambda: "")() or "").strip()
+    salutation = f"Hi {display_name}!" if display_name else "Hi!"
+    return (
+        f"{salutation} I'm the Document Assistant for the Digitized Filing System. "
+        "I can help you find and explore documents within your access scope.\n\n"
+        "Try asking:\n"
+        '- "How many files do I have?"\n'
+        '- "List all documents"\n'
+        '- "Show documents in Test folder"\n'
+        '- "What is inside code 01-12551?"'
+    )
+
+
+def help_answer():
+    return (
+        "I can help with document tasks inside your access scope:\n"
+        "- Count documents (overall, by folder, category, date, or filing year)\n"
+        "- List accessible documents or documents in a folder\n"
+        "- Find folders by name\n"
+        "- Search by document code, title, keyword, or PDF text\n"
+        "- Answer questions about a specific document's content\n\n"
+        "Examples: \"list all documents\", \"how many files in Test folder\", "
+        "\"find code 01-12551\", or \"summarize document 04-98391\"."
+    )
 
 
 def has_any(normalized, terms):
@@ -244,11 +320,128 @@ def format_folder_line(folder):
     return f"- {folder.name} (Path: {folder.get_full_path()}, Org Unit: {org_unit})"
 
 
+def has_extra_filters(user, query, folders=None):
+    excluded = [folder.name for folder in folders or []]
+    return bool(
+        find_accessible_category(user, query, excluded_names=excluded)
+        or extract_requestor_name(query)
+        or date_label_and_filter(query)[1]
+        or filing_year_label_and_filter(query)[1]
+    )
+
+
+def scope_has_documents(user, folders=None):
+    queryset = accessible_documents_for_user(user)
+    if folders:
+        queryset = queryset.filter(folder_id__in=[folder.id for folder in folders])
+    return queryset.exists()
+
+
+def empty_folder_answer(folder):
+    label = folder.get_full_path()
+    return (
+        f'The "{label}" folder is currently empty.\n\n'
+        "Please upload PDF documents to this folder in the Documents area."
+    )
+
+
+def no_documents_in_scope_answer(user):
+    role = getattr(user, "role", None)
+    org_unit = getattr(user, "org_unit", None)
+
+    if role == "admin":
+        if not OrgUnit.objects.filter(is_deleted=False).exists():
+            return (
+                "There are no organization units set up yet.\n\n"
+                "Please create an org unit in Organization Units, then add folders and upload documents."
+            )
+        if not accessible_folders_for_user(user).exists():
+            return (
+                "There are organization units, but no folders yet.\n\n"
+                "Please create folders first, then upload PDF documents in the Documents area."
+            )
+        return (
+            "There are no documents in the system yet.\n\n"
+            "Please upload PDF files through the Documents area."
+        )
+
+    if not org_unit:
+        return (
+            "Your account is not assigned to an organization unit yet.\n\n"
+            "Please contact your administrator to assign your department or org unit."
+        )
+
+    org_name = org_unit.name
+    if not accessible_folders_for_user(user).exists():
+        return (
+            f"Your organization unit ({org_name}) has no folders yet.\n\n"
+            "Please create a folder first, then upload PDF documents in the Documents area."
+        )
+
+    return (
+        "There are no documents in your accessible scope yet.\n\n"
+        "Please upload PDF files to a folder in the Documents area."
+    )
+
+
+def empty_documents_answer(user, *, filters=None, folders=None, query=None):
+    filters = filters or []
+    query = query or ""
+
+    if folders:
+        folder_label = (
+            folders[0].get_full_path()
+            if len(folders) == 1
+            else f"{len(folders)} matching folders"
+        )
+        if has_extra_filters(user, query, folders):
+            if scope_has_documents(user, folders):
+                scope = ", ".join(filters) if filters else "that filter"
+                return (
+                    f'I found the folder "{folder_label}", '
+                    f"but no accessible documents match {scope}."
+                )
+            if len(folders) == 1:
+                return empty_folder_answer(folders[0])
+            return (
+                "The selected folders have no documents yet.\n\n"
+                "Please upload PDF documents in the Documents area."
+            )
+        if len(folders) == 1:
+            return empty_folder_answer(folders[0])
+        return (
+            "The selected folders have no documents yet.\n\n"
+            "Please upload PDF documents in the Documents area."
+        )
+
+    if filters:
+        if scope_has_documents(user):
+            scope = ", ".join(filters)
+            return f"I couldn't find accessible documents matching {scope}."
+        return no_documents_in_scope_answer(user)
+
+    return no_documents_in_scope_answer(user)
+
+
 def answer_direct_intent(user, query):
     normalized_query = normalize_query(query)
     normalized = normalized_query.lower()
     if not normalized:
         return None
+
+    if is_greeting_query(normalized_query):
+        return {
+            "answer": greeting_answer(user),
+            "matches": [],
+            "audit_action": "CHATBOT_QUERY",
+        }
+
+    if is_help_query(normalized_query):
+        return {
+            "answer": help_answer(),
+            "matches": [],
+            "audit_action": "CHATBOT_QUERY",
+        }
 
     asks_count = has_any(normalized, COUNT_TERMS)
     mentions_document = has_any(normalized, DOCUMENT_TERMS)
@@ -274,6 +467,17 @@ def answer_direct_intent(user, query):
 
         queryset, filters = build_document_queryset(user, normalized_query, folders=folders)
         count = queryset.count()
+        if count == 0:
+            return {
+                "answer": empty_documents_answer(
+                    user,
+                    filters=filters,
+                    folders=folders,
+                    query=normalized_query,
+                ),
+                "matches": [],
+                "audit_action": "CHATBOT_NO_RESULT",
+            }
         folder_label = ", ".join(filters) if filters else (folders[0].get_full_path() if len(folders) == 1 else f"{len(folders)} matching folders")
         return {
             "answer": f"{folder_label} contains {count} accessible {pluralize_document(count)}.",
@@ -284,6 +488,16 @@ def answer_direct_intent(user, query):
     if asks_count and (mentions_document or has_filter):
         queryset, filters = build_document_queryset(user, normalized_query)
         count = queryset.count()
+        if count == 0:
+            return {
+                "answer": empty_documents_answer(
+                    user,
+                    filters=filters,
+                    query=normalized_query,
+                ),
+                "matches": [],
+                "audit_action": "CHATBOT_NO_RESULT",
+            }
         scope = ", ".join(filters)
         answer = (
             f"You currently have {count} accessible {pluralize_document(count)} matching {scope}."
@@ -318,7 +532,12 @@ def answer_direct_intent(user, query):
         documents = list(queryset[:MAX_DIRECT_MATCHES])
         if not documents:
             return {
-                "answer": f"I found the folder, but it has no accessible documents for that filter.",
+                "answer": empty_documents_answer(
+                    user,
+                    filters=filters,
+                    folders=folders,
+                    query=normalized_query,
+                ),
                 "matches": [],
                 "audit_action": "CHATBOT_NO_RESULT",
             }
@@ -335,7 +554,11 @@ def answer_direct_intent(user, query):
         documents = list(queryset[:MAX_DIRECT_MATCHES])
         if not documents:
             return {
-                "answer": "I couldn't find accessible documents for that filter.",
+                "answer": empty_documents_answer(
+                    user,
+                    filters=filters,
+                    query=normalized_query,
+                ),
                 "matches": [],
                 "audit_action": "CHATBOT_NO_RESULT",
             }
@@ -352,7 +575,10 @@ def answer_direct_intent(user, query):
     return None
 
 
-def no_result_answer():
+def no_result_answer(user=None, query=None):
+    if user is not None and query and is_list_request(query) and not scope_has_documents(user):
+        return no_documents_in_scope_answer(user)
+
     return (
         "I couldn't find a matching document in your accessible scope.\n\n"
         "Try asking by document code, title, folder, category, keyword, or PDF content. "

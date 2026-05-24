@@ -1,4 +1,15 @@
-// Documents page for browsing folders and managing files.
+/**
+ * DocumentsPage — main document management screen.
+ *
+ * Features:
+ * - Folder tree navigation and breadcrumbs
+ * - Paginated document table with search
+ * - PDF upload (UploadDialog) and optional scan workflow
+ * - Document rename, delete (role-dependent), preview via file_url
+ * - In-app Document Assistant drawer
+ *
+ * APIs: GET /api/folders/tree, GET /api/documents, PATCH .../rename, DELETE ...
+ */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderNavigation } from "@/components/FolderNavigation";
 import { DocumentTable } from "@/components/DocumentTable";

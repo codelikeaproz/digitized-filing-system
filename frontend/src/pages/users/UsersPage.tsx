@@ -1,4 +1,10 @@
-// Users page for managing system accounts.
+/**
+ * UsersPage — user account management (Admin and Dept Head).
+ *
+ * Admin: manage all users. Dept Head: Staff only within assigned OrgUnit.
+ * APIs: GET/POST /api/users, PUT/PATCH/DELETE /api/users/{id},
+ *       activate/deactivate, resend-activation.
+ */
 import React, { useState, useEffect } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';
@@ -387,6 +393,7 @@ export default function UsersPage() {
             {isAdmin ? (
               <>
                 <select
+                  title="Select role"
                   value={roleFilter}
                   onChange={(e) => handleRoleFilterChange(e.target.value as 'all' | 'admin' | 'dept_head' | 'staff')}
                   className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none"
@@ -397,6 +404,7 @@ export default function UsersPage() {
                   <option value="staff">Staff Only</option>
                 </select>
                 <select
+                  title="Select org unit"
                   value={orgUnitFilter}
                   onChange={(e) => handleOrgUnitFilterChange(e.target.value)}
                   className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none max-w-[200px]"
@@ -604,6 +612,7 @@ export default function UsersPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">Role</label>
                 <select 
+                  title="Select role"
                   name="role"
                   value={formData.role}
                   onChange={handleInputChange}
@@ -634,6 +643,7 @@ export default function UsersPage() {
                   </div>
                 ) : (
                   <select 
+                    title="Select org unit"
                     name="orgUnitId"
                     value={formData.orgUnitId}
                     onChange={handleInputChange}

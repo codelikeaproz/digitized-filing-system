@@ -1,3 +1,10 @@
+/**
+ * Route guards for authenticated and role-restricted pages.
+ *
+ * ProtectedRoute — redirects to /login when no valid session.
+ * RoleRoute      — blocks Staff from admin-only screens (UI layer only;
+ *                  backend must enforce the same rules).
+ */
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";

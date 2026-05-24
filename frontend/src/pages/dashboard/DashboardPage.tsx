@@ -1,4 +1,9 @@
-// Dashboard page for viewing filing system statistics.
+/**
+ * DashboardPage — filing statistics summary cards.
+ *
+ * API: GET /api/dashboard/stats
+ * Note: backend returns global counts for all roles (see API docs).
+ */
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Files, UploadCloud, Scan, Building2, Loader2, Users } from "lucide-react";

@@ -1,3 +1,8 @@
+/**
+ * AppShell — authenticated layout wrapper with sidebar and outlet for pages.
+ *
+ * Rendered inside ProtectedRoute; child routes render via <Outlet />.
+ */
 import { Outlet } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";

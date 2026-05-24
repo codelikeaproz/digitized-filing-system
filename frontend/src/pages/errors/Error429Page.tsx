@@ -1,4 +1,4 @@
-// Error 429 page for too many request responses.
+/** Error429Page — rate limit exceeded (login throttle). */
 import React from 'react';
 import ErrorPage from './ErrorPage';
 

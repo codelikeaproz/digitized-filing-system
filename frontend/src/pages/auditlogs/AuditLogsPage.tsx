@@ -1,4 +1,9 @@
-// Audit logs page for viewing system activity.
+/**
+ * AuditLogsPage — system audit trail (Admin only route).
+ *
+ * Features: search/filter, pagination, CSV/XLSX export.
+ * APIs: GET /api/audit-logs/, export-csv, export-xlsx.
+ */
 import React, { useState, useEffect } from "react";
 import { 
   Table, 

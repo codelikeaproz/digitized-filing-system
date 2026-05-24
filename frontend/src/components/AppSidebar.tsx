@@ -1,3 +1,11 @@
+/**
+ * AppSidebar — role-based primary navigation.
+ *
+ * Menu visibility must stay aligned with RoleRoute guards in App.tsx:
+ *   admin     → all items including Org Units + Audit Logs
+ *   dept_head → Users + Recycle Bin (scoped on backend)
+ *   staff     → Dashboard, Documents, Settings only
+ */
 import {
   Sidebar,
   SidebarContent,

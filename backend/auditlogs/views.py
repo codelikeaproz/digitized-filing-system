@@ -1,3 +1,15 @@
+"""
+Audit log API — read, export, and optional client-side event creation.
+
+Scope:
+    Admin — all logs
+    Dept Head — logs for users/targets in own OrgUnit subtree
+    Staff — denied
+
+Exports:
+    GET .../export-csv/
+    GET .../export-xlsx/
+"""
 import csv
 import io
 import zipfile

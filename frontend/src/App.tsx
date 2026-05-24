@@ -1,4 +1,19 @@
-// v1.0.3 - Full App Refresh
+/**
+ * DFS Application Router
+ *
+ * Defines all client-side routes, lazy-loaded pages, and access guards.
+ *
+ * Public routes: login, password reset/activation, error pages
+ * Protected shell: AppShell with sidebar (requires JWT)
+ *
+ * Role-restricted routes (must match AppSidebar menu):
+ *   - /audit-logs, /org-units     → admin only
+ *   - /users, /recycle-bin        → admin, dept_head
+ *
+ * Global providers: AuthProvider, CategoryProvider (inside shell), AutoLogout
+ *
+ * @see docs/FRONTEND_ROUTES.md
+ */
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";

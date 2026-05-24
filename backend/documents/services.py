@@ -1,3 +1,14 @@
+"""
+Folder and document lifecycle services.
+
+Purpose:
+    Shared transactional logic for soft delete, restore, and permanent delete
+    of folder trees (including nested subfolders and documents).
+
+Used by:
+    documents/views.py — RecycleBinRestoreAPIView, RecycleBinDeleteAPIView,
+                         FolderViewSet.destroy
+"""
 from django.db import transaction
 from django.utils import timezone
 
@@ -13,6 +24,10 @@ def _folder_tree_ids(folder):
 
 @transaction.atomic
 def soft_delete_folder(folder, user):
+    """
+    Mark folder subtree and contained documents as deleted (Recycle Bin).
+    Returns the number of documents soft-deleted.
+    """
     now = timezone.now()
     folder_ids = _folder_tree_ids(folder)
 
@@ -34,6 +49,7 @@ def soft_delete_folder(folder, user):
 
 @transaction.atomic
 def restore_folder(folder, user=None):
+    """Restore folder subtree and documents whose parent folder is active."""
     folder_ids = _folder_tree_ids(folder)
 
     Folder.objects.filter(id__in=folder_ids).update(
@@ -55,6 +71,7 @@ def restore_folder(folder, user=None):
 
 @transaction.atomic
 def permanently_delete_folder(folder, user=None):
+    """Hard-delete folder subtree, documents, and media files (irreversible)."""
     folder_ids = _folder_tree_ids(folder)
     documents = list(Document.objects.filter(folder_id__in=folder_ids))
     document_count = len(documents)

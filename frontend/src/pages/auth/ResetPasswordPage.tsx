@@ -1,4 +1,7 @@
-// Reset password page for setting a new password from a reset link.
+/**
+ * ResetPasswordPage — complete password reset from email link.
+ * API: POST /api/auth/reset-password (uid + token from URL).
+ */
 import React, { useState } from 'react';
 import { Building2, Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Button } from "@/components/ui/button";

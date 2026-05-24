@@ -1,4 +1,9 @@
-// Recycle bin page for restoring or deleting removed files.
+/**
+ * RecycleBinPage — soft-deleted folders and documents (Admin, Dept Head).
+ *
+ * Staff cannot access this page. Supports restore and permanent delete.
+ * APIs: GET /api/recycle-bin, POST restore, DELETE permanent delete.
+ */
 import React, { useState, useEffect } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';

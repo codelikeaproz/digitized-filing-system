@@ -12,3 +12,4 @@ python-dotenv
 cryptography
 # gunicorn
 pypdf
+drf-spectacular

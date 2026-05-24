@@ -1,6 +1,15 @@
 /**
- * Centralized API service for Digitized Filing System
- * Handles authentication headers, base URL, and standardized error handling.
+ * Centralized HTTP client for the DFS backend.
+ *
+ * Features:
+ * - Attaches JWT from localStorage (auth_token)
+ * - JSON helpers: get, post, put, patch, delete
+ * - upload() for multipart/form-data (PDF uploads)
+ * - Auto-redirect on 401 (logout), 429, 5xx
+ *
+ * Base URL: import.meta.env.VITE_API_URL
+ *
+ * @see docs/API_DOCUMENTATION.md
  */
 
 const BASE_URL = import.meta.env.VITE_API_URL || "";

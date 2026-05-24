@@ -1,3 +1,10 @@
+/**
+ * Authentication context — session state for the SPA.
+ *
+ * On load: rehydrates user via GET /api/auth/me when auth_token exists.
+ * Login:   POST /api/auth/login → stores token + user in localStorage.
+ * Logout:  client-side only (clears token; no server revoke endpoint).
+ */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User } from "../types";
 import { api } from "./api";

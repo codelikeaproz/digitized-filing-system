@@ -1,4 +1,8 @@
-// Settings page for account preferences and password changes.
+/**
+ * SettingsPage — account password change for logged-in user.
+ *
+ * API: POST /api/auth/update-password
+ */
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

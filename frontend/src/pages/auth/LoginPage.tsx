@@ -1,4 +1,7 @@
-// Login page for user authentication.
+/**
+ * LoginPage — public login form.
+ * API: POST /api/auth/login → stores JWT in localStorage via auth-context.
+ */
 import React, { useState } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from "@/components/ui/button"
