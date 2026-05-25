@@ -224,5 +224,11 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 
+OCR_ENABLED = env_bool("OCR_ENABLED", True)
+OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "eng")
+OCR_MAX_PAGES = int(os.getenv("OCR_MAX_PAGES", "10"))
+OCR_DPI = int(os.getenv("OCR_DPI", "200"))
+OCR_MIN_TEXT_LENGTH = int(os.getenv("OCR_MIN_TEXT_LENGTH", "50"))
+
 # Password reset links expire after 30 minutes.
 PASSWORD_RESET_TIMEOUT = 60 * 30
