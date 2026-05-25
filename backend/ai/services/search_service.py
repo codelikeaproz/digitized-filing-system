@@ -1,12 +1,13 @@
 from dataclasses import dataclass
 import re
 
+from django.conf import settings
 from django.db.models import Q
 
 from documents.models import Document
 
 
-MAX_EXCERPT_LENGTH = 700
+MAX_EXCERPT_LENGTH = getattr(settings, "CHATBOT_EXCERPT_MAX_LENGTH", 1500)
 MIN_BROAD_QUERY_LENGTH = 2
 LIST_REQUEST_TERMS = {
     "all document",

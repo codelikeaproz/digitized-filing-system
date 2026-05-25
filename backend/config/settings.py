@@ -226,9 +226,13 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 
 OCR_ENABLED = env_bool("OCR_ENABLED", True)
 OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "eng")
-OCR_MAX_PAGES = int(os.getenv("OCR_MAX_PAGES", "10"))
+OCR_MAX_PAGES = int(os.getenv("OCR_MAX_PAGES", "25"))
 OCR_DPI = int(os.getenv("OCR_DPI", "200"))
 OCR_MIN_TEXT_LENGTH = int(os.getenv("OCR_MIN_TEXT_LENGTH", "50"))
+DOCUMENT_TEXT_INDEX_CHAR_LIMIT = int(os.getenv("DOCUMENT_TEXT_INDEX_CHAR_LIMIT", "250000"))
+AI_SUMMARY_MAX_CHARS = int(os.getenv("AI_SUMMARY_MAX_CHARS", "1200"))
+AI_SUMMARY_MAX_SENTENCES = int(os.getenv("AI_SUMMARY_MAX_SENTENCES", "6"))
+CHATBOT_EXCERPT_MAX_LENGTH = int(os.getenv("CHATBOT_EXCERPT_MAX_LENGTH", "1500"))
 
 # Password reset links expire after 30 minutes.
 PASSWORD_RESET_TIMEOUT = 60 * 30

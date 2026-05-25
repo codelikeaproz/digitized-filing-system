@@ -152,7 +152,7 @@ What is organized_demo_presentation_data.pdf about?
 
 Important note:
 
-Image-only scanned PDFs may not work unless OCR is added. The current extractor reads selectable PDF text using `pypdf`.
+Image-only scanned PDFs are fully supported. If a PDF contains no selectable text (or selectable text is below a configurable threshold), the system automatically falls back to the Tesseract OCR pipeline to extract text from the document pages.
 
 ### 9. Keyword, Title, Category, Folder, And PDF Text Search
 
@@ -255,23 +255,7 @@ Recommended fields:
 
 ## Current Limitations
 
-### 1. No OCR Yet
-
-The assistant can read PDF text only if the text is selectable/extractable.
-
-Not yet supported:
-
-```text
-Read text from scanned image-only PDFs.
-Extract handwritten text.
-Read blurry scanned documents.
-```
-
-Future improvement:
-
-- Add OCR using Tesseract, OCRmyPDF, or a cloud OCR service.
-
-### 2. Limited Conversation Memory
+### 1. Limited Conversation Memory
 
 The assistant does not deeply remember earlier turns.
 
@@ -332,10 +316,6 @@ Which folder has the most documents?
 Show upload trend by month.
 ```
 
-### Phase 4: OCR For Scanned PDFs
-
-Add OCR so scanned image-only PDFs can be searched and summarized.
-
-### Phase 5: Conversation Memory
+### Phase 4: Conversation Memory
 
 Add better chat context so follow-up questions work naturally.
