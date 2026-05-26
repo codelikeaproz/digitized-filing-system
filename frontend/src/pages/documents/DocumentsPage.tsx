@@ -343,7 +343,9 @@ export default function DocumentsPage() {
               onClick={() => setIsUploadOpen(true)}
             >
               <FileUp className="h-4 w-4" />
-              Scan/Upload
+              {/* SCANNER HIDDEN FOR TESTING — restore below to re-enable */}
+              {/* Scan/Upload */}
+              Upload
             </Button>
           </div>
         </div>

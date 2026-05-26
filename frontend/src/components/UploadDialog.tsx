@@ -88,7 +88,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   const { user } = useAuth();
   const { categories } = useCategories();
   
-  const [state, setState] = useState<WorkflowState>('choose');
+  // SCANNER HIDDEN FOR TESTING — restore 'choose' below to re-enable the source picker
+  // const [state, setState] = useState<WorkflowState>('choose');
+  const [state, setState] = useState<WorkflowState>('manual-upload');
   const [source, setSource] = useState<'Scanned' | 'Uploaded'>('Uploaded');
   const [file, setFile] = useState<File | null>(null);
   const [customFileName, setCustomFileName] = useState("");
@@ -112,7 +114,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
   const documentCodeInlineError = docCodeError || (!isDocumentCodeValid ? "Document Code can contain letters, numbers, and hyphens only." : "");
 
   const reset = () => {
-    setState('choose');
+    // SCANNER HIDDEN FOR TESTING — restore 'choose' below to re-enable the source picker
+    // setState('choose');
+    setState('manual-upload');
     setFile(null);
     setCustomFileName("");
     setDocCode("");
@@ -389,8 +393,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       >
         <DialogHeader>
           <DialogTitle>
-            {state === 'choose' && "Digitization Source"}
-            {state === 'manual-upload' && "File Upload"}
+            {/* SCANNER HIDDEN FOR TESTING — restore below to re-enable */}
+            {/* {state === 'choose' && "Digitization Source"} */}
+            {state === 'manual-upload' && "Upload Document"}
             {state === 'category-entry' && "Document Metadata"}
             {state === 'waiting-scan' && "Waiting for Epson Scan"}
             {state === 'success' && "Filing Complete"}
@@ -404,6 +409,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
         </DialogHeader>
 
         <div className="py-2">
+
+          {/* SCANNER HIDDEN FOR TESTING — uncomment the block below to re-enable the source picker */}
+          {/*
           {state === 'choose' && (
             <div className="space-y-4 py-4">
               <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
@@ -416,31 +424,32 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
-              <Button 
-                variant="outline" 
-                className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={handleStartScan}
-                disabled={!SCANNER_ENABLED}
-                title={!SCANNER_ENABLED ? "Scanner integration is temporarily disabled for testing." : undefined}
-              >
-                <Scan className="h-8 w-8 text-primary" />
-                <span>Scan with Epson</span>
-                <span className="text-[10px] text-muted-foreground">
-                  {SCANNER_ENABLED ? "USB / LAN / WiFi supported" : "Temporarily disabled"}
-                </span>
-              </Button>
-              <Button 
-                variant="outline" 
-                className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
-                onClick={() => setState('manual-upload')}
-              >
-                <UploadCloud className="h-8 w-8 text-primary" />
-                <span>Manual Upload</span>
-                <span className="text-[10px] text-muted-foreground">Accepts PDF only</span>
-              </Button>
+                <Button
+                  variant="outline"
+                  className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={handleStartScan}
+                  disabled={!SCANNER_ENABLED}
+                  title={!SCANNER_ENABLED ? "Scanner integration is temporarily disabled for testing." : undefined}
+                >
+                  <Scan className="h-8 w-8 text-primary" />
+                  <span>Scan with Epson</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {SCANNER_ENABLED ? "USB / LAN / WiFi supported" : "Temporarily disabled"}
+                  </span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-32 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
+                  onClick={() => setState('manual-upload')}
+                >
+                  <UploadCloud className="h-8 w-8 text-primary" />
+                  <span>Manual Upload</span>
+                  <span className="text-[10px] text-muted-foreground">Accepts PDF only</span>
+                </Button>
               </div>
             </div>
           )}
+          */}
 
           {state === 'detecting' && (
             <div className="flex flex-col items-center justify-center py-10 gap-4">
@@ -466,15 +475,15 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
             <div 
               {...getRootProps()} 
               className={cn(
-                "border-2 border-dashed rounded-xl p-12 flex flex-col items-center justify-center gap-4 transition-colors cursor-pointer",
-                isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                "border-2 border-dashed rounded-xl p-16 flex flex-col items-center justify-center gap-6 transition-colors cursor-pointer my-4",
+                isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/20"
               )}
             >
               <input {...getInputProps()} />
-              <UploadCloud className="h-12 w-12 text-primary" />
-              <div className="text-center">
-                <p className="font-semibold text-lg">Click or drag PDF here</p>
-                <p className="text-sm text-muted-foreground mt-1">Maximum file size: 20MB</p>
+              <UploadCloud className={cn("h-16 w-16 transition-colors", isDragActive ? "text-primary" : "text-muted-foreground/60")} />
+              <div className="text-center space-y-1">
+                <p className="font-semibold text-xl">{isDragActive ? "Drop your PDF here" : "Click or drag PDF here"}</p>
+                <p className="text-sm text-muted-foreground">Only PDF files are accepted &mdash; maximum 20 MB</p>
               </div>
             </div>
           )}
