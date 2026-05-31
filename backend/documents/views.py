@@ -212,6 +212,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             org_unit = getattr(user, "org_unit", None)
             if not org_unit:
                 return queryset.none()
+            queryset = queryset.exclude(org_unit__isnull=True)
             if getattr(user, "role", None) == "dept_head":
                 queryset = queryset.filter(org_unit_id__in=org_unit_scope_ids(user))
             else:
@@ -223,7 +224,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save()
+        try:
+            serializer.save()
+        except IntegrityError:
+            raise ValidationError(
+                {"name": "A category with this name already exists in this Org Unit."}
+            ) from None
         log_audit(self.request.user, "CREATE_CATEGORY", f"Created category: {serializer.instance.name}")
 
     def perform_update(self, serializer):

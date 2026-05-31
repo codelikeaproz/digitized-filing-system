@@ -1,9 +1,11 @@
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
 import re
 
 from config.timezone_utils import format_local_datetime
 from .models import Category, Document, Folder, ScanJob, ScannerStation
+from .permissions import resolve_category_org_unit_for_create
 
 
 RESERVED_FOLDER_NAMES = {"all files", "root", "trash", "recycle bin"}
@@ -70,6 +72,64 @@ class CategorySerializer(serializers.ModelSerializer):
         if not name:
             raise serializers.ValidationError("Category name cannot be empty.")
         return name
+
+    def _assign_category_org_unit(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        if not user or not getattr(user, "is_authenticated", False):
+            return attrs
+
+        requested = attrs.get("org_unit_id")
+        try:
+            resolved_org_unit_id = resolve_category_org_unit_for_create(user, requested)
+        except PermissionDenied as exc:
+            detail = exc.detail
+            if isinstance(detail, (list, tuple)):
+                detail = detail[0] if detail else "Permission denied."
+            raise serializers.ValidationError({"orgUnitId": str(detail)}) from exc
+
+        attrs["org_unit_id"] = resolved_org_unit_id
+        return attrs
+
+    def validate(self, attrs):
+        name = attrs.get("name")
+        if name is None and self.instance:
+            name = self.instance.name
+
+        if not self.instance:
+            attrs = self._assign_category_org_unit(attrs)
+            org_unit_id = attrs.get("org_unit_id")
+        else:
+            attrs.pop("org_unit_id", None)
+            org_unit_id = self.instance.org_unit_id
+
+        if not name:
+            return attrs
+
+        duplicate_queryset = Category.objects.filter(name__iexact=name.strip())
+        if org_unit_id:
+            duplicate_queryset = duplicate_queryset.filter(org_unit_id=org_unit_id)
+        else:
+            duplicate_queryset = duplicate_queryset.filter(org_unit__isnull=True)
+
+        if self.instance:
+            duplicate_queryset = duplicate_queryset.exclude(pk=self.instance.pk)
+
+        if duplicate_queryset.exists():
+            if org_unit_id:
+                raise serializers.ValidationError(
+                    {"name": "A category with this name already exists in this Org Unit."}
+                )
+            raise serializers.ValidationError(
+                {
+                    "name": (
+                        "A category with this name already exists as an unassigned (Global) category. "
+                        "An Admin can remove it from Manage Categories."
+                    )
+                }
+            )
+
+        return attrs
 
 
 class FolderSerializer(serializers.ModelSerializer):

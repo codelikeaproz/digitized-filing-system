@@ -38,6 +38,7 @@ import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { PaginatedResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Category } from "@/types";
 
@@ -70,6 +71,33 @@ export function CategorySelect({
 
   const [orgUnits, setOrgUnits] = useState<{id: string, name: string}[]>([]);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [addCategoryNameError, setAddCategoryNameError] = useState(false);
+  const [renameCategoryNameError, setRenameCategoryNameError] = useState(false);
+
+  const getPayloadOrgUnit = () => {
+    if (orgUnitId) return orgUnitId;
+    if (targetOrgUnit) return targetOrgUnit;
+    if (user?.role !== "admin" && user?.orgUnitId) return String(user.orgUnitId);
+    return "";
+  };
+
+  const isDuplicateCategoryName = (
+    name: string,
+    payloadOrgUnit?: string,
+    excludeId?: string
+  ) => {
+    const normalizedName = name.trim().toLowerCase();
+    if (!normalizedName) return false;
+
+    return categories.some(
+      (category) =>
+        category.id !== excludeId &&
+        category.name.trim().toLowerCase() === normalizedName &&
+        String(category.orgUnitId ?? "") === String(payloadOrgUnit ?? "")
+    );
+  };
+
+  const duplicateCategoryMessage = "A category with this name already exists in this Org Unit.";
 
   useEffect(() => {
     if (orgUnitId) {
@@ -87,30 +115,46 @@ export function CategorySelect({
     }
   }, [user?.role, orgUnitId]);
 
-  // If orgUnitId is provided, only show categories for that orgUnit
-  // Otherwise, show all
-  const filteredCategories = orgUnitId 
-    ? categories.filter(c => c.orgUnitId === orgUnitId) 
-    : categories;
+  // Staff / Dept Head never see global (unassigned) categories.
+  const filteredCategories = orgUnitId
+    ? categories.filter((c) => String(c.orgUnitId ?? "") === String(orgUnitId))
+    : user?.role === "admin"
+      ? categories
+      : categories.filter((c) => c.orgUnitId != null && c.orgUnitId !== "");
 
   const selectedCategory = categories.find(c => c.id === value);
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
     
-    // Admin needs an orgUnit if it wasn't provided
-    const payloadOrgUnit = orgUnitId || targetOrgUnit;
-    if (user?.role === 'admin' && !payloadOrgUnit) {
-      return; // Handled by disabled button, but as a safeguard
+    if (user?.role !== "admin" && !getPayloadOrgUnit()) {
+      toast.error("Your account must be assigned to an Org Unit to create categories.");
+      return;
     }
 
+    const payloadOrgUnit = getPayloadOrgUnit();
+    if (user?.role === "admin" && !payloadOrgUnit) {
+      return;
+    }
+
+    const normalizedName = newCategoryName.trim();
+    if (isDuplicateCategoryName(normalizedName, payloadOrgUnit)) {
+      setAddCategoryNameError(true);
+      toast.error(`"${normalizedName}" already exists in this Org Unit.`);
+      return;
+    }
+
+    setAddCategoryNameError(false);
     setIsSubmitting(true);
     try {
-      const newId = await addCategory(newCategoryName, payloadOrgUnit);
-      if (newId) {
-        onValueChange(newId);
+      const result = await addCategory(newCategoryName, payloadOrgUnit);
+      if (result.id) {
+        onValueChange(result.id);
         setIsAddModalOpen(false);
         setNewCategoryName("");
+        setAddCategoryNameError(false);
+      } else if (result.duplicate) {
+        setAddCategoryNameError(true);
       }
     } finally {
       setIsSubmitting(false);
@@ -143,20 +187,34 @@ export function CategorySelect({
   const handleStartRenameCategory = (category: Category) => {
     setEditingCategoryId(category.id);
     setEditingCategoryName(category.name);
+    setRenameCategoryNameError(false);
   };
 
   const handleCancelRenameCategory = () => {
     setEditingCategoryId(null);
     setEditingCategoryName("");
+    setRenameCategoryNameError(false);
   };
 
   const handleRenameCategory = async () => {
     if (!editingCategoryId || !editingCategoryName.trim()) return;
+
+    const currentCategory = categories.find((category) => category.id === editingCategoryId);
+    const normalizedName = editingCategoryName.trim();
+    if (isDuplicateCategoryName(normalizedName, currentCategory?.orgUnitId ?? undefined, editingCategoryId)) {
+      setRenameCategoryNameError(true);
+      toast.error(`"${normalizedName}" already exists in this Org Unit.`);
+      return;
+    }
+
+    setRenameCategoryNameError(false);
     setIsSubmitting(true);
     try {
-      const updated = await updateCategory(editingCategoryId, editingCategoryName);
-      if (updated) {
+      const result = await updateCategory(editingCategoryId, editingCategoryName);
+      if (result.ok) {
         handleCancelRenameCategory();
+      } else if (result.duplicate) {
+        setRenameCategoryNameError(true);
       }
     } finally {
       setIsSubmitting(false);
@@ -180,6 +238,7 @@ export function CategorySelect({
         onValueChange={(val) => {
           if (val === null) return;
           if (val === "ADD_NEW") {
+            setAddCategoryNameError(false);
             setIsAddModalOpen(true);
           } else if (val === "MANAGE_CATEGORIES") {
             setIsManageModalOpen(true);
@@ -223,7 +282,16 @@ export function CategorySelect({
         </SelectContent>
       </Select>
 
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog
+        open={isAddModalOpen}
+        onOpenChange={(open) => {
+          setIsAddModalOpen(open);
+          if (!open) {
+            setNewCategoryName("");
+            setAddCategoryNameError(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Add New Category</DialogTitle>
@@ -251,17 +319,32 @@ export function CategorySelect({
               <Input 
                 placeholder="e.g. Legal, HR, Finance" 
                 value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
+                onChange={(e) => {
+                  setNewCategoryName(e.target.value);
+                  if (addCategoryNameError) setAddCategoryNameError(false);
+                }}
                 autoFocus
+                aria-invalid={addCategoryNameError}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                className={cn(
+                  addCategoryNameError && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30"
+                )}
               />
+              {addCategoryNameError && (
+                <p className="text-sm text-destructive">{duplicateCategoryMessage}</p>
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
             <Button 
               onClick={handleAddCategory} 
-              disabled={!newCategoryName.trim() || isSubmitting || (user?.role === 'admin' && !orgUnitId && !targetOrgUnit)}
+              disabled={
+                !newCategoryName.trim() ||
+                isSubmitting ||
+                (user?.role === "admin" && !orgUnitId && !targetOrgUnit) ||
+                (user?.role !== "admin" && !getPayloadOrgUnit())
+              }
             >
               {isSubmitting ? "Creating..." : "Create Category"}
             </Button>
@@ -282,7 +365,9 @@ export function CategorySelect({
               </div>
             ) : (
               filteredCategories.map(c => {
-                const canDelete = user?.role === 'admin' || c.orgUnitId === user?.orgUnitId;
+                const canDelete =
+                  user?.role === "admin" ||
+                  String(c.orgUnitId ?? "") === String(user?.orgUnitId ?? "");
                 const documentCount = getCategoryDocumentCount(c);
                 const inUse = documentCount > 0;
                 const documentLabel = `${documentCount} ${documentCount === 1 ? "document" : "documents"}`;
@@ -291,16 +376,29 @@ export function CategorySelect({
                   <div key={c.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card/50">
                     <div className="flex min-w-0 flex-1 flex-col">
                       {editingCategoryId === c.id ? (
-                        <Input
-                          value={editingCategoryName}
-                          onChange={(e) => setEditingCategoryName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleRenameCategory();
-                            if (e.key === 'Escape') handleCancelRenameCategory();
-                          }}
-                          className="h-9"
-                          autoFocus
-                        />
+                        <>
+                          <Input
+                            value={editingCategoryName}
+                            onChange={(e) => {
+                              setEditingCategoryName(e.target.value);
+                              if (renameCategoryNameError) setRenameCategoryNameError(false);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRenameCategory();
+                              if (e.key === 'Escape') handleCancelRenameCategory();
+                            }}
+                            aria-invalid={renameCategoryNameError}
+                            className={cn(
+                              "h-9",
+                              renameCategoryNameError &&
+                                "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30"
+                            )}
+                            autoFocus
+                          />
+                          {renameCategoryNameError && (
+                            <p className="mt-1 text-xs text-destructive">{duplicateCategoryMessage}</p>
+                          )}
+                        </>
                       ) : (
                         <span className="font-medium text-sm truncate">{c.name}</span>
                       )}

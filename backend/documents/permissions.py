@@ -126,6 +126,40 @@ def assert_category_delete_access(user, category):
     raise PermissionDenied("You do not have access to this category.")
 
 
+def resolve_category_org_unit_for_create(user, requested_org_unit_id=None):
+    """
+    Resolve the Org Unit for a new category.
+
+    Admin must pick an Org Unit (no global/unassigned categories via this flow).
+    Staff and Dept Head are always scoped to their allowed Org Unit(s).
+    """
+    role = getattr(user, "role", None)
+    if role == "admin":
+        if not requested_org_unit_id:
+            raise PermissionDenied("Org Unit is required when creating a category.")
+        return int(requested_org_unit_id)
+
+    org_unit = getattr(user, "org_unit", None)
+    if not org_unit:
+        raise PermissionDenied("Your account must be assigned to an Org Unit to create categories.")
+
+    if not requested_org_unit_id:
+        return org_unit.id
+
+    try:
+        requested_id = int(requested_org_unit_id)
+    except (TypeError, ValueError) as exc:
+        raise PermissionDenied("Invalid Org Unit.") from exc
+
+    if role == "staff" and requested_id != org_unit.id:
+        raise PermissionDenied("Staff can only create categories for their own Org Unit.")
+
+    if role == "dept_head" and requested_id not in org_unit_scope_ids(user):
+        raise PermissionDenied("Department Head can only create categories within their Org Unit scope.")
+
+    return requested_id
+
+
 def assert_document_edit_access(user, document):
     """Admin and Dept Head may edit document metadata; Staff may rename only."""
     role = getattr(user, "role", None)

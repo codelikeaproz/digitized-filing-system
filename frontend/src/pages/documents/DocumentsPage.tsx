@@ -202,6 +202,10 @@ export default function DocumentsPage() {
     return context;
   }, [selectedFolder, isVirtualFolder, isOrgUnitNode, categoryFilter, categories]);
 
+  const categoryOrgUnitId =
+    selectedFolder?.orgUnitId ??
+    (user?.role !== "admin" ? user?.orgUnitId : undefined);
+
   const handleSelectFolder = (folder: any) => {
     setSelectedFolder(folder);
     setCurrentPage(1);
@@ -371,7 +375,7 @@ export default function DocumentsPage() {
               onValueChange={handleCategoryChange} 
               className="w-full sm:w-[200px]"
               showAllOption
-              orgUnitId={isOrgUnitNode ? selectedFolder?.orgUnitId : selectedFolder?.orgUnitId}
+              orgUnitId={categoryOrgUnitId}
             />
             <DateRangeFilter
               startDate={startDate}

@@ -7,8 +7,8 @@ import type { Category } from "@/types";
 interface CategoryContextType {
   categories: Category[];
   loading: boolean;
-  addCategory: (name: string, orgUnitId?: string) => Promise<string | null>;
-  updateCategory: (id: string, name: string) => Promise<boolean>;
+  addCategory: (name: string, orgUnitId?: string) => Promise<{ id: string | null; duplicate: boolean }>;
+  updateCategory: (id: string, name: string) => Promise<{ ok: boolean; duplicate: boolean }>;
   deleteCategory: (id: string) => Promise<boolean>;
   refreshCategories: (orgUnitId?: string) => Promise<void>;
 }
@@ -52,37 +52,43 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
 
   const addCategory = useCallback(async (name: string, orgUnitId?: string) => {
     const trimmedName = name.trim();
-    if (!trimmedName) return null;
+    if (!trimmedName) return { id: null, duplicate: false };
 
     try {
-      const payload: any = { name: trimmedName };
-      if (orgUnitId) payload.orgUnitId = orgUnitId;
+      const payload: Record<string, string> = { name: trimmedName };
+      if (orgUnitId) {
+        payload.orgUnitId = orgUnitId;
+      }
       
       const newCategory = normalizeCategory(await api.post<Category>("/api/categories", payload));
       setCategories(prev => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)));
       toast.success(`Category "${newCategory.name}" added.`);
-      return newCategory.id;
+      return { id: newCategory.id, duplicate: false };
     } catch (error: any) {
       console.error("Error adding category:", error);
-      toast.error(error.message || "Failed to add category");
-      return null;
+      const message = error.message || "Failed to add category";
+      const duplicate = /already exists/i.test(message);
+      toast.error(message);
+      return { id: null, duplicate };
     }
   }, []);
 
   const updateCategory = useCallback(async (id: string, name: string) => {
     const trimmedName = name.trim();
-    if (!trimmedName) return false;
+    if (!trimmedName) return { ok: false, duplicate: false };
 
     try {
       const updatedCategory = normalizeCategory(await api.put<Category>(`/api/categories/${id}`, { name: trimmedName }));
       setCategories(prev => prev.map(c => c.id === id ? updatedCategory : c).sort((a, b) => a.name.localeCompare(b.name)));
 
       toast.success(`Category renamed to "${updatedCategory.name}".`);
-      return true;
+      return { ok: true, duplicate: false };
     } catch (error: any) {
       console.error("Error updating category:", error);
-      toast.error(error.message || "Failed to update category");
-      return false;
+      const message = error.message || "Failed to update category";
+      const duplicate = /already exists/i.test(message);
+      toast.error(message);
+      return { ok: false, duplicate };
     }
   }, [categories]);
 

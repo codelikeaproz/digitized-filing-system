@@ -27,6 +27,22 @@ interface RequestOptions extends RequestInit {
 }
 
 class ApiService {
+  private formatErrorPayload(data: any, fallback: string): string {
+    if (typeof data?.error === "string" && data.error) return data.error;
+    if (typeof data?.message === "string" && data.message) return data.message;
+    if (typeof data?.detail === "string" && data.detail) return data.detail;
+    if (Array.isArray(data?.detail) && data.detail.length) {
+      return data.detail.map(String).join(", ");
+    }
+    if (data && typeof data === "object") {
+      for (const value of Object.values(data)) {
+        if (Array.isArray(value) && value.length) return String(value[0]);
+        if (typeof value === "string" && value) return value;
+      }
+    }
+    return fallback;
+  }
+
   private getHeaders(): HeadersInit {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -117,7 +133,7 @@ class ApiService {
       }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || data.detail || `Request failed with status ${response.status}`);
+        throw new Error(this.formatErrorPayload(data, `Request failed with status ${response.status}`));
       }
 
       return data;
