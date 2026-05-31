@@ -35,3 +35,27 @@ export function formatManilaDate(value?: string | number | Date | null) {
     day: "2-digit",
   });
 }
+
+/** e.g. May 31, 2:30 pm — for document table */
+export function formatDocumentTableDate(value?: string | number | Date | null) {
+  if (!value) return "—";
+  const date = new Date(normalizeTimestamp(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MANILA_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "";
+  const dayPeriod = parts.find((part) => part.type === "dayPeriod")?.value?.toLowerCase() ?? "";
+
+  return `${month} ${day}, ${hour}:${minute} ${dayPeriod}`.trim();
+}

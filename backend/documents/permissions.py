@@ -124,3 +124,11 @@ def assert_category_delete_access(user, category):
         raise PermissionDenied("You do not have access to this category.")
 
     raise PermissionDenied("You do not have access to this category.")
+
+
+def assert_document_edit_access(user, document):
+    """Admin and Dept Head may edit document metadata; Staff may rename only."""
+    role = getattr(user, "role", None)
+    if role == "staff":
+        raise PermissionDenied("Staff cannot edit document details.")
+    assert_document_write_access(user, document)

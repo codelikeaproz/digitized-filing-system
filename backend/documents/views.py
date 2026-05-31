@@ -27,7 +27,7 @@ See also:
 import json
 import posixpath
 import re
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.conf import settings
 from django.http import FileResponse
@@ -35,6 +35,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.core.files.storage import default_storage
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -49,6 +50,7 @@ from ai.services.extraction_service import index_document_text
 from .models import Category, Document, Folder, ScanJob, ScannerStation
 from .serializers import (
     CategorySerializer,
+    DocumentEditSerializer,
     DocumentSerializer,
     ensure_unique_document_code,
     FolderSerializer,
@@ -59,6 +61,7 @@ from .serializers import (
 )
 from .permissions import (
     assert_category_delete_access,
+    assert_document_edit_access,
     assert_document_write_access,
     assert_folder_write_access,
     assert_recycle_bin_access,
@@ -111,6 +114,12 @@ def parse_keywords(value):
     if not isinstance(parsed, list):
         return []
     return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def keywords_validation_error(keywords):
+    if not keywords:
+        return "At least one keyword is required."
+    return None
 
 
 def validate_pdf_upload(upload):
@@ -444,6 +453,15 @@ class FolderViewSet(viewsets.ModelViewSet):
 # ---------------------------------------------------------------------------
 # Documents — list/filter, download, rename; Staff cannot DELETE
 # ---------------------------------------------------------------------------
+def parse_document_date_boundary(value, *, end_of_day=False):
+    parsed_date = parse_date(value or "")
+    if not parsed_date:
+        raise ValidationError({"date_range": "Date must use YYYY-MM-DD format."})
+    boundary_time = time.max if end_of_day else time.min
+    parsed_datetime = datetime.combine(parsed_date, boundary_time)
+    return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
+
+
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
     pagination_class = StandardResultsSetPagination
@@ -472,6 +490,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         folder_id = self.request.query_params.get("folderId")
         org_unit_id = self.request.query_params.get("orgUnitId")
         category_id = self.request.query_params.get("category")
+        start_date = self.request.query_params.get("start_date")
+        end_date = self.request.query_params.get("end_date")
         search = self.request.query_params.get("search")
         if org_unit_id:
             include_children = self.request.query_params.get("includeChildOrgUnits", "true").lower() != "false"
@@ -485,6 +505,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(folder_id=folder_id)
         if category_id:
             queryset = queryset.filter(category_id=category_id)
+        if start_date:
+            queryset = queryset.filter(created_at__gte=parse_document_date_boundary(start_date))
+        if end_date:
+            queryset = queryset.filter(created_at__lte=parse_document_date_boundary(end_date, end_of_day=True))
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search)
@@ -571,6 +595,119 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
         return Response(DocumentSerializer(document, context={"request": request}).data)
 
+    @action(detail=True, methods=["patch"], url_path="edit")
+    def edit_details(self, request, pk=None):
+        document = self.get_object()
+        assert_document_edit_access(request.user, document)
+
+        serializer = DocumentEditSerializer(
+            data=request.data,
+            context={"document": document, "request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        folder = Folder.objects.filter(pk=data["folderId"], is_deleted=False).first()
+        if not folder:
+            raise ValidationError({"folderId": "Target folder is required."})
+        assert_folder_write_access(request.user, folder)
+
+        category = Category.objects.filter(pk=data["categoryId"]).first()
+        if not category:
+            raise ValidationError({"categoryId": "Valid category is required."})
+        if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
+            raise ValidationError({"categoryId": "Category must belong to the selected folder's Org Unit."})
+
+        new_name = document.title
+        if data.get("file_name"):
+            new_name = normalize_pdf_filename(data["file_name"])
+
+        duplicate_exists = Document.objects.filter(
+            folder=folder,
+            is_deleted=False,
+            title=new_name,
+        ).exclude(pk=document.pk).exists()
+        if duplicate_exists:
+            raise ValidationError({"file_name": "A document with this file name already exists in this folder."})
+
+        old_folder_path = document.file_path or (document.folder.get_full_path() if document.folder else "")
+        old_name = document.file.name.rsplit("/", 1)[-1] if document.file else document.title
+        changes = []
+
+        with transaction.atomic():
+            if document.file and new_name != document.title:
+                old_storage_name = document.file.name
+                directory = posixpath.dirname(old_storage_name)
+                new_storage_name = posixpath.join(directory, new_name) if directory else new_name
+
+                if old_storage_name != new_storage_name:
+                    if default_storage.exists(new_storage_name):
+                        raise ValidationError({"file_name": "A file with this name already exists."})
+                    with default_storage.open(old_storage_name, "rb") as old_file:
+                        default_storage.save(new_storage_name, old_file)
+                    default_storage.delete(old_storage_name)
+                    document.file.name = new_storage_name
+                document.title = new_name
+                if old_name != new_name:
+                    changes.append(f"name: {old_name} → {new_name}")
+
+            if document.folder_id != folder.id:
+                changes.append(
+                    f"folder: {document.folder.get_full_path() if document.folder else old_folder_path} → {folder.get_full_path()}"
+                )
+                document.folder = folder
+                document.file_path = folder.get_full_path()
+
+            if document.category_id != category.id:
+                old_category = document.category.name if document.category else "None"
+                changes.append(f"category: {old_category} → {category.name}")
+                document.category = category
+
+            if (document.code or "") != data["code"]:
+                changes.append(f"code: {document.code or 'None'} → {data['code']}")
+                document.code = data["code"]
+
+            new_requestor = data.get("requestor")
+            if (document.requestor or None) != new_requestor:
+                changes.append(f"requestor updated")
+                document.requestor = new_requestor
+
+            new_description = data.get("description") or None
+            if (document.description or None) != new_description:
+                changes.append("description updated")
+                document.description = new_description
+
+            if (document.keywords or []) != data["keywords"]:
+                changes.append("keywords updated")
+                document.keywords = data["keywords"]
+
+            document.save(
+                update_fields=[
+                    "title",
+                    "file",
+                    "folder",
+                    "file_path",
+                    "category",
+                    "code",
+                    "requestor",
+                    "description",
+                    "keywords",
+                    "updated_at",
+                ]
+            )
+
+        change_summary = "; ".join(changes) if changes else "metadata refreshed"
+        log_audit(
+            request.user,
+            "EDIT_DOCUMENT",
+            f"Edited document: {document.title} ({change_summary})",
+            target_type="document",
+            target_name=document.title,
+            target_org_unit=document.folder.org_unit.name if document.folder and document.folder.org_unit else None,
+        )
+
+        return Response(DocumentSerializer(document, context={"request": request}).data)
+
 
 # ---------------------------------------------------------------------------
 # Document upload — multipart PDF + metadata (primary upload path for frontend)
@@ -599,6 +736,9 @@ class DocumentUploadView(APIView):
             )
 
         keywords = parse_keywords(request.data.get("keywords", "[]"))
+        keywords_error = keywords_validation_error(keywords)
+        if keywords_error:
+            return Response({"error": keywords_error}, status=status.HTTP_400_BAD_REQUEST)
         source = request.data.get("source", "Uploaded")
         if source not in {"Uploaded", "Scanned"}:
             return Response({"error": "Invalid document source."}, status=status.HTTP_400_BAD_REQUEST)
@@ -698,6 +838,11 @@ class ScanJobListCreateAPIView(APIView):
         if code_error:
             return Response({"message": code_error}, status=status.HTTP_400_BAD_REQUEST)
 
+        keywords = parse_keywords(request.data.get("keywords", []))
+        keywords_error = keywords_validation_error(keywords)
+        if keywords_error:
+            return Response({"message": keywords_error}, status=status.HTTP_400_BAD_REQUEST)
+
         active_job = ScanJob.objects.filter(
             station_id=station_id,
             status__in=SCAN_JOB_ACTIVE_STATUSES,
@@ -721,7 +866,7 @@ class ScanJobListCreateAPIView(APIView):
             title=(request.data.get("title") or "").strip(),
             requestor=(request.data.get("requestor") or "").strip(),
             description=(request.data.get("description") or "").strip()[:50],
-            keywords=parse_keywords(request.data.get("keywords", [])),
+            keywords=keywords,
         )
         log_audit(
             request.user,

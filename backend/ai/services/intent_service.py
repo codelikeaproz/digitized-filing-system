@@ -14,10 +14,9 @@ from django.utils import timezone
 
 from documents.models import Category, Folder
 from orgunits.models import OrgUnit
+from .chatbot_limits import BROWSE_FULL_LIST_HINT, chatbot_list_limit
 from .search_service import DocumentMatch, accessible_documents_for_user, is_list_request, org_unit_scope_ids
 
-
-MAX_DIRECT_MATCHES = 5
 
 COUNT_TERMS = {"how many", "count", "total number", "number of"}
 DOCUMENT_TERMS = {"document", "documents", "file", "files", "record", "records"}
@@ -131,7 +130,9 @@ def is_help_query(query):
     return cleaned in HELP_PHRASES
 
 
-def greeting_answer(user):
+def greeting_answer(user, *, repeat=False):
+    if repeat:
+        return "Hi again! Ask about a document code, folder, or say \"help\" for options."
     display_name = (getattr(user, "get_full_name", lambda: "")() or "").strip()
     salutation = f"Hi {display_name}!" if display_name else "Hi!"
     return (
@@ -145,17 +146,35 @@ def greeting_answer(user):
     )
 
 
-def help_answer():
+def help_answer(*, repeat=False):
+    if repeat:
+        return (
+            "Try a document code, folder name, or ask \"how many files do I have?\" "
+            "Say \"list all documents\" to preview up to 5 files in your access scope."
+        )
     return (
         "I can help with document tasks inside your access scope:\n"
         "- Count documents (overall, by folder, category, date, or filing year)\n"
-        "- List accessible documents or documents in a folder\n"
+        "- List accessible documents or documents in a folder (up to 5 at a time)\n"
         "- Find folders by name\n"
         "- Search by document code, title, keyword, or PDF text\n"
         "- Answer questions about a specific document's content\n\n"
         "Examples: \"list all documents\", \"how many files in Test folder\", "
         "\"find code 01-12551\", or \"summarize document 04-98391\"."
     )
+
+
+def list_more_note(shown_count, total):
+    if total <= shown_count:
+        return ""
+    return f"\nShowing {shown_count} of {total}.\n{BROWSE_FULL_LIST_HINT}"
+
+
+def list_response_metadata(total, shown):
+    return {
+        "total_matched": total,
+        "shown_count": shown,
+    }
 
 
 def has_any(normalized, terms):
@@ -198,7 +217,9 @@ def extract_folder_name(query):
     return ""
 
 
-def find_accessible_folders(user, folder_name, limit=MAX_DIRECT_MATCHES):
+def find_accessible_folders(user, folder_name, limit=None):
+    if limit is None:
+        limit = chatbot_list_limit()
     if not folder_name:
         return []
 
@@ -297,7 +318,9 @@ def build_document_queryset(user, query, folders=None):
     return queryset, filters
 
 
-def documents_in_folders(user, folders, limit=MAX_DIRECT_MATCHES):
+def documents_in_folders(user, folders, limit=None):
+    if limit is None:
+        limit = chatbot_list_limit()
     if not folders:
         return []
     queryset, _ = build_document_queryset(user, "", folders=folders)
@@ -423,22 +446,24 @@ def empty_documents_answer(user, *, filters=None, folders=None, query=None):
     return no_documents_in_scope_answer(user)
 
 
-def answer_direct_intent(user, query):
+def answer_direct_intent(user, query, session_hints=None):
     normalized_query = normalize_query(query)
     normalized = normalized_query.lower()
     if not normalized:
         return None
 
+    hints = session_hints or {}
+
     if is_greeting_query(normalized_query):
         return {
-            "answer": greeting_answer(user),
+            "answer": greeting_answer(user, repeat=bool(hints.get("recent_greeting"))),
             "matches": [],
             "audit_action": "CHATBOT_QUERY",
         }
 
     if is_help_query(normalized_query):
         return {
-            "answer": help_answer(),
+            "answer": help_answer(repeat=bool(hints.get("recent_help"))),
             "matches": [],
             "audit_action": "CHATBOT_QUERY",
         }
@@ -529,7 +554,9 @@ def answer_direct_intent(user, query):
                 "audit_action": "CHATBOT_NO_RESULT",
             }
         queryset, filters = build_document_queryset(user, normalized_query, folders=folders)
-        documents = list(queryset[:MAX_DIRECT_MATCHES])
+        list_limit = chatbot_list_limit()
+        total = queryset.count()
+        documents = list(queryset[:list_limit])
         if not documents:
             return {
                 "answer": empty_documents_answer(
@@ -543,15 +570,25 @@ def answer_direct_intent(user, query):
             }
         lines = "\n".join(format_document_line(document) for document in documents)
         filter_label = ", ".join(filters) if filters else folders[0].get_full_path()
+        if total > len(documents):
+            answer = (
+                f"{filter_label} has {total} accessible {pluralize_document(total)}.\n"
+                f"Showing {len(documents)} of {total}:\n{lines}\n{BROWSE_FULL_LIST_HINT}"
+            )
+        else:
+            answer = f"Here are documents I found {filter_label}:\n{lines}"
         return {
-            "answer": f"Here are documents I found {filter_label}:\n{lines}",
+            "answer": answer,
             "matches": document_matches(documents, "folder document"),
             "audit_action": "CHATBOT_QUERY",
+            **list_response_metadata(total, len(documents)),
         }
 
     if asks_list and (mentions_document or has_filter):
         queryset, filters = build_document_queryset(user, normalized_query)
-        documents = list(queryset[:MAX_DIRECT_MATCHES])
+        list_limit = chatbot_list_limit()
+        total = queryset.count()
+        documents = list(queryset[:list_limit])
         if not documents:
             return {
                 "answer": empty_documents_answer(
@@ -564,12 +601,12 @@ def answer_direct_intent(user, query):
             }
         lines = "\n".join(format_document_line(document) for document in documents)
         scope = f" matching {', '.join(filters)}" if filters else ""
-        total = queryset.count()
-        more_note = f"\nShowing {len(documents)} of {total}." if total > len(documents) else ""
+        more_note = list_more_note(len(documents), total)
         return {
             "answer": f"Here are the first {len(documents)} accessible {pluralize_document(len(documents))}{scope} I found:\n{lines}{more_note}",
             "matches": document_matches(documents, "accessible document"),
             "audit_action": "CHATBOT_QUERY",
+            **list_response_metadata(total, len(documents)),
         }
 
     return None

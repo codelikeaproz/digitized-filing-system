@@ -9,10 +9,11 @@ const INTERNAL_PROMPTS = [
 ];
 
 interface ChatEmptyStateProps {
+  disabled?: boolean;
   onSelectPrompt: (prompt: string) => void;
 }
 
-export function ChatEmptyState({ onSelectPrompt }: ChatEmptyStateProps) {
+export function ChatEmptyState({ disabled = false, onSelectPrompt }: ChatEmptyStateProps) {
   return (
     <div className="flex min-h-[360px] flex-col items-center justify-center px-5 text-center">
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#E8F1EA] text-[#0A4D27]">
@@ -28,6 +29,7 @@ export function ChatEmptyState({ onSelectPrompt }: ChatEmptyStateProps) {
             key={prompt}
             type="button"
             variant="outline"
+            disabled={disabled}
             className="h-auto justify-start rounded-lg border-[#D7E5D8] bg-white/85 px-3 py-2 text-left text-xs font-medium text-[#31583B] hover:bg-[#EEF6EF]"
             onClick={() => onSelectPrompt(prompt)}
           >

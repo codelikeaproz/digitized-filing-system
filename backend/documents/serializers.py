@@ -195,6 +195,35 @@ class DocumentSerializer(serializers.ModelSerializer):
         return code
 
 
+class DocumentEditSerializer(serializers.Serializer):
+    folderId = serializers.CharField()
+    categoryId = serializers.CharField()
+    code = serializers.CharField()
+    requestor = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50)
+    keywords = serializers.ListField(child=serializers.CharField(), allow_empty=False)
+    file_name = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_code(self, value):
+        document = self.context.get("document")
+        code = normalize_document_code(value)
+        ensure_unique_document_code(code, document_id=getattr(document, "pk", None))
+        return code
+
+    def validate_keywords(self, value):
+        cleaned = [str(item).strip() for item in (value or []) if str(item).strip()]
+        if not cleaned:
+            raise serializers.ValidationError("At least one keyword is required.")
+        return cleaned
+
+    def validate_description(self, value):
+        return (value or "").strip()[:50]
+
+    def validate_requestor(self, value):
+        cleaned = (value or "").strip()
+        return cleaned or None
+
+
 class ScannerStationSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
     stationId = serializers.CharField(source="station_id")

@@ -64,6 +64,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": "5/minute",
         "activation_email": "3/hour",
+        "chat": "30/minute",
     },
     "EXCEPTION_HANDLER": "config.exceptions.custom_exception_handler",
 }
@@ -233,6 +234,7 @@ DOCUMENT_TEXT_INDEX_CHAR_LIMIT = int(os.getenv("DOCUMENT_TEXT_INDEX_CHAR_LIMIT",
 AI_SUMMARY_MAX_CHARS = int(os.getenv("AI_SUMMARY_MAX_CHARS", "1200"))
 AI_SUMMARY_MAX_SENTENCES = int(os.getenv("AI_SUMMARY_MAX_SENTENCES", "6"))
 CHATBOT_EXCERPT_MAX_LENGTH = int(os.getenv("CHATBOT_EXCERPT_MAX_LENGTH", "1500"))
+CHATBOT_LIST_LIMIT = int(os.getenv("CHATBOT_LIST_LIMIT", "5"))
 
 # Password reset links expire after 30 minutes.
 PASSWORD_RESET_TIMEOUT = 60 * 30

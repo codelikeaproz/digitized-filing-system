@@ -6,6 +6,8 @@ from django.db.models import Q
 
 from documents.models import Document
 
+from .chatbot_limits import chatbot_list_limit
+
 
 MAX_EXCERPT_LENGTH = getattr(settings, "CHATBOT_EXCERPT_MAX_LENGTH", 1500)
 MIN_BROAD_QUERY_LENGTH = 2
@@ -146,7 +148,13 @@ def score_document(document, query):
     return score, reasons, safe_excerpt(extracted_text, query) if extracted_text and score else ""
 
 
-def search_accessible_documents(user, query, limit=5):
+def count_accessible_documents(user):
+    return accessible_documents_for_user(user).count()
+
+
+def search_accessible_documents(user, query, limit=None):
+    if limit is None:
+        limit = chatbot_list_limit()
     normalized = normalize_query(query)
     if not normalized:
         return []

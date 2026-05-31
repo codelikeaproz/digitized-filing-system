@@ -5,11 +5,12 @@ import { Textarea } from "@/components/ui/textarea";
 interface ChatInputProps {
   value: string;
   disabled?: boolean;
+  placeholder?: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
 }
 
-export function ChatInput({ value, disabled, onChange, onSubmit }: ChatInputProps) {
+export function ChatInput({ value, disabled, placeholder, onChange, onSubmit }: ChatInputProps) {
   return (
     <form
       className="shrink-0 border-t border-[#D7E5D8] bg-white/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
@@ -23,7 +24,10 @@ export function ChatInput({ value, disabled, onChange, onSubmit }: ChatInputProp
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Ask where a file is, what it contains, or find related documents..."
+          placeholder={
+            placeholder ||
+            "Ask where a file is, what it contains, or find related documents..."
+          }
           className="max-h-32 min-h-[46px] resize-none rounded-lg border-[#C9DACB] bg-white"
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {

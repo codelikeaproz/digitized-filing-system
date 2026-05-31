@@ -4,7 +4,7 @@
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { Eye, Download, MoreVertical, FileText, Trash2, Pencil } from 'lucide-react';
+import { Eye, Download, MoreVertical, FileText, Trash2, Pencil, FilePenLine } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,18 +47,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from '@/lib/auth-context';
+import { formatDocumentTableDate } from '@/lib/time';
 
 interface DocumentTableProps {
   data: any[];
   onView?: (doc: any) => void;
   onDownload?: (doc: any) => void;
   onRename?: (doc: any, fileName: string) => Promise<void> | void;
+  onEdit?: (doc: any) => void;
   onDelete?: (doc: any) => void;
 }
 
-export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: DocumentTableProps) {
+export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDelete }: DocumentTableProps) {
   const { user } = useAuth();
   const canDelete = user?.role?.toLowerCase() !== 'staff';
+  const canEdit = user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'dept_head';
 
   const [docToDelete, setDocToDelete] = React.useState<any>(null);
   const [docToRename, setDocToRename] = React.useState<any>(null);
@@ -81,13 +84,14 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
 
   return (
     <div className="min-w-0 overflow-hidden rounded-md border bg-card">
-      <Table className="min-w-[760px]">
+      <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[25%]">Title</TableHead>
             <TableHead>Requisitioner</TableHead>
             <TableHead>Category</TableHead>
             <TableHead>Location</TableHead>
+            <TableHead>Date</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -95,7 +99,7 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
         <TableBody>
           {data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                 No documents found.
               </TableCell>
             </TableRow>
@@ -133,6 +137,9 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
                 <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">
                   {doc.filePath}
                 </TableCell>
+                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                  {formatDocumentTableDate(doc.createdAt || doc.created_at)}
+                </TableCell>
                 <TableCell>{getStatusBadge(doc.status)}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -153,6 +160,12 @@ export function DocumentTable({ data, onView, onDownload, onRename, onDelete }: 
                         <Download className="mr-2 h-4 w-4 text-green-600" />
                         Download
                       </DropdownMenuItem>
+                      {canEdit && (
+                        <DropdownMenuItem onClick={() => onEdit?.(doc)}>
+                          <FilePenLine className="mr-2 h-4 w-4 text-blue-600" />
+                          Edit Details
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => openRename(doc)}>
                         <Pencil className="mr-2 h-4 w-4 text-amber-600" />
                         Rename

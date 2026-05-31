@@ -23,6 +23,7 @@ export interface PaginatedResponse<T> {
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | undefined | null>;
+  skipRateLimitRedirect?: boolean;
 }
 
 class ApiService {
@@ -85,10 +86,19 @@ class ApiService {
           data = {};
         }
 
+        const rateLimitError = new Error(
+          data.message || data.detail || data.error || "Too many requests. Please wait before trying again."
+        ) as Error & { status?: number };
+        rateLimitError.status = 429;
+
+        if (options.skipRateLimitRedirect) {
+          throw rateLimitError;
+        }
+
         if (!window.location.pathname.startsWith("/error/429")) {
           window.location.href = "/error/429";
         }
-        throw new Error(data.message || data.error || "Too many login attempts. Please wait before trying again.");
+        throw rateLimitError;
       }
 
       if (response.status >= 500) {
@@ -125,10 +135,15 @@ class ApiService {
     return this.request<T>(endpoint, { method: "GET", params });
   }
 
-  post<T>(endpoint: string, data?: any) {
+  post<T>(
+    endpoint: string,
+    data?: any,
+    options?: Pick<RequestOptions, "skipRateLimitRedirect">
+  ) {
     return this.request<T>(endpoint, {
       method: "POST",
       body: JSON.stringify(data),
+      ...options,
     });
   }
 

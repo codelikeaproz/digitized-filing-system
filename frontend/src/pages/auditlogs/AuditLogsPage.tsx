@@ -52,6 +52,7 @@ const ACTION_OPTIONS = [
   { value: "PASSWORD_RESET_SUCCESS", label: "Password Reset Success" },
   { value: "RENAME_FOLDER", label: "Rename Folder" },
   { value: "RENAME_DOCUMENT", label: "Rename Document" },
+  { value: "EDIT_DOCUMENT", label: "Edit Document" },
   { value: "DELETE_FOLDER", label: "Delete Folder" },
   { value: "RESTORE_FOLDER", label: "Restore Folder" },
   { value: "PERMANENT_DELETE_FOLDER", label: "Permanent Delete Folder" },

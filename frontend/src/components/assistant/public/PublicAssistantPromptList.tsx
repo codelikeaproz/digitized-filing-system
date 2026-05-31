@@ -1,18 +1,19 @@
 import { Button } from "@/components/ui/button";
 
 const PUBLIC_PROMPTS = [
-  "What is the Digitized Filing System?",
+  "What is DFS?",
+  "How does it work?",
   "How do I upload a PDF?",
-  "How is DFS structured?",
   "What are the user roles?",
   "How do I log in?",
 ];
 
 interface PublicAssistantPromptListProps {
+  disabled?: boolean;
   onSelect: (prompt: string) => void;
 }
 
-export function PublicAssistantPromptList({ onSelect }: PublicAssistantPromptListProps) {
+export function PublicAssistantPromptList({ disabled = false, onSelect }: PublicAssistantPromptListProps) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-[#55735C]">Suggested questions</p>
@@ -22,6 +23,7 @@ export function PublicAssistantPromptList({ onSelect }: PublicAssistantPromptLis
             key={prompt}
             type="button"
             variant="outline"
+            disabled={disabled}
             className="h-auto justify-start rounded-lg border-[#D7E5D8] bg-white/80 px-3 py-2 text-left text-xs font-medium text-[#31583B] hover:bg-[#EEF6EF]"
             onClick={() => onSelect(prompt)}
           >

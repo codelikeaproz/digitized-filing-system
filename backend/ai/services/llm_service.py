@@ -24,7 +24,7 @@ def call_openrouter(messages, session_id=None):
     payload = {
         "model": settings.OPENROUTER_MODEL,
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": 0.35,
         "max_tokens": 500,
     }
     if session_id:

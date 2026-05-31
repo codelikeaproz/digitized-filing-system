@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderNavigation } from "@/components/FolderNavigation";
 import { DocumentTable } from "@/components/DocumentTable";
 import { UploadDialog } from "@/components/UploadDialog";
+import { DocumentEditDialog } from "@/components/DocumentEditDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
@@ -47,6 +48,8 @@ import { api, PaginatedResponse } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { PaginationControls } from "@/components/PaginationControls";
 import { DocumentAssistant } from "@/components/assistant/documents/DocumentAssistant";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { AssistantPageContext } from "@/lib/assistant/pageContext";
 import { AssistantMatchedDocument } from "@/components/assistant/documents/ChatDocumentCard";
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
@@ -122,6 +125,7 @@ export default function DocumentsPage() {
   const [selectedFolder, setSelectedFolder] = useState<any>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocType | null>(null);
+  const [docToEdit, setDocToEdit] = useState<DocType | null>(null);
   const [folders, setFolders] = useState<any[]>([]);
   const [documents, setDocuments] = useState<DocType[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -130,6 +134,8 @@ export default function DocumentsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [flatFolders, setFlatFolders] = useState<any[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [documentCount, setDocumentCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -180,6 +186,22 @@ export default function DocumentsPage() {
   const isOrgUnitNode = selectedFolder?.type === "org_unit";
   const previewPdfUrl = getPdfUrl(previewDoc?.file_url);
 
+  const assistantPageContext = useMemo((): AssistantPageContext => {
+    const context: AssistantPageContext = {};
+    if (selectedFolder?.type === "folder" && !isVirtualFolder && !isOrgUnitNode) {
+      context.folderId = String(selectedFolder.id);
+      context.folderName = selectedFolder.name;
+    }
+    if (categoryFilter !== "all") {
+      const category = categories.find((item) => String(item.id) === String(categoryFilter));
+      if (category) {
+        context.categoryId = String(category.id);
+        context.categoryName = category.name;
+      }
+    }
+    return context;
+  }, [selectedFolder, isVirtualFolder, isOrgUnitNode, categoryFilter, categories]);
+
   const handleSelectFolder = (folder: any) => {
     setSelectedFolder(folder);
     setCurrentPage(1);
@@ -187,6 +209,18 @@ export default function DocumentsPage() {
 
   const handleCategoryChange = (value: string) => {
     setCategoryFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleDateRangeApply = (nextStartDate: string, nextEndDate: string) => {
+    setStartDate(nextStartDate);
+    setEndDate(nextEndDate);
+    setCurrentPage(1);
+  };
+
+  const handleDateRangeClear = () => {
+    setStartDate("");
+    setEndDate("");
     setCurrentPage(1);
   };
 
@@ -238,6 +272,8 @@ export default function DocumentsPage() {
       if (selectedFolder && selectedFolder.type === "folder") params.folderId = selectedFolder.id;
       if (isOrgUnitNode && selectedFolder?.orgUnitId) params.orgUnitId = selectedFolder.orgUnitId;
       if (categoryFilter !== "all") params.category = categoryFilter;
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
       const effectiveSearch = searchArg !== undefined ? searchArg : debouncedSearch;
       if (effectiveSearch) params.search = effectiveSearch;
       
@@ -257,7 +293,7 @@ export default function DocumentsPage() {
     // Poll for updates if we want "pseudo-realtime" without sockets
     const interval = setInterval(() => fetchDocuments(true), 5000);
     return () => clearInterval(interval);
-  }, [selectedFolder, debouncedSearch, categoryFilter, currentPage, pageSize]);
+  }, [selectedFolder, debouncedSearch, categoryFilter, startDate, endDate, currentPage, pageSize]);
 
   const processedDocs = useMemo(() => {
     return documents.map(doc => {
@@ -337,6 +373,15 @@ export default function DocumentsPage() {
               showAllOption
               orgUnitId={isOrgUnitNode ? selectedFolder?.orgUnitId : selectedFolder?.orgUnitId}
             />
+            <DateRangeFilter
+              startDate={startDate}
+              endDate={endDate}
+              onApply={handleDateRangeApply}
+              onClear={handleDateRangeClear}
+              className="w-full sm:w-auto"
+              startDateId="documents-start-date"
+              endDateId="documents-end-date"
+            />
             <Button 
               size="sm" 
               className="gap-2 bg-brand-green hover:bg-brand-green/90 h-9"
@@ -394,6 +439,7 @@ export default function DocumentsPage() {
                   throw error;
                 }
               }}
+              onEdit={(doc) => setDocToEdit(doc)}
             />
           )}
           <PaginationControls
@@ -419,7 +465,14 @@ export default function DocumentsPage() {
         selectedFolderId={isVirtualFolder || isOrgUnitNode ? undefined : selectedFolder?.id} 
         selectedFolderPath={isVirtualFolder ? 'All Files' : isOrgUnitNode ? selectedFolder?.name : folderPath.map(f => f.name).join(' > ') || 'All Files'}
       />
+      <DocumentEditDialog
+        open={!!docToEdit}
+        document={docToEdit}
+        onOpenChange={(open) => !open && setDocToEdit(null)}
+        onSaved={() => fetchDocuments(true)}
+      />
       <DocumentAssistant
+        pageContext={assistantPageContext}
         onViewDocument={handleAssistantViewDocument}
         onOpenFolder={handleAssistantOpenFolder}
       />

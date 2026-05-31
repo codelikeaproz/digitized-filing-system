@@ -262,6 +262,10 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       toast.error("Target folder is required.");
       return;
     }
+    if (keywords.length === 0) {
+      toast.error("Add at least one keyword before saving.");
+      return;
+    }
     if (!user) {
       toast.error("Auth session expired.");
       return;
@@ -617,7 +621,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
               <div className="space-y-3">
                 <Label htmlFor="keywords" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
                   <Tag className="h-3.5 w-3.5" />
-                  Keywords / Tags
+                  Keywords / Tags <span className="text-destructive">*</span>
                 </Label>
                 <div className="flex gap-2">
                   <Input 
@@ -642,7 +646,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                       <X className="h-3 w-3 cursor-pointer hover:text-destructive transition-colors" onClick={() => removeKeyword(kw)} />
                     </span>
                   )) : (
-                    <p className="text-[10px] text-muted-foreground italic">No keywords added</p>
+                    <p className="text-[10px] text-amber-700 italic">Add at least one keyword (required).</p>
                   )}
                 </div>
               </div>
@@ -706,7 +710,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
             {state === 'category-entry' && (
               <Button 
                 onClick={handleSave} 
-                disabled={!categoryId || !targetFolderId || !docTitle || !trimmedDocCode || !isDocumentCodeValid}
+                disabled={!categoryId || !targetFolderId || !docTitle || !trimmedDocCode || !isDocumentCodeValid || keywords.length === 0}
                 className="bg-[#0A4D27] hover:bg-[#083E1D] text-white min-w-32 h-10 rounded-lg"
               >
                 {source === "Scanned" ? "Create Scan Job" : "Confirm and Save Filing"}
