@@ -569,7 +569,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         duplicate_exists = Document.objects.filter(
             folder=document.folder,
             is_deleted=False,
-            title=new_name,
+            title__iexact=new_name,
         ).exclude(pk=document.pk).exists()
         if duplicate_exists:
             raise ValidationError({"file_name": "A document with this file name already exists in this folder."})
@@ -631,7 +631,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         duplicate_exists = Document.objects.filter(
             folder=folder,
             is_deleted=False,
-            title=new_name,
+            title__iexact=new_name,
         ).exclude(pk=document.pk).exists()
         if duplicate_exists:
             raise ValidationError({"file_name": "A document with this file name already exists in this folder."})
@@ -641,7 +641,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         changes = []
 
         with transaction.atomic():
-            if document.file and new_name != document.title:
+            if document.file and (new_name != document.title or old_name != new_name):
                 old_storage_name = document.file.name
                 directory = posixpath.dirname(old_storage_name)
                 new_storage_name = posixpath.join(directory, new_name) if directory else new_name
@@ -754,8 +754,21 @@ class DocumentUploadView(APIView):
             return Response({"message": code_error}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            title = normalize_pdf_filename(request.data.get("title") or upload.name)
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        if Document.objects.filter(folder=folder, is_deleted=False, title__iexact=title).exists():
+            return Response(
+                {"file_name": "A document with this file name already exists in this folder."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        upload.name = title
+
+        try:
             document = Document.objects.create(
-                title=request.data.get("title") or upload.name,
+                title=title,
                 file=upload,
                 file_path=request.data.get("filePath", folder.get_full_path()),
                 folder=folder,

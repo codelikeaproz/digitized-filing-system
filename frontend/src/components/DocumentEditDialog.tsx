@@ -82,7 +82,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
 
   useEffect(() => {
     if (!open || !document) return;
-    const currentName = document.file_name || document.title || "";
+    const currentName = document.title || document.file_name || "";
     setTargetFolderId(String(document.folderId || ""));
     setCustomFileName(currentName.replace(/\.pdf$/i, ""));
     setDocCode(document.code || "");
@@ -177,7 +177,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
                 <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                   Current Document
                 </Label>
-                <p className="text-sm font-semibold truncate">{document.file_name || document.title}</p>
+                <p className="text-sm font-semibold truncate">{document.title || document.file_name}</p>
                 <p className="text-[10px] text-muted-foreground uppercase">{document.filePath}</p>
               </div>
             </div>
@@ -187,7 +187,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
                 <FolderOpen className="h-3.5 w-3.5" />
                 Target Folder (Physical Location)
               </Label>
-              <Select value={targetFolderId} onValueChange={setTargetFolderId}>
+              <Select value={targetFolderId} onValueChange={(value) => value !== null && setTargetFolderId(value)}>
                 <SelectTrigger className="h-10 text-sm w-full">
                   <SelectValue placeholder="Select destination folder...">
                     {folderPaths.find((folder) => folder.id === targetFolderId)?.path}

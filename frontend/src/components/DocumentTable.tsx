@@ -77,7 +77,7 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
   };
 
   const openRename = (doc: any) => {
-    const currentName = doc.file_name || doc.title || "";
+    const currentName = doc.title || doc.file_name || "";
     setDocToRename(doc);
     setRenameValue(currentName.replace(/\.pdf$/i, ""));
   };
