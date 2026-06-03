@@ -255,6 +255,20 @@ class DocumentSerializer(serializers.ModelSerializer):
         return code
 
 
+def normalize_requestor_name(value):
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+
+    def capitalize_part(part):
+        return part[:1].upper() + part[1:].lower() if part else ""
+
+    words = []
+    for word in cleaned.split():
+        words.append("-".join(capitalize_part(piece) for piece in word.split("-") if piece is not None))
+    return " ".join(words)
+
+
 class DocumentEditSerializer(serializers.Serializer):
     folderId = serializers.CharField()
     categoryId = serializers.CharField()
@@ -280,8 +294,7 @@ class DocumentEditSerializer(serializers.Serializer):
         return (value or "").strip()[:50]
 
     def validate_requestor(self, value):
-        cleaned = (value or "").strip()
-        return cleaned or None
+        return normalize_requestor_name(value)
 
 
 class ScannerStationSerializer(serializers.ModelSerializer):

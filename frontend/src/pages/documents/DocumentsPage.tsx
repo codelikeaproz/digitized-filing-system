@@ -313,7 +313,7 @@ export default function DocumentsPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6 lg:flex-row">
       {/* Left Sidebar: Folders */}
-      <div className="min-h-[240px] w-full flex-shrink-0 border-right lg:min-h-[calc(100vh-120px)] lg:w-64 lg:pr-6">
+      <div className="flex min-h-[240px] w-full max-h-[min(70vh,calc(100vh-120px))] flex-shrink-0 flex-col border-right lg:max-h-[calc(100vh-120px)] lg:min-h-0 lg:w-64 lg:pr-6">
         <FolderNavigation 
           folders={folders} 
           onSelect={handleSelectFolder} 

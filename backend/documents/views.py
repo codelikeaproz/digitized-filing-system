@@ -49,6 +49,7 @@ from ai.services.extraction_service import index_document_text
 
 from .models import Category, Document, Folder, ScanJob, ScannerStation
 from .serializers import (
+    normalize_requestor_name,
     CategorySerializer,
     DocumentEditSerializer,
     DocumentSerializer,
@@ -775,7 +776,7 @@ class DocumentUploadView(APIView):
                 category=category,
                 uploader=request.user if request.user.is_authenticated else None,
                 code=code,
-                requestor=request.data.get("requestor") or None,
+                requestor=normalize_requestor_name(request.data.get("requestor")),
                 description=request.data.get("description") or None,
                 keywords=keywords,
                 filing_year=timezone.now().year,
@@ -883,7 +884,7 @@ class ScanJobListCreateAPIView(APIView):
             status="WAITING_FOR_SCAN",
             code=code,
             title=(request.data.get("title") or "").strip(),
-            requestor=(request.data.get("requestor") or "").strip(),
+            requestor=normalize_requestor_name(request.data.get("requestor")) or "",
             description=(request.data.get("description") or "").strip()[:50],
             keywords=keywords,
         )

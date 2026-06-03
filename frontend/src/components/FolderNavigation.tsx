@@ -6,7 +6,7 @@
  */
 import React, { useState } from "react";
 import { Folder, ChevronRight, ChevronDown, Plus, MoreHorizontal, Pencil, Trash2, FolderPlus, Building2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, sortByNaturalName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -56,7 +56,7 @@ const FolderItem: React.FC<FolderItemProps> = ({
 }) => {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const childNodes = folder.children || folder.folders || [];
+  const childNodes = sortByNaturalName(folder.children || folder.folders || []);
   const hasChildren = childNodes.length > 0;
   const isAdmin = user?.role === 'admin';
   const isDeptHead = user?.role === 'dept_head';
@@ -253,17 +253,23 @@ export function FolderNavigation({ folders, onSelect, selectedId }: { folders: a
     setDialogType('delete');
   };
 
-  const nodes = folders.some((folder) => folder.id === ALL_FILES_NODE.id) ? folders : [ALL_FILES_NODE, ...folders];
+  const baseNodes = folders.some((folder) => folder.id === ALL_FILES_NODE.id)
+    ? folders
+    : [ALL_FILES_NODE, ...folders];
+  const nodes = [
+    ...baseNodes.filter((folder) => folder.id === ALL_FILES_NODE.id),
+    ...sortByNaturalName(baseNodes.filter((folder) => folder.id !== ALL_FILES_NODE.id)),
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between px-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex shrink-0 items-center justify-between px-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Folders</h3>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openCreateFromToolbar}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
-      <div className="space-y-1">
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
         {nodes.map((folder) => (
           <FolderItem 
             key={folder.id}

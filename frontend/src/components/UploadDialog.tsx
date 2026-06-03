@@ -44,7 +44,7 @@ import {
   FolderOpen
 } from "lucide-react";
 import { CategorySelect } from "@/components/CategorySelect";
-import { cn } from "@/lib/utils";
+import { cn, compareByNaturalName, formatPersonName } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useCategories } from "@/contexts/CategoryContext";
 import { toast } from "sonner";
@@ -187,7 +187,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       id: f.id,
       path: getPath(f.id),
       level: getPath(f.id).split(" > ").length - 1
-    })).sort((a, b) => a.path.localeCompare(b.path));
+    })).sort((a, b) => compareByNaturalName(a.path, b.path));
   }, [folders]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -274,6 +274,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
     setIsProcessing(true);
     let cleanFileName = customFileName.trim();
     const finalName = cleanFileName ? `${cleanFileName}.pdf` : "unnamed_document.pdf";
+    const formattedRequestor = formatPersonName(docTitle);
     
     try {
       const selectedFolder = folders.find(f => f.id === targetFolderId);
@@ -289,7 +290,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
         const scanJob = await api.post<ScanJob>("/api/scan-jobs", {
           stationId: SCANNER_STATION_ID,
           title: finalName,
-          requestor: docTitle,
+          requestor: formattedRequestor,
           categoryId,
           folderId: targetFolderId,
           code: trimmedDocCode,
@@ -306,7 +307,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
       const formData = new FormData();
       formData.append("file", file as File);
       formData.append("title", finalName);
-      formData.append("requestor", docTitle);
+      formData.append("requestor", formattedRequestor);
       formData.append("categoryId", categoryId);
       formData.append("categoryName", categoryObj.name);
       formData.append("folderId", targetFolderId);
@@ -521,7 +522,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                       {folderPaths.find(fp => fp.id === targetFolderId)?.path}
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-60">
                     {folderPaths.map(fp => (
                       <SelectItem key={fp.id} value={fp.id}>
                         <span style={{ paddingLeft: `${fp.level * 12}px` }}>
@@ -582,6 +583,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, selectedFol
                   placeholder="Enter document title or requisitioner name"
                   value={docTitle} 
                   onChange={(e) => setDocTitle(e.target.value)}
+                  onBlur={(e) => setDocTitle(formatPersonName(e.target.value))}
                   className="h-10"
                 />
               </div>

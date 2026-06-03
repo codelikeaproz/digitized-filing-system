@@ -3,7 +3,7 @@
  * Used by DocumentsPage. APIs: PATCH rename, DELETE document, file_url preview.
  */
 import * as React from 'react';
-import { cn } from '@/lib/utils';
+import { cn, formatPersonName } from '@/lib/utils';
 import { Eye, Download, MoreVertical, FileText, Trash2, Pencil, FilePenLine } from 'lucide-react';
 import {
   DropdownMenu,
@@ -132,7 +132,9 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
                     </TooltipProvider>
                   </div>
                 </TableCell>
-                <TableCell className="max-w-[150px] truncate">{doc.requestor || "—"}</TableCell>
+                <TableCell className="max-w-[150px] truncate">
+                  {doc.requestor ? formatPersonName(doc.requestor) : "—"}
+                </TableCell>
                 <TableCell className="max-w-[160px] truncate">{doc.category}</TableCell>
                 <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">
                   {doc.filePath}

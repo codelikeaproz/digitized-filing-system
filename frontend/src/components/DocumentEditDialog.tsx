@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { CategorySelect } from "@/components/CategorySelect";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, compareByNaturalName, formatPersonName } from "@/lib/utils";
 import { Document, Folder } from "@/types";
 
 const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9-]+$/;
@@ -70,7 +70,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
         level: getPath(folder.id).split(" > ").length - 1,
         orgUnitId: folder.orgUnitId,
       }))
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .sort((a, b) => compareByNaturalName(a.path, b.path));
   }, [folders]);
 
   useEffect(() => {
@@ -139,7 +139,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
         folderId: targetFolderId,
         categoryId,
         code: trimmedDocCode,
-        requestor,
+        requestor: formatPersonName(requestor),
         description,
         keywords,
         file_name: customFileName.trim(),
@@ -193,7 +193,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
                     {folderPaths.find((folder) => folder.id === targetFolderId)?.path}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60">
                   {folderPaths.map((folder) => (
                     <SelectItem key={folder.id} value={folder.id}>
                       <span style={{ paddingLeft: `${folder.level * 12}px` }}>{folder.path}</span>
@@ -248,6 +248,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               <Input
                 id="edit-requestor"
                 value={requestor}
+                onBlur={(e) => setRequestor(formatPersonName(e.target.value))}
                 onChange={(event) => setRequestor(event.target.value)}
                 className="h-10"
               />
