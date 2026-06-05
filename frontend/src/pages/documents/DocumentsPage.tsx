@@ -4,7 +4,7 @@
  * Features:
  * - Folder tree navigation and breadcrumbs
  * - Paginated document table with search
- * - PDF upload (UploadDialog) and optional scan workflow
+ * - PDF upload (UploadDialog)
  * - Document rename, delete (role-dependent), preview via file_url
  * - In-app Document Assistant drawer
  *
@@ -15,6 +15,7 @@ import { FolderNavigation } from "@/components/FolderNavigation";
 import { DocumentTable } from "@/components/DocumentTable";
 import { UploadDialog } from "@/components/UploadDialog";
 import { DocumentEditDialog } from "@/components/DocumentEditDialog";
+import { formatRequisitionersDisplay } from "@/lib/requisitioner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
@@ -392,8 +393,6 @@ export default function DocumentsPage() {
               onClick={() => setIsUploadOpen(true)}
             >
               <FileUp className="h-4 w-4" />
-              {/* SCANNER HIDDEN FOR TESTING — restore below to re-enable */}
-              {/* Scan/Upload */}
               Upload
             </Button>
           </div>
@@ -488,8 +487,18 @@ export default function DocumentsPage() {
               <FileUp className="h-6 w-6 text-primary" />
               Document Preview
             </DialogTitle>
-            <DialogDescription className="text-base">
-              Viewing: <span className="font-semibold text-foreground">{previewDoc?.title}</span> ({previewDoc?.category})
+            <DialogDescription className="text-base space-y-1">
+              <p>
+                Viewing: <span className="font-semibold text-foreground">{previewDoc?.title}</span> ({previewDoc?.category})
+              </p>
+              {previewDoc && formatRequisitionersDisplay(previewDoc.requisitioners || []) && (
+                <p className="text-sm text-muted-foreground">
+                  Requisitioners:{" "}
+                  <span className="font-medium text-foreground">
+                    {formatRequisitionersDisplay(previewDoc.requisitioners || [])}
+                  </span>
+                </p>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-hidden rounded-lg border bg-muted">

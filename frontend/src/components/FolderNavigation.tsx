@@ -233,7 +233,7 @@ export function FolderNavigation({ folders, onSelect, selectedId }: { folders: a
     }
 
     if (user?.role === "admin") {
-      toast.error("Select an Org Unit first, then create a folder inside it.");
+      toast.error("Select an Office Unit first, then create a folder inside it.");
       return;
     }
 

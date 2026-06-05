@@ -45,10 +45,27 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatManilaDate } from '@/lib/time';
+import { RolePermissionLegend } from '@/components/users/RolePermissionLegend';
+import { sanitizeEmployeeNumberInput, validateEmployeeNumber } from '@/lib/employee-number';
+
+const SUFFIX_OPTIONS = [
+  { value: '', label: 'No Suffix' },
+  { value: 'Jr.', label: 'Jr.' },
+  { value: 'Sr.', label: 'Sr.' },
+  { value: 'I', label: 'I' },
+  { value: 'II', label: 'II' },
+  { value: 'III', label: 'III' },
+  { value: 'IV', label: 'IV' },
+  { value: 'V', label: 'V' },
+] as const;
 
 type User = {
   id: string;
   fullName: string;
+  employeeNumber?: string;
+  firstName?: string;
+  lastName?: string;
+  suffix?: string;
   email: string;
   role: string;
   isActive: boolean;
@@ -60,6 +77,7 @@ type User = {
   activationStatus?: 'active' | 'pending' | 'expired' | 'inactive';
   activationEmailSentAt?: string | null;
   activationExpiresAt?: string | null;
+  canManage?: boolean;
 };
 
 export default function UsersPage() {
@@ -84,13 +102,17 @@ export default function UsersPage() {
   const [statusTargetUser, setStatusTargetUser] = useState<User | null>(null);
   const [orgUnits, setOrgUnits] = useState<{id: string, name: string}[]>([]);
   const [formData, setFormData] = useState({
-    fullName: '',
+    employeeNumber: '',
+    firstName: '',
+    lastName: '',
+    suffix: '',
     email: '',
     role: 'staff',
     orgUnitId: '',
     password: '',
     isActive: true
   });
+  const [employeeNumberError, setEmployeeNumberError] = useState('');
   
   const { user: currentUser } = useAuth();
   const currentUserRole = currentUser?.role?.toLowerCase();
@@ -100,10 +122,25 @@ export default function UsersPage() {
   const isSelectedLastActiveAdmin = Boolean(selectedUser?.isLastActiveAdmin);
   const lastAdminMessage = 'At least one active Admin must remain in the system.';
 
+  const suffixOptions = React.useMemo(() => {
+    const options: { value: string; label: string }[] = SUFFIX_OPTIONS.map((option) => ({
+      value: option.value,
+      label: option.label,
+    }));
+    const current = formData.suffix;
+    if (current && !options.some((option) => option.value === current)) {
+      options.push({ value: current, label: current });
+    }
+    return options;
+  }, [formData.suffix]);
+
   const canManageUser = (target: User) => {
+    if (typeof target.canManage === 'boolean') return target.canManage;
     if (isAdmin) return true;
     return isDeptHead && target.role === 'staff' && String(target.orgUnitId || '') === currentUserOrgUnitId;
   };
+
+  const isReadOnlyHeadRow = (target: User) => isDeptHead && target.role === 'dept_head' && !canManageUser(target);
 
   const isPendingActivation = (target: User) => (
     target.activationStatus ? target.activationStatus === 'pending' : !target.isActive && target.hasUsablePassword === false
@@ -143,7 +180,7 @@ export default function UsersPage() {
   const fetchOrgUnits = async () => {
     try {
       if (isDeptHead && currentUserOrgUnitId) {
-        setOrgUnits([{ id: currentUserOrgUnitId, name: currentUser?.orgUnitName || 'Assigned Org Unit' }]);
+        setOrgUnits([{ id: currentUserOrgUnitId, name: currentUser?.orgUnitName || 'Assigned Office Unit' }]);
         return;
       }
       const data = await api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 });
@@ -184,17 +221,43 @@ export default function UsersPage() {
     setCurrentPage(1);
   };
 
+  const applyApiFieldErrors = (errors: unknown) => {
+    if (!errors || typeof errors !== 'object') return;
+    const record = errors as Record<string, unknown>;
+    const employeeError = record.employeeNumber;
+    if (Array.isArray(employeeError) && employeeError.length) {
+      setEmployeeNumberError(String(employeeError[0]));
+    } else if (typeof employeeError === 'string') {
+      setEmployeeNumberError(employeeError);
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
+    const nextValue =
+      name === 'employeeNumber'
+        ? sanitizeEmployeeNumberInput(value)
+        : type === 'checkbox'
+          ? (e.target as HTMLInputElement).checked
+          : value;
+
+    if (name === 'employeeNumber') {
+      setEmployeeNumberError('');
+    }
+
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: nextValue
     }));
   };
 
   const handleOpenAdd = () => {
+    setEmployeeNumberError('');
     setFormData({
-      fullName: '',
+      employeeNumber: '',
+      firstName: '',
+      lastName: '',
+      suffix: '',
       email: '',
       role: 'staff',
       orgUnitId: isDeptHead ? currentUserOrgUnitId : orgUnits[0]?.id || '',
@@ -210,13 +273,17 @@ export default function UsersPage() {
       return;
     }
     setSelectedUser(user);
-    setFormData({ 
-      fullName: user.fullName, 
-      email: user.email, 
+    setEmployeeNumberError('');
+    setFormData({
+      employeeNumber: user.employeeNumber || '',
+      firstName: user.firstName || user.fullName.split(' ')[0] || '',
+      lastName: user.lastName || user.fullName.split(' ').slice(1).join(' ') || '',
+      suffix: user.suffix || '',
+      email: user.email,
       role: isDeptHead ? 'staff' : user.role,
       orgUnitId: isDeptHead ? currentUserOrgUnitId : user.orgUnitId || '',
-      password: '', // blank intentionally
-      isActive: user.isActive 
+      password: '',
+      isActive: user.isActive
     });
     setIsEditModalOpen(true);
   };
@@ -236,9 +303,18 @@ export default function UsersPage() {
 
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    const employeeValidationError = validateEmployeeNumber(formData.employeeNumber);
+    if (employeeValidationError) {
+      setEmployeeNumberError(employeeValidationError);
+      toast.error(employeeValidationError);
+      return;
+    }
     try {
       const payload = {
-        fullName: formData.fullName,
+        employeeNumber: formData.employeeNumber.trim(),
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        suffix: formData.suffix,
         email: formData.email,
         role: isDeptHead ? 'staff' : formData.role,
         orgUnitId: isDeptHead ? currentUserOrgUnitId : formData.role === 'admin' ? null : formData.orgUnitId,
@@ -255,6 +331,7 @@ export default function UsersPage() {
       toast.info('Activation email sent. The user must set their own password before login.');
       setIsAddModalOpen(false);
     } catch (error: any) {
+      applyApiFieldErrors(error.errors);
       toast.error(error.message || 'Failed to create user');
     }
   };
@@ -262,6 +339,12 @@ export default function UsersPage() {
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
+    const employeeValidationError = validateEmployeeNumber(formData.employeeNumber);
+    if (employeeValidationError) {
+      setEmployeeNumberError(employeeValidationError);
+      toast.error(employeeValidationError);
+      return;
+    }
     if (selectedUser.isLastActiveAdmin && formData.role !== 'admin') {
       toast.error(lastAdminMessage);
       return;
@@ -281,6 +364,7 @@ export default function UsersPage() {
       toast.success('User updated successfully');
       setIsEditModalOpen(false);
     } catch (error: any) {
+      applyApiFieldErrors(error.errors);
       toast.error(error.message || 'Failed to update user');
     }
   };
@@ -377,6 +461,10 @@ export default function UsersPage() {
         </Button>
       </div>
 
+      <div className="mb-6">
+        <RolePermissionLegend />
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {/* Toolbar */}
         <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4 items-center justify-between bg-gray-50/50">
@@ -400,7 +488,7 @@ export default function UsersPage() {
                 >
                   <option value="all">All Roles</option>
                   <option value="admin">Admin Only</option>
-                  <option value="dept_head">Dept Head Only</option>
+                  <option value="dept_head">Head Only</option>
                   <option value="staff">Staff Only</option>
                 </select>
                 <select
@@ -409,7 +497,7 @@ export default function UsersPage() {
                   onChange={(e) => handleOrgUnitFilterChange(e.target.value)}
                   className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none max-w-[200px]"
                 >
-                  <option value="all">All Org Units</option>
+                  <option value="all">All Office Units</option>
                   {orgUnits.map(ou => (
                     <option key={ou.id} value={ou.id}>{ou.name}</option>
                   ))}
@@ -417,12 +505,17 @@ export default function UsersPage() {
               </>
             ) : (
               <div className="h-10 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
-                Org Unit: <span className="font-semibold text-gray-800">{currentUser?.orgUnitName || 'Assigned Org Unit'}</span>
+                Office Unit: <span className="font-semibold text-gray-800">{currentUser?.orgUnitName || 'Assigned Office Unit'}</span>
               </div>
             )}
           </div>
-          <div className="text-sm font-medium text-gray-500">
-            {userCount} Users Total
+          <div className="text-sm font-medium text-gray-500 text-right">
+            <div>{userCount} Users Total</div>
+            {isDeptHead && (
+              <div className="text-xs font-normal text-gray-400 mt-0.5">
+                Head accounts are read-only
+              </div>
+            )}
           </div>
         </div>
 
@@ -434,7 +527,7 @@ export default function UsersPage() {
                 <TableHead className="w-[20%] pl-6">Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Org Unit</TableHead>
+                <TableHead>Office Unit</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date Joined</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
@@ -451,14 +544,27 @@ export default function UsersPage() {
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    No users found matching your search.
+                    {isDeptHead
+                      ? 'No staff accounts found. Add staff to manage them here.'
+                      : 'No users found matching your search.'}
                   </TableCell>
                 </TableRow>
               ) : (
                 users.map((user) => (
-                  <TableRow key={user.id}>
+                  <TableRow
+                    key={user.id}
+                    className={isReadOnlyHeadRow(user) ? 'bg-amber-50/40' : undefined}
+                  >
                     <TableCell className="pl-6 font-medium">
-                      {user.fullName}
+                      <div>
+                        {user.fullName}
+                        {user.id === currentUser?.id && (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">(You)</span>
+                        )}
+                      </div>
+                      {user.employeeNumber && (
+                        <div className="text-xs text-muted-foreground">#{user.employeeNumber}</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
                     <TableCell>
@@ -468,7 +574,7 @@ export default function UsersPage() {
                         </Badge>
                       ) : user.role === 'dept_head' ? (
                         <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">
-                          <ShieldCheck className="mr-1 h-3 w-3" /> Dept Head
+                          <ShieldCheck className="mr-1 h-3 w-3" /> Head
                         </Badge>
                       ) : (
                         <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
@@ -510,52 +616,58 @@ export default function UsersPage() {
                       {formatManilaDate(user.createdAt)}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          className={cn(
-                            buttonVariants({ variant: "ghost" }),
-                            "h-8 w-8 p-0"
-                          )}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem 
-                            onClick={() => handleOpenStatusModal(user)}
-                            disabled={!canManageUser(user) || isPendingActivation(user) || isActivationExpired(user) || user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
+                      {isReadOnlyHeadRow(user) ? (
+                        <Badge variant="outline" className="text-muted-foreground font-normal">
+                          Read-only
+                        </Badge>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className={cn(
+                              buttonVariants({ variant: "ghost" }),
+                              "h-8 w-8 p-0"
+                            )}
                           >
-                            <span className="flex items-center">
-                              {user.isActive ? (
-                                <>
-                                  <XCircle className="mr-2 h-4 w-4 text-orange-500" /> Deactivate Account
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Activate Account
-                                </>
-                              )}
-                            </span>
-                          </DropdownMenuItem>
-                          {(isPendingActivation(user) || isActivationExpired(user)) && (
-                            <DropdownMenuItem onClick={() => handleResendActivation(user)} disabled={!canManageUser(user)}>
-                              <Mail className="mr-2 h-4 w-4 text-emerald-600" /> Resend Activation Email
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => handleOpenEdit(user)} disabled={!canManageUser(user)}>
-                            <Edit className="mr-2 h-4 w-4 text-blue-500" /> Edit
-                          </DropdownMenuItem>
-                          {isAdmin && user.id !== currentUser?.id && <DropdownMenuSeparator />}
-                          {isAdmin && (
+                            <MoreVertical className="h-4 w-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem 
-                              className="text-destructive focus:bg-destructive/10"
-                              onClick={() => handleOpenDelete(user)}
-                              disabled={!canDeleteUser(user)}
+                              onClick={() => handleOpenStatusModal(user)}
+                              disabled={!canManageUser(user) || isPendingActivation(user) || isActivationExpired(user) || user.id === currentUser?.id || Boolean(user.isLastActiveAdmin && user.isActive)}
                             >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              <span className="flex items-center">
+                                {user.isActive ? (
+                                  <>
+                                    <XCircle className="mr-2 h-4 w-4 text-orange-500" /> Deactivate Account
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Activate Account
+                                  </>
+                                )}
+                              </span>
                             </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {(isPendingActivation(user) || isActivationExpired(user)) && (
+                              <DropdownMenuItem onClick={() => handleResendActivation(user)} disabled={!canManageUser(user)}>
+                                <Mail className="mr-2 h-4 w-4 text-emerald-600" /> Resend Activation Email
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => handleOpenEdit(user)} disabled={!canManageUser(user)}>
+                              <Edit className="mr-2 h-4 w-4 text-blue-500" /> Edit
+                            </DropdownMenuItem>
+                            {isAdmin && user.id !== currentUser?.id && <DropdownMenuSeparator />}
+                            {isAdmin && (
+                              <DropdownMenuItem 
+                                className="text-destructive focus:bg-destructive/10"
+                                onClick={() => handleOpenDelete(user)}
+                                disabled={!canDeleteUser(user)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -585,15 +697,63 @@ export default function UsersPage() {
             
             <form onSubmit={isAddModalOpen ? handleSubmitAdd : handleSubmitEdit} className="p-6 space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Full Name</label>
-                <Input 
-                  name="fullName"
-                  value={formData.fullName}
+                <label className="text-sm font-medium text-gray-700">Employee Number</label>
+                <Input
+                  name="employeeNumber"
+                  value={formData.employeeNumber}
                   onChange={handleInputChange}
-                  required
                   className="h-11 rounded-xl"
-                  placeholder="John Doe"
+                  placeholder="e.g. 20240001"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  required
                 />
+                <p className="text-xs text-muted-foreground">Digits only. Must be unique across all users.</p>
+                {employeeNumberError && (
+                  <p className="text-xs text-destructive">{employeeNumberError}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">First Name</label>
+                  <Input
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                    required
+                    className="h-11 rounded-xl"
+                    placeholder="John"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Last Name</label>
+                  <Input
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                    required
+                    className="h-11 rounded-xl"
+                    placeholder="Doe"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Suffix</label>
+                <select
+                  title="Select suffix"
+                  name="suffix"
+                  value={formData.suffix}
+                  onChange={handleInputChange}
+                  className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  {suffixOptions.map((option) => (
+                    <option key={option.value || 'none'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-2">
@@ -620,12 +780,12 @@ export default function UsersPage() {
                   className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="staff">Staff</option>
-                  {isAdmin && <option value="dept_head">Department Head</option>}
+                  {isAdmin && <option value="dept_head">Head</option>}
                   {isAdmin && <option value="admin">Admin</option>}
                 </select>
                 {isDeptHead && (
                   <p className="text-xs text-gray-500">
-                    Department Heads can create and edit Staff accounts only.
+                    Heads can create and edit Staff accounts only.
                   </p>
                 )}
                 {isEditModalOpen && isSelectedLastActiveAdmin && (
@@ -636,7 +796,7 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Organization Unit</label>
+                <label className="text-sm font-medium text-gray-700">Office Unit</label>
                 {formData.role === 'admin' ? (
                   <div className="flex h-11 w-full items-center rounded-xl border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
                     Global Access (Not applicable for Admins)
@@ -651,7 +811,7 @@ export default function UsersPage() {
                     disabled={isDeptHead}
                     className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value="">Select Organization Unit</option>
+                    <option value="">Select Office Unit</option>
                     {orgUnits.map(ou => (
                       <option key={ou.id} value={ou.id}>{ou.name}</option>
                     ))}
@@ -659,7 +819,7 @@ export default function UsersPage() {
                 )}
                 {isDeptHead && (
                   <p className="text-xs text-gray-500">
-                    Organization Unit is locked to your assigned scope.
+                    Office Unit is locked to your assigned scope.
                   </p>
                 )}
               </div>

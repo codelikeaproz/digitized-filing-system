@@ -80,6 +80,15 @@ class OrgUnitSerializer(serializers.ModelSerializer):
     childCount = serializers.SerializerMethodField()
     canDelete = serializers.SerializerMethodField()
     deleteBlockReason = serializers.SerializerMethodField()
+    storageQuotaMb = serializers.IntegerField(source="storage_quota_mb", required=False)
+    storageUsedMb = serializers.DecimalField(
+        source="storage_used_mb",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+    storageRemainingMb = serializers.SerializerMethodField()
+    storagePercentUsed = serializers.SerializerMethodField()
 
     class Meta:
         model = OrgUnit
@@ -100,12 +109,29 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             "childCount",
             "canDelete",
             "deleteBlockReason",
+            "storageQuotaMb",
+            "storageUsedMb",
+            "storageRemainingMb",
+            "storagePercentUsed",
         ]
+        read_only_fields = ["storage_used_mb"]
+
+    def validate_storage_quota_mb(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError("Storage quota must be at least 1 MB.")
+        return value
 
     def validate_parentId(self, value):
         return value or None
 
     def validate(self, attrs):
+        request = self.context.get("request")
+        if request and "storage_quota_mb" in attrs:
+            if getattr(request.user, "role", None) != "admin":
+                raise serializers.ValidationError(
+                    {"storageQuotaMb": "Only Admin users can configure storage quota."}
+                )
+
         instance = getattr(self, "instance", None)
         org_type = attrs.get("org_type")
         legacy_type = (attrs.get("type") or "").strip()
@@ -172,4 +198,16 @@ class OrgUnitSerializer(serializers.ModelSerializer):
 
         if not reasons:
             return ""
-        return f"Cannot delete while this Org Unit contains {', '.join(reasons)}."
+        return f"Cannot delete while this Office Unit contains {', '.join(reasons)}."
+
+    def get_storageRemainingMb(self, obj):
+        quota = obj.storage_quota_mb or 0
+        used = float(obj.storage_used_mb or 0)
+        return round(max(0, quota - used), 2)
+
+    def get_storagePercentUsed(self, obj):
+        quota = obj.storage_quota_mb or 0
+        if not quota:
+            return 0.0
+        used = float(obj.storage_used_mb or 0)
+        return round(min(100.0, (used / quota) * 100), 1)

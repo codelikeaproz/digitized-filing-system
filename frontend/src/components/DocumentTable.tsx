@@ -3,7 +3,8 @@
  * Used by DocumentsPage. APIs: PATCH rename, DELETE document, file_url preview.
  */
 import * as React from 'react';
-import { cn, formatPersonName } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { getRequisitionerTableCell, getTitleTooltipRequisitioners } from '@/lib/requisitioner';
 import { Eye, Download, MoreVertical, FileText, Trash2, Pencil, FilePenLine } from 'lucide-react';
 import {
   DropdownMenu,
@@ -104,7 +105,10 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
               </TableCell>
             </TableRow>
           ) : (
-            data.map((doc) => (
+            data.map((doc) => {
+              const requisitionerCell = getRequisitionerTableCell(doc);
+              const requisitionersTooltip = getTitleTooltipRequisitioners(doc);
+              return (
               <TableRow key={doc.id}>
                 <TableCell className="font-medium">
                   <div className="flex items-center gap-2">
@@ -114,17 +118,22 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
                         <TooltipTrigger className="truncate max-w-[250px] cursor-help hover:text-brand-green transition-colors font-medium border-0 bg-transparent p-0 text-left">
                           {doc.title}
                         </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-[320px] text-xs p-3 space-y-2 shadow-xl bg-card text-card-foreground border">
-                           <div className="grid grid-cols-[70px_1fr] gap-x-2 gap-y-1.5 items-start">
-                             <div className="text-muted-foreground font-medium">Code:</div>
-                             <div className="font-mono truncate" title={doc.code || "—"}>{doc.code || "—"}</div>
-                             
-                             <div className="text-muted-foreground font-medium">Description:</div>
-                             <div className="line-clamp-2" title={doc.description || "—"}>{doc.description || "—"}</div>
-                             
-                             <div className="text-muted-foreground font-medium">Keywords:</div>
-                             <div className="line-clamp-2" title={Array.isArray(doc.keywords) && doc.keywords.length > 0 ? doc.keywords.join(", ") : "—"}>
+                        <TooltipContent side="right" className="max-w-[340px] p-3 text-xs shadow-xl bg-card text-card-foreground border">
+                           <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 items-start">
+                             <div className="shrink-0 text-muted-foreground font-medium">Code:</div>
+                             <div className="min-w-0 font-mono break-all">{doc.code || "—"}</div>
+
+                             <div className="shrink-0 text-muted-foreground font-medium">Description:</div>
+                             <div className="min-w-0 break-words">{doc.description || "—"}</div>
+
+                             <div className="shrink-0 text-muted-foreground font-medium">Keywords:</div>
+                             <div className="min-w-0 break-words">
                                {Array.isArray(doc.keywords) && doc.keywords.length > 0 ? doc.keywords.join(", ") : "—"}
+                             </div>
+
+                             <div className="shrink-0 text-muted-foreground font-medium">Requisitioners:</div>
+                             <div className="min-w-0 whitespace-pre-line break-words leading-relaxed">
+                               {requisitionersTooltip || "—"}
                              </div>
                            </div>
                         </TooltipContent>
@@ -132,8 +141,8 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
                     </TooltipProvider>
                   </div>
                 </TableCell>
-                <TableCell className="max-w-[150px] truncate">
-                  {doc.requestor ? formatPersonName(doc.requestor) : "—"}
+                <TableCell className="max-w-[180px] truncate">
+                  <span className="block truncate">{requisitionerCell.label || "—"}</span>
                 </TableCell>
                 <TableCell className="max-w-[160px] truncate">{doc.category}</TableCell>
                 <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">
@@ -183,7 +192,8 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
                   </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))
+            );
+            })
           )}
         </TableBody>
       </Table>

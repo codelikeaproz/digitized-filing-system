@@ -16,7 +16,7 @@ The **Digitized Filing System (DFS) API** is a Django REST Framework backend tha
 | Default permission | `IsAuthenticated` on all endpoints unless explicitly set to `AllowAny` |
 | Roles | `admin`, `dept_head`, `staff` |
 | Data scoping | OrgUnit-based; Department Heads include child OrgUnits |
-| Documents | PDF-only uploads with metadata (code, requestor, description, keywords, category, folder) |
+| Documents | PDF-only uploads with metadata (code, requisitioners, description, keywords, category, folder) |
 | Soft delete | Folders and documents use `is_deleted`; Recycle Bin supports restore and permanent delete |
 | Audit logging | Server-side `log_audit()` helper; optional client-side audit POST from frontend |
 | Time zone | `Asia/Manila` (formatted timestamps via `format_local_datetime`) |
@@ -424,7 +424,7 @@ Or custom:
 | `403` | Forbidden | Role or OrgUnit restriction |
 | `404` | Not Found | Resource not found or not visible in scope |
 | `405` | Method Not Allowed | Public registration disabled |
-| `409` | Conflict | Duplicate document code, active scan job conflict |
+| `409` | Conflict | Duplicate document code |
 | `415` | Unsupported Media Type | Non-PDF upload (implicit via validation) |
 | `429` | Too Many Requests | Login or activation email throttle |
 | `500` | Server Error | Unexpected backend failure |
@@ -457,25 +457,80 @@ Or custom:
 | | |
 |---|---|
 | **Method** | `GET` |
-| **Path** | `/api/dashboard/stats` |
+| **Path** | `/api/dashboard/` (preferred) or `/api/dashboard/stats` (legacy alias) |
 | **Auth** | Bearer JWT |
 | **Roles** | All authenticated users |
 
-**Success `200`:**
+**Query parameters:**
+
+| Parameter | Values | Access |
+|-----------|--------|--------|
+| `office_unit` | `all` (default for admin), Office Unit ID | Admin only |
+
+**Role behavior:**
+- **Admin** — `office_unit=all` returns global stats + storage comparison chart data; specific ID returns scoped Office Unit stats
+- **Head / Staff** — always scoped to assigned Office Unit; filter param ignored (enforced on backend)
+
+**Success `200` (global):**
 
 ```json
 {
+  "scope": "global",
+  "office_unit_name": "All Office Units",
+  "office_unit_filter": "all",
+  "can_filter_office_units": true,
   "total_documents": 42,
-  "uploaded_files": 30,
-  "scanned_files": 12,
+  "uploaded_files": 42,
   "total_org_units": 5,
-  "total_users": 18
+  "total_users": 18,
+  "deleted_files": null,
+  "storage": {
+    "org_unit_name": "All Office Units",
+    "quota_mb": 10240,
+    "used_mb": 3200.5,
+    "remaining_mb": 7039.5,
+    "usage_percentage": 31.3,
+    "percent_used": 31.3
+  },
+  "storage_by_office_unit": [
+    {
+      "org_unit_id": "1",
+      "org_unit_name": "College of Engineering",
+      "quota_mb": 5120,
+      "used_mb": 2000,
+      "remaining_mb": 3120,
+      "usage_percentage": 39.1
+    }
+  ]
 }
 ```
 
-**OrgUnit scope:** None — returns **system-wide** counts for all roles.
+**Success `200` (specific Office Unit):**
 
-**Status: Needs Review** — Dept Head and Staff receive global metrics, not scoped counts.
+```json
+{
+  "scope": "office_unit",
+  "office_unit_id": "5",
+  "office_unit_name": "College of Engineering",
+  "office_unit_filter": "5",
+  "can_filter_office_units": true,
+  "total_documents": 10,
+  "uploaded_files": 10,
+  "total_org_units": null,
+  "total_users": 3,
+  "deleted_files": 1,
+  "storage": {
+    "quota_mb": 500,
+    "used_mb": 400,
+    "remaining_mb": 100,
+    "usage_percentage": 80,
+    "percent_used": 80
+  },
+  "storage_by_office_unit": []
+}
+```
+
+**Storage calculations:** `used_mb`, `remaining_mb`, and `usage_percentage` are computed dynamically from `Document.file_size` and `OrgUnit.storage_quota_mb` (not stored as dashboard fields).
 
 ---
 
@@ -498,7 +553,7 @@ Or custom:
 | `orgUnitId` | integer | Filter by OrgUnit |
 | `includeChildOrgUnits` | boolean | Default `true`; include child OrgUnits when filtering by `orgUnitId` |
 | `category` | integer | Category ID |
-| `search` | string | Matches title, code, description, requestor, keywords |
+| `search` | string | Matches title, code, description, requestor (legacy), requisitioner employee number/full name, keywords |
 | `page` | integer | Page number |
 | `page_size` | integer | Items per page (max 100) |
 
@@ -520,7 +575,16 @@ Or custom:
       "categoryId": "1",
       "category": "Reports",
       "code": "01-12551",
-      "requestor": "Jane Doe",
+      "requestor": "202400123 - Jane Doe",
+      "requisitioners": [
+        {
+          "employeeNumber": "202400123",
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "suffix": "",
+          "fullName": "Jane Doe"
+        }
+      ],
       "description": "Monthly report",
       "keywords": ["report", "may"],
       "filingYear": 2026,
@@ -565,11 +629,12 @@ Or custom:
 | `categoryId` | Yes | Category ID (must match folder OrgUnit if category is scoped) |
 | `code` | Yes | Unique document code (letters, numbers, hyphens) |
 | `title` | No | Defaults to uploaded filename |
-| `requestor` | No | Requestor / requisitioner name |
+| `requisitioners` | Yes | JSON array string, e.g. `[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; digits-only employee numbers; no duplicates per document) |
+| `requestor` | No | Legacy derived display string (synced server-side from `requisitioners`; do not send on manual upload) |
 | `description` | No | Max 50 characters |
 | `keywords` | No | JSON array string, e.g. `["keyword1","keyword2"]` |
 | `filePath` | No | Display path; defaults to folder full path |
-| `source` | No | `Uploaded` (default) or `Scanned` |
+| `source` | No | `Uploaded` (default; legacy rows may show `Scanned`) |
 
 **Success `201`:** Full `DocumentSerializer` object.
 
@@ -603,6 +668,40 @@ Or custom:
 | **Scope** | Must be in accessible OrgUnit |
 
 Uses `DocumentSerializer` — code uniqueness validated on update.
+
+---
+
+#### Edit document details
+
+| | |
+|---|---|
+| **Method** | `PATCH` |
+| **Path** | `/api/documents/{id}/edit` |
+| **Auth** | Bearer JWT |
+| **Roles** | Admin, Dept Head |
+
+**Request body (JSON):**
+
+```json
+{
+  "folderId": "3",
+  "categoryId": "1",
+  "code": "01-12551",
+  "requisitioners": [
+    { "employeeNumber": "202400123", "firstName": "Jane", "lastName": "Doe", "suffix": "" },
+    { "employeeNumber": "202400456", "firstName": "Maria", "lastName": "Santos", "suffix": "" }
+  ],
+  "description": "Monthly report",
+  "keywords": ["report", "may"],
+  "file_name": "report"
+}
+```
+
+- Replaces the full requisitioner list (add/update/remove sync)
+- `requestor` in responses is derived as `"emp - name, emp - name"` for backward compatibility
+- At least one requisitioner required; employee numbers must be digits only and unique per document
+
+**Success `200`:** Full `DocumentSerializer` object.
 
 ---
 
@@ -843,7 +942,6 @@ Unique per `(name, org_unit)`.
 **Blocked when:**
 
 - Active documents reference the category
-- Completed scan jobs reference the category
 
 **Success `200`:**
 
@@ -1175,6 +1273,29 @@ Same filters as list endpoint.
 
 ---
 
+#### Audit log analytics (bar chart data)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/api/audit-logs/analytics/` |
+| **Auth** | Bearer JWT |
+| **Roles** | Admin (global), Dept Head (scoped) |
+
+Same query filters as list endpoint (`search`, `action`, `role`, `orgUnit`, `start_date`, `end_date`).
+
+**Success `200`:**
+
+```json
+{
+  "uploads_by_org_unit": [{ "org_unit": "Headquarters", "count": 12 }],
+  "deletes_by_org_unit": [{ "org_unit": "Headquarters", "count": 3 }],
+  "edits_by_org_unit": [{ "org_unit": "Headquarters", "count": 5 }]
+}
+```
+
+---
+
 ### 7.10 Recycle Bin API
 
 #### List deleted items
@@ -1305,33 +1426,6 @@ Returns `{ "matches": [...] }` without LLM answer.
 
 ---
 
-### 7.13 Scanner / Scan Jobs API
-
-**Status: Needs Review** — Implemented for Scanner Bridge integration; not required for core DFS document management.
-
-**Feature flag:** Scanner routes are exposed only when `ENABLE_SCANNER_FEATURE=true` in backend environment settings.
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/scanner/stations` | JWT | List scanner stations |
-| POST | `/api/scanner/stations/heartbeat` | `X-Scanner-Token` | Bridge heartbeat (`AllowAny`) |
-| GET/POST | `/api/scan-jobs` | JWT | List/create scan jobs |
-| GET | `/api/scan-jobs/pending` | Scanner token | Poll pending job |
-| GET/PATCH | `/api/scan-jobs/{id}` | JWT | Job detail / cancel |
-| POST | `/api/scan-jobs/{id}/upload` | Scanner token | Upload scanned PDF |
-| PATCH | `/api/scan-jobs/{id}/fail` | Scanner token | Mark job failed |
-
-**Scanner bridge headers:**
-
-```http
-X-Scanner-Token: <SCANNER_BRIDGE_TOKEN>
-X-Scanner-Station: <station_id>
-```
-
-**Enablement guide:** See `docs/SCANNER_FEATURE.md` for backend/frontend flags and full workflow.
-
----
-
 ## 8. Query Parameters (Summary)
 
 | Parameter | Used in |
@@ -1372,7 +1466,7 @@ No global `ordering` query parameter is implemented on list endpoints.
 }
 ```
 
-**Non-paginated endpoints:** Categories list, Folders list, Org Types list, Folder tree, Dashboard stats, Scanner stations.
+**Non-paginated endpoints:** Categories list, Folders list, Org Types list, Folder tree, Dashboard stats.
 
 ---
 
@@ -1382,14 +1476,14 @@ No global `ordering` query parameter is implemented on list endpoints.
 |------|-------|
 | Allowed type | PDF only (`.pdf`, `%PDF` header) |
 | Max size | 50 MB |
-| Upload endpoints | `POST /api/documents/upload`, `POST /api/scan-jobs/{id}/upload` |
+| Upload endpoints | `POST /api/documents/upload` |
 | Storage path | `media/documents/YYYY/MM/DD/<filename>` |
 | Required metadata | `folderId`, `categoryId`, `code` |
 | Document code | Unique, pattern `^[A-Za-z0-9-]+$`, stored uppercase |
 | Description max length | 50 characters |
 | Keywords | JSON array of strings |
 | Duplicate filename | Rejected within same folder |
-| Source values | `Uploaded`, `Scanned` |
+| Source values | `Uploaded` (default; legacy rows may show `Scanned`) |
 
 ---
 
@@ -1397,12 +1491,11 @@ No global `ordering` query parameter is implemented on list endpoints.
 
 | Rule | Implementation |
 |------|----------------|
-| JWT required | All endpoints except login, forgot/reset/set password, scanner bridge, JWT refresh |
+| JWT required | All endpoints except login, forgot/reset/set password, JWT refresh |
 | Role checks | Enforced in views (not a centralized permission class) |
 | OrgUnit filtering | Queryset filtering per view |
 | Login rate limit | 5/minute per IP |
 | Activation email limit | 3/hour per user |
-| Scanner token | `X-Scanner-Token` must match `SCANNER_BRIDGE_TOKEN` |
 | Password reset | 30-minute token expiry |
 | Last admin protection | Cannot deactivate/delete last active Admin |
 | Client logout | Clears localStorage only; no server token revocation |
@@ -1432,8 +1525,6 @@ No global `ordering` query parameter is implemented on list endpoints.
 | `EMAIL_HOST_PASSWORD` | SMTP password | `<secret>` |
 | `DEFAULT_FROM_EMAIL` | From address | `<email>` |
 | `FRONTEND_URL` | Base URL for email links | `http://localhost:5173` |
-| `ENABLE_SCANNER_FEATURE` | Toggle scanner endpoints on/off | `true` |
-| `SCANNER_BRIDGE_TOKEN` | Scanner bridge auth token | `<secret>` |
 | `OPENROUTER_API_KEY` | AI assistant API key | `<secret>` |
 | `OPENROUTER_MODEL` | LLM model slug | `google/gemini-2.5-flash-lite` |
 | `OPENROUTER_BASE_URL` | OpenRouter API base | `https://openrouter.ai/api/v1` |
@@ -1503,7 +1594,7 @@ curl -X POST http://localhost:8000/api/documents/upload \
   -F "folderId=3" \
   -F "categoryId=1" \
   -F "code=01-99999" \
-  -F "requestor=Jane Doe" \
+  -F 'requisitioners=[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]' \
   -F "description=Test upload" \
   -F 'keywords=["test","pdf"]'
 ```
@@ -1555,7 +1646,6 @@ curl -X POST http://localhost:8000/api/ai/chat/ \
 | Self-service profile update | No dedicated endpoint for user to update own `fullName` |
 | Server logout | Not implemented; JWT valid until expiry |
 | Token refresh in frontend | Refresh token returned on login but auto-refresh not wired in `api.ts` |
-| Scanner integration | Functional but optional; requires Scanner Bridge + token |
 | AI assistant | Requires `OPENROUTER_API_KEY`; falls back to safe message on LLM failure |
 | Public registration | Explicitly disabled (`405`) |
 | Trailing slash inconsistency | Mixed across routers; match frontend call patterns |
@@ -1597,7 +1687,7 @@ Installed via `drf-spectacular`:
 
 Use JWT **Authorize** in Swagger with: `Bearer <access_token>` from login.
 
-> Hand-written sections in this file remain the source for role rules and business logic. Generated schema may not document every custom permission or feature flag (e.g. `ENABLE_SCANNER_FEATURE`).
+> Hand-written sections in this file remain the source for role rules and business logic. Generated schema may not document every custom permission or feature flag.
 
 ---
 
@@ -1617,8 +1707,7 @@ Use JWT **Authorize** in Swagger with: `Bearer <access_token>` from login.
 | Recycle Bin | 3 |
 | Account Settings | 3 (via auth/users) |
 | AI Assistant | 2 |
-| Scanner / Scan Jobs | 7 (Needs Review) |
-| **Total** | **~65 route handlers** |
+| **Total** | **~58 route handlers** |
 
 ### Marked Needs Review
 
@@ -1626,7 +1715,6 @@ Use JWT **Authorize** in Swagger with: `Bearer <access_token>` from login.
 - OrgUnit write permissions
 - AuditLog ViewSet mutability
 - Self-service profile update
-- Scanner / scan job integration
 - AI assistant (operational dependency on OpenRouter)
 
 ### Suggested next improvements

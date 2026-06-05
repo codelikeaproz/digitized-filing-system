@@ -23,8 +23,8 @@ pymysql.install_as_MySQLdb()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR.parent / ".env")
-load_dotenv(BASE_DIR / ".env", override=True)
+# Django loads environment variables from backend/.env only.
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -201,6 +201,11 @@ USE_TZ = True
 STATIC_URL = "static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+PROFILE_PICTURE_MAX_SIZE_BYTES = int(os.getenv("PROFILE_PICTURE_MAX_SIZE_BYTES", str(2 * 1024 * 1024)))
+PROFILE_PICTURE_ALLOWED_TYPES = {
+    "image/jpeg",
+    "image/png",
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -219,8 +224,6 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
-ENABLE_SCANNER_FEATURE = env_bool("ENABLE_SCANNER_FEATURE", True)
-SCANNER_BRIDGE_TOKEN = os.getenv("SCANNER_BRIDGE_TOKEN", "change-me-local-scanner-token")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
@@ -235,6 +238,9 @@ AI_SUMMARY_MAX_CHARS = int(os.getenv("AI_SUMMARY_MAX_CHARS", "1200"))
 AI_SUMMARY_MAX_SENTENCES = int(os.getenv("AI_SUMMARY_MAX_SENTENCES", "6"))
 CHATBOT_EXCERPT_MAX_LENGTH = int(os.getenv("CHATBOT_EXCERPT_MAX_LENGTH", "1500"))
 CHATBOT_LIST_LIMIT = int(os.getenv("CHATBOT_LIST_LIMIT", "5"))
+
+# Compress PDFs on manual upload (pypdf).
+PDF_COMPRESSION_ENABLED = env_bool("PDF_COMPRESSION_ENABLED", True)
 
 # Password reset links expire after 30 minutes.
 PASSWORD_RESET_TIMEOUT = 60 * 30

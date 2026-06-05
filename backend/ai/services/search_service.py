@@ -56,7 +56,7 @@ def accessible_documents_for_user(user):
         is_deleted=False,
         folder__is_deleted=False,
         folder__org_unit__is_deleted=False,
-    ).select_related("folder", "folder__org_unit", "category")
+    ).select_related("folder", "folder__org_unit", "category").prefetch_related("requisitioners")
 
     if getattr(user, "role", None) == "admin":
         return queryset
@@ -114,6 +114,7 @@ def score_document(document, query):
     description = document.description or ""
     keywords = [str(keyword) for keyword in (document.keywords or [])]
     extracted_text = document.extracted_text or ""
+    requestor_display = document.requestor or ""
 
     if code and code.lower() == query_lower:
         score += 1000
@@ -138,6 +139,24 @@ def score_document(document, query):
     if contains(description, query):
         score += 420
         reasons.append("description")
+    for requisitioner in document.requisitioners.all():
+        employee_number = requisitioner.employee_number or ""
+        full_name = requisitioner.get_full_name()
+        if employee_number and employee_number.lower() == query_lower:
+            score += 920
+            reasons.append("exact employee number")
+        elif contains(employee_number, query):
+            score += 600
+            reasons.append("employee number")
+        if full_name.lower() == query_lower:
+            score += 820
+            reasons.append("exact requisitioner name")
+        elif contains(full_name, query):
+            score += 540
+            reasons.append("requisitioner")
+    if contains(requestor_display, query):
+        score += 480
+        reasons.append("requestor")
     if any(contains(keyword, query) for keyword in keywords):
         score += 440
         reasons.append("keywords")
@@ -199,7 +218,12 @@ def search_accessible_documents(user, query, limit=None):
         | Q(description__icontains=normalized)
         | Q(keywords__icontains=normalized)
         | Q(extracted_text__icontains=normalized)
-    )[:80]
+        | Q(requestor__icontains=normalized)
+        | Q(requisitioners__employee_number__icontains=normalized)
+        | Q(requisitioners__first_name__icontains=normalized)
+        | Q(requisitioners__last_name__icontains=normalized)
+        | Q(requisitioners__suffix__icontains=normalized)
+    ).distinct()[:80]
 
     matches = []
     for document in candidate_queryset:

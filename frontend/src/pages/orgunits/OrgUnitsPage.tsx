@@ -33,6 +33,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+const STORAGE_QUOTA_PRESETS = [
+  { value: '500', label: '500 MB', mb: 500 },
+  { value: '1024', label: '1 GB', mb: 1024 },
+  { value: '5120', label: '5 GB', mb: 5120 },
+  { value: 'custom', label: 'Custom', mb: null },
+] as const;
+
+type StorageQuotaPreset = (typeof STORAGE_QUOTA_PRESETS)[number]['value'];
+
+const getPresetForQuotaMb = (quotaMb: number | string | undefined): StorageQuotaPreset => {
+  const numericQuota = Number(quotaMb);
+  if (!Number.isFinite(numericQuota) || numericQuota <= 0) {
+    return '1024';
+  }
+  const matchedPreset = STORAGE_QUOTA_PRESETS.find((preset) => preset.mb === numericQuota);
+  return matchedPreset ? matchedPreset.value : 'custom';
+};
+
 export default function OrgUnitsPage() {
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [allOrgUnits, setAllOrgUnits] = useState<OrgUnit[]>([]);
@@ -47,7 +65,13 @@ export default function OrgUnitsPage() {
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', parentId: '', orgTypeId: '' });
+  const [formData, setFormData] = useState({
+    name: '',
+    parentId: '',
+    orgTypeId: '',
+    storageQuotaMb: '1024',
+    storageQuotaPreset: '1024' as StorageQuotaPreset,
+  });
   const [typeFormData, setTypeFormData] = useState({ name: '', is_active: true });
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [ouToDelete, setOuToDelete] = useState<OrgUnit | null>(null);
@@ -122,20 +146,45 @@ export default function OrgUnitsPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleQuotaPresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const preset = e.target.value as StorageQuotaPreset;
+    const matchedPreset = STORAGE_QUOTA_PRESETS.find((option) => option.value === preset);
+
+    setFormData((prev) => ({
+      ...prev,
+      storageQuotaPreset: preset,
+      storageQuotaMb:
+        matchedPreset?.mb != null ? String(matchedPreset.mb) : prev.storageQuotaMb,
+    }));
+  };
+
   const handleTypeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     setTypeFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   const handleOpenAdd = () => {
-    setFormData({ name: '', parentId: '', orgTypeId: orgTypes.find(type => type.is_active)?.id || '' });
+    setFormData({
+      name: '',
+      parentId: '',
+      orgTypeId: orgTypes.find(type => type.is_active)?.id || '',
+      storageQuotaMb: '1024',
+      storageQuotaPreset: '1024',
+    });
     setIsEditMode(false);
     setEditId(null);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (ou: OrgUnit) => {
-    setFormData({ name: ou.name, parentId: ou.parentId || '', orgTypeId: getOrgTypeId(ou) });
+    const quotaMb = String(ou.storageQuotaMb || 1024);
+    setFormData({
+      name: ou.name,
+      parentId: ou.parentId || '',
+      orgTypeId: getOrgTypeId(ou),
+      storageQuotaMb: quotaMb,
+      storageQuotaPreset: getPresetForQuotaMb(quotaMb),
+    });
     setIsEditMode(true);
     setEditId(ou.id);
     setIsModalOpen(true);
@@ -163,7 +212,7 @@ export default function OrgUnitsPage() {
       await api.delete(`/api/org-units/${ouToDelete.id}/`);
       await fetchOrgUnits();
       await fetchAllOrgUnits();
-      toast.success('Org Unit deleted successfully');
+      toast.success('Office Unit deleted successfully');
       setOuToDelete(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete org unit');
@@ -180,15 +229,17 @@ export default function OrgUnitsPage() {
           name: formData.name,
           parentId: formData.parentId || null,
           org_type_id: formData.orgTypeId || null,
+          storageQuotaMb: Number(formData.storageQuotaMb),
         });
         await fetchOrgUnits();
         await fetchAllOrgUnits();
-        toast.success('Org Unit updated successfully');
+        toast.success('Office Unit updated successfully');
       } else {
         await api.post<OrgUnit>('/api/org-units/', {
           name: formData.name,
           parentId: formData.parentId || null,
           org_type_id: formData.orgTypeId || null,
+          storageQuotaMb: Number(formData.storageQuotaMb),
         });
         if (currentPage === 1) {
           await fetchOrgUnits();
@@ -196,7 +247,7 @@ export default function OrgUnitsPage() {
           setCurrentPage(1);
         }
         await fetchAllOrgUnits();
-        toast.success('Org Unit created successfully');
+        toast.success('Office Unit created successfully');
       }
       setIsModalOpen(false);
     } catch (error: any) {
@@ -263,7 +314,7 @@ export default function OrgUnitsPage() {
 
   const canDeleteOrgUnit = (orgUnit: OrgUnit) => orgUnit.canDelete !== false;
   const getDeleteBlockReason = (orgUnit: OrgUnit) => (
-    orgUnit.deleteBlockReason || 'Cannot delete while this Org Unit contains users, folders, documents, or sub-units.'
+    orgUnit.deleteBlockReason || 'Cannot delete while this Office Unit contains users, folders, documents, or sub-units.'
   );
 
   const activeOrgTypes = orgTypes.filter(type => type.is_active);
@@ -280,16 +331,16 @@ export default function OrgUnitsPage() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3 text-gray-900">
             <Network className="h-8 w-8 text-[#0A4D27]" />
-            Organization Units
+            Office Units
           </h1>
-          <p className="text-gray-500 mt-1">Manage organization structure and database-driven types.</p>
+          <p className="text-gray-500 mt-1">Manage office structure, storage quotas, and database-driven types.</p>
         </div>
         <Button
           onClick={handleOpenAdd}
           className="bg-[#0A4D27] hover:bg-[#083E1D] text-white gap-2 h-11 px-6 rounded-xl shadow-sm"
         >
           <Plus className="h-4 w-4" />
-          Add Org Unit
+          Add Office Unit
         </Button>
       </div>
 
@@ -300,6 +351,7 @@ export default function OrgUnitsPage() {
               <TableRow>
                 <TableHead className="w-[30%] pl-6">Name</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead>Storage</TableHead>
                 <TableHead>Hierarchy (Parent)</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
               </TableRow>
@@ -307,15 +359,15 @@ export default function OrgUnitsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-[#0A4D27]" />
                     Loading structure...
                   </TableCell>
                 </TableRow>
               ) : orgUnits.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                    No Organization Units found.
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    No Office Units found.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -327,6 +379,9 @@ export default function OrgUnitsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{getOrgTypeName(ou)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {(ou.storageUsedMb ?? 0).toString()} / {ou.storageQuotaMb ?? 1024} MB
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {getParentName(ou.parentId)}
@@ -340,7 +395,7 @@ export default function OrgUnitsPage() {
                         size="sm"
                         onClick={() => canDeleteOrgUnit(ou) ? setOuToDelete(ou) : toast.info(getDeleteBlockReason(ou))}
                         disabled={!canDeleteOrgUnit(ou)}
-                        title={!canDeleteOrgUnit(ou) ? getDeleteBlockReason(ou) : 'Delete Org Unit'}
+                        title={!canDeleteOrgUnit(ou) ? getDeleteBlockReason(ou) : 'Delete Office Unit'}
                         className="disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Trash2 className={`h-4 w-4 ${canDeleteOrgUnit(ou) ? 'text-muted-foreground hover:text-red-500' : 'text-muted-foreground'}`} />
@@ -366,7 +421,7 @@ export default function OrgUnitsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100">
-              <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Organization Unit' : 'Add New Organization Unit'}</h2>
+              <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Office Unit' : 'Add New Office Unit'}</h2>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -408,6 +463,45 @@ export default function OrgUnitsPage() {
                     <option key={type.id} value={type.id}>{type.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="org-unit-storage-quota-preset" className="text-sm font-medium text-gray-700">Storage Quota</label>
+                <select
+                  id="org-unit-storage-quota-preset"
+                  name="storageQuotaPreset"
+                  value={formData.storageQuotaPreset}
+                  onChange={handleQuotaPresetChange}
+                  className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  {STORAGE_QUOTA_PRESETS.map((preset) => (
+                    <option key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+                {formData.storageQuotaPreset === 'custom' && (
+                  <div className="space-y-1">
+                    <label htmlFor="org-unit-storage-quota" className="text-sm font-medium text-gray-700">Custom Quota (MB)</label>
+                    <Input
+                      id="org-unit-storage-quota"
+                      name="storageQuotaMb"
+                      type="number"
+                      min={1}
+                      value={formData.storageQuotaMb}
+                      onChange={handleInputChange}
+                      required
+                      className="h-11 rounded-xl"
+                      placeholder="Enter quota in MB"
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Admin-only setting. Uploads are blocked when this Office Unit exceeds its quota.
+                  {formData.storageQuotaPreset !== 'custom' && (
+                    <> Selected: <span className="font-medium">{formData.storageQuotaMb} MB</span>.</>
+                  )}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -453,7 +547,7 @@ export default function OrgUnitsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="px-7 py-6 border-b border-gray-100">
               <h2 className="text-xl font-bold leading-tight text-gray-900">Organization Types</h2>
-              <p className="text-sm text-muted-foreground mt-1">Add or disable simple type names used by Org Units.</p>
+              <p className="text-sm text-muted-foreground mt-1">Add or disable simple type names used by Office Units.</p>
             </div>
 
             <div className="px-7 py-6 space-y-6">
@@ -563,9 +657,9 @@ export default function OrgUnitsPage() {
       <AlertDialog open={!!ouToDelete} onOpenChange={(open) => !open && !isDeleting && setOuToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Organization Unit</AlertDialogTitle>
+            <AlertDialogTitle>Delete Office Unit</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the Org Unit <strong>{ouToDelete?.name}</strong>?
+              Are you sure you want to delete the Office Unit <strong>{ouToDelete?.name}</strong>?
               This action cannot be undone. You can only delete org units that have no users, folders, documents, or sub-units.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -588,7 +682,7 @@ export default function OrgUnitsPage() {
             <AlertDialogTitle>Delete Organization Type</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete the Org Type <strong>{typeToDelete?.name}</strong>?
-              This only works if no Org Units are using it. If it is already used, edit it and uncheck Active instead.
+              This only works if no Office Units are using it. If it is already used, edit it and uncheck Active instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

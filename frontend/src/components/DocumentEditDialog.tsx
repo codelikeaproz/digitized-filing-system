@@ -21,8 +21,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CategorySelect } from "@/components/CategorySelect";
+import { RequisitionersEditor } from "@/components/documents/RequisitionersEditor";
 import { api } from "@/lib/api";
-import { cn, compareByNaturalName, formatPersonName } from "@/lib/utils";
+import {
+  type RequisitionerInput,
+  type RequisitionerRowErrors,
+  seedRequisitionersFromDocument,
+  serializeRequisitionersForApi,
+  validateRequisitioners,
+} from "@/lib/requisitioner";
+import { cn, compareByNaturalName } from "@/lib/utils";
 import { Document, Folder } from "@/types";
 
 const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9-]+$/;
@@ -40,7 +48,9 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
   const [customFileName, setCustomFileName] = useState("");
   const [docCode, setDocCode] = useState("");
   const [docCodeError, setDocCodeError] = useState("");
-  const [requestor, setRequestor] = useState("");
+  const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>([]);
+  const [requisitionerErrors, setRequisitionerErrors] = useState<RequisitionerRowErrors[]>([]);
+  const [requisitionerListError, setRequisitionerListError] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
@@ -87,7 +97,9 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
     setCustomFileName(currentName.replace(/\.pdf$/i, ""));
     setDocCode(document.code || "");
     setDocCodeError("");
-    setRequestor(document.requestor || "");
+    setRequisitioners(seedRequisitionersFromDocument(document));
+    setRequisitionerErrors([]);
+    setRequisitionerListError("");
     setDescription(document.description || "");
     setCategoryId(String(document.categoryId || ""));
     setKeywords(Array.isArray(document.keywords) ? [...document.keywords] : []);
@@ -133,13 +145,22 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       return;
     }
 
+    const validation = validateRequisitioners(requisitioners);
+    setRequisitionerErrors(validation.rowErrors);
+    setRequisitionerListError(validation.message || "");
+    if (!validation.isValid) {
+      toast.error(validation.message || "Please fix requisitioner details before saving.");
+      return;
+    }
+    setRequisitionerListError("");
+
     setIsSaving(true);
     try {
       await api.patch(`/api/documents/${document.id}/edit`, {
         folderId: targetFolderId,
         categoryId,
         code: trimmedDocCode,
-        requestor: formatPersonName(requestor),
+        requisitioners: serializeRequisitionersForApi(requisitioners),
         description,
         keywords,
         file_name: customFileName.trim(),
@@ -241,18 +262,17 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-requestor" className="text-xs font-semibold uppercase text-muted-foreground">
-                Requisitioner Name
-              </Label>
-              <Input
-                id="edit-requestor"
-                value={requestor}
-                onBlur={(e) => setRequestor(formatPersonName(e.target.value))}
-                onChange={(event) => setRequestor(event.target.value)}
-                className="h-10"
-              />
-            </div>
+            <RequisitionersEditor
+              value={requisitioners}
+              onChange={(nextValue) => {
+                setRequisitioners(nextValue);
+                setRequisitionerErrors([]);
+                setRequisitionerListError("");
+              }}
+              rowErrors={requisitionerErrors}
+              listError={requisitionerListError}
+              disabled={isSaving}
+            />
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">

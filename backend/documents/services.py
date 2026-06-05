@@ -12,6 +12,8 @@ Used by:
 from django.db import transaction
 from django.utils import timezone
 
+from orgunits.storage import recalculate_org_unit_storage, subtract_storage_usage
+
 from .models import Document, Folder
 
 
@@ -73,12 +75,22 @@ def restore_folder(folder, user=None):
 def permanently_delete_folder(folder, user=None):
     """Hard-delete folder subtree, documents, and media files (irreversible)."""
     folder_ids = _folder_tree_ids(folder)
-    documents = list(Document.objects.filter(folder_id__in=folder_ids))
+    documents = list(Document.objects.filter(folder_id__in=folder_ids).select_related("folder__org_unit"))
     document_count = len(documents)
+    org_unit = folder.org_unit
+    total_bytes = sum(document.file_size or 0 for document in documents)
 
     for document in documents:
         if document.file:
             document.file.delete(save=False)
 
+    Document.objects.filter(id__in=[document.id for document in documents]).delete()
     Folder.objects.filter(id__in=folder_ids).delete()
+
+    if org_unit:
+        if total_bytes:
+            subtract_storage_usage(org_unit, total_bytes)
+        else:
+            recalculate_org_unit_storage(org_unit)
+
     return document_count

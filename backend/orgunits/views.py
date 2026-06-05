@@ -174,10 +174,13 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
         name = serializer.validated_data.get("name", instance.name)
         self._validate_hierarchy(instance=instance, name=name, parent=parent)
         instance = serializer.save(name=name.strip(), parent=parent)
+        quota_note = ""
+        if "storage_quota_mb" in serializer.validated_data:
+            quota_note = f"; storage quota set to {instance.storage_quota_mb} MB"
         log_audit(
             self.request.user,
             "UPDATE_ORG_UNIT",
-            f"Updated OrgUnit: {instance.name} ({instance.type_name or 'Unassigned'})",
+            f"Updated OrgUnit: {instance.name} ({instance.type_name or 'Unassigned'}){quota_note}",
             target_type="org_unit",
             target_name=instance.name,
             target_org_unit=instance.name,

@@ -97,7 +97,7 @@ export function CategorySelect({
     );
   };
 
-  const duplicateCategoryMessage = "A category with this name already exists in this Org Unit.";
+  const duplicateCategoryMessage = "A category with this name already exists in this Office Unit.";
 
   useEffect(() => {
     if (orgUnitId) {
@@ -128,7 +128,7 @@ export function CategorySelect({
     if (!newCategoryName.trim()) return;
     
     if (user?.role !== "admin" && !getPayloadOrgUnit()) {
-      toast.error("Your account must be assigned to an Org Unit to create categories.");
+      toast.error("Your account must be assigned to an Office Unit to create categories.");
       return;
     }
 
@@ -140,7 +140,7 @@ export function CategorySelect({
     const normalizedName = newCategoryName.trim();
     if (isDuplicateCategoryName(normalizedName, payloadOrgUnit)) {
       setAddCategoryNameError(true);
-      toast.error(`"${normalizedName}" already exists in this Org Unit.`);
+      toast.error(`"${normalizedName}" already exists in this Office Unit.`);
       return;
     }
 
@@ -203,7 +203,7 @@ export function CategorySelect({
     const normalizedName = editingCategoryName.trim();
     if (isDuplicateCategoryName(normalizedName, currentCategory?.orgUnitId ?? undefined, editingCategoryId)) {
       setRenameCategoryNameError(true);
-      toast.error(`"${normalizedName}" already exists in this Org Unit.`);
+      toast.error(`"${normalizedName}" already exists in this Office Unit.`);
       return;
     }
 
@@ -299,11 +299,11 @@ export function CategorySelect({
           <div className="py-4 space-y-4">
             {user?.role === 'admin' && !orgUnitId && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Select target Org Unit</label>
+                <label className="text-sm font-medium">Select target Office Unit</label>
                 <Select value={targetOrgUnit} onValueChange={(val) => val !== null && setTargetOrgUnit(val)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select Org Unit">
-                      {targetOrgUnit ? (orgUnits.find(ou => ou.id === targetOrgUnit)?.name || "Select Org Unit...") : undefined}
+                    <SelectValue placeholder="Select Office Unit">
+                      {targetOrgUnit ? (orgUnits.find(ou => ou.id === targetOrgUnit)?.name || "Select Office Unit...") : undefined}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>

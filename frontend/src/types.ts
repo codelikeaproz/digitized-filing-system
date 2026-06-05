@@ -4,10 +4,15 @@ export interface User {
   id: string;
   email: string;
   fullName: string;
+  employeeNumber?: string;
+  firstName?: string;
+  lastName?: string;
+  suffix?: string;
   role: UserRole;
   departmentId?: string;
   orgUnitId?: string;
   orgUnitName?: string;
+  profilePictureUrl?: string | null;
   isActive?: boolean;
 }
 
@@ -40,9 +45,21 @@ export interface OrgUnit {
   childCount?: number;
   canDelete?: boolean;
   deleteBlockReason?: string;
+  storageQuotaMb?: number;
+  storageUsedMb?: number;
+  storageRemainingMb?: number;
+  storagePercentUsed?: number;
 }
 
 export type DocumentStatus = 'Received';
+
+export interface DocumentRequisitioner {
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  suffix?: string;
+  fullName: string;
+}
 
 export interface Folder {
   id: string;
@@ -76,6 +93,7 @@ export interface Document {
   uploaderId: string;
   code?: string;
   requestor?: string;
+  requisitioners?: DocumentRequisitioner[];
   description?: string;
   keywords?: string[];
   filingYear: number;

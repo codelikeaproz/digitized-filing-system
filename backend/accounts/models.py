@@ -6,10 +6,18 @@ OrgUnit assignment required for non-admin roles (enforced in UserSerializer).
 
 Activation flow: new users start inactive until set-password link is used.
 """
+import os
+import uuid
+
 from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils import timezone
+
+
+def profile_picture_upload_to(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()
+    return f"profile_pictures/user_{instance.pk}_{uuid.uuid4().hex}{ext}"
 
 
 class UserManager(BaseUserManager):
@@ -40,6 +48,13 @@ class User(AbstractUser):
     ]
 
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="staff")
+    employee_number = models.CharField(max_length=50, blank=True, null=True, unique=True)
+    suffix = models.CharField(max_length=20, blank=True, default="")
+    profile_picture = models.ImageField(
+        upload_to=profile_picture_upload_to,
+        blank=True,
+        null=True,
+    )
     org_unit = models.ForeignKey(
         "orgunits.OrgUnit",
         on_delete=models.SET_NULL,

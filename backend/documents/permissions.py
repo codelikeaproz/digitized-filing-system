@@ -2,7 +2,7 @@
 Document and folder access control helpers.
 
 Centralizes OrgUnit scoping and role checks used by document views,
-recycle bin, uploads, and scanner job endpoints.
+recycle bin, and uploads.
 
 Rules summary:
     admin     -> global access (callers skip queryset filters)
@@ -10,9 +10,6 @@ Rules summary:
     staff     -> own OrgUnit only; no recycle bin; no document delete
 """
 
-import secrets
-
-from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
 
 
@@ -44,14 +41,6 @@ def assert_recycle_bin_access(user, folder_or_document):
     folder = getattr(folder_or_document, "folder", folder_or_document)
     if folder.org_unit_id not in org_unit_scope_ids(user):
         raise PermissionDenied("You do not have access to this recycle bin item.")
-
-
-def assert_scanner_bridge(request):
-    """Validate Scanner Bridge token from X-Scanner-Token header."""
-    expected_token = settings.SCANNER_BRIDGE_TOKEN
-    received_token = request.headers.get("X-Scanner-Token", "")
-    if not expected_token or not secrets.compare_digest(received_token, expected_token):
-        raise PermissionDenied("Invalid scanner bridge token.")
 
 
 def assert_folder_write_access(user, folder):

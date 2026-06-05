@@ -4,7 +4,6 @@ export type AuditAction =
   | "LOGIN" 
   | "LOGOUT" 
   | "UPLOAD" 
-  | "SCAN"
   | "DOWNLOAD"
   | "DOWNLOAD_DOCUMENT"
   | "EXPORT_AUDIT_CSV"

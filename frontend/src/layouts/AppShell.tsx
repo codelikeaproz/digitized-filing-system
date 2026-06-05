@@ -7,7 +7,7 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/lib/auth-context";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function AppShell() {
   const { user } = useAuth();
@@ -44,6 +44,9 @@ export default function AppShell() {
                   <span className="text-[10px] text-muted-foreground font-medium uppercase">{user?.role?.replace(/_/g, ' ')}</span>
                 </div>
                 <Avatar className="h-10 w-10 border border-border">
+                  {user?.profilePictureUrl ? (
+                    <AvatarImage src={user.profilePictureUrl} alt={user.fullName || "Profile photo"} />
+                  ) : null}
                   <AvatarFallback className="bg-primary/10 text-primary font-bold">
                     {user?.fullName?.split(" ").map(n => n[0]).join("") || "U"}
                   </AvatarFallback>

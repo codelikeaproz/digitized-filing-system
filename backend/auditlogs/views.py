@@ -17,11 +17,13 @@ from datetime import datetime, time
 from xml.sax.saxutils import escape
 
 from django.http import HttpResponse
-from django.db.models import Q
+from django.db.models import CharField, Count, F, Q, Value
+from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
 from rest_framework import viewsets
 
 from config.pagination import StandardResultsSetPagination
@@ -235,6 +237,50 @@ class AuditLogViewSet(viewsets.ModelViewSet):
             archive.writestr("xl/styles.xml", styles_xml)
             archive.writestr("xl/worksheets/sheet1.xml", sheet_xml)
         return output.getvalue()
+
+    @action(detail=False, methods=["get"], url_path="analytics")
+    def analytics(self, request):
+        """
+        Aggregate audit activity per Office Unit for dashboard charts.
+        Returns upload, delete, and edit counts grouped by target_org_unit.
+        """
+        queryset = self._apply_filters(
+            AuditLog.objects.select_related("user", "user__org_unit").order_by("-created_at")
+        )
+
+        upload_actions = ["UPLOAD", "SCAN_UPLOAD"]
+        delete_actions = ["DELETE_FOLDER", "PERMANENT_DELETE_FOLDER", "PERMANENT_DELETE_DOCUMENT"]
+        edit_actions = ["EDIT_DOCUMENT"]
+
+        def aggregate_by_org_unit(action_list):
+            # Prefer target_org_unit (e.g. folder Office Unit on upload/edit).
+            # Fall back to the acting user's Office Unit for older log rows.
+            rows = (
+                queryset.filter(action__in=action_list)
+                .annotate(
+                    org_unit_name=Coalesce(
+                        NullIf(F("target_org_unit"), Value("")),
+                        F("user__org_unit__name"),
+                        output_field=CharField(),
+                    )
+                )
+                .exclude(org_unit_name__isnull=True)
+                .values("org_unit_name")
+                .annotate(count=Count("id"))
+                .order_by("-count", "org_unit_name")
+            )
+            return [
+                {"org_unit": row["org_unit_name"], "count": row["count"]}
+                for row in rows
+            ]
+
+        return Response(
+            {
+                "uploads_by_org_unit": aggregate_by_org_unit(upload_actions),
+                "deletes_by_org_unit": aggregate_by_org_unit(delete_actions),
+                "edits_by_org_unit": aggregate_by_org_unit(edit_actions),
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="export-csv")
     def export_csv(self, request):

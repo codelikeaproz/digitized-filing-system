@@ -41,7 +41,7 @@ const defaultMenuItems = [
 // Admin-only menu items
 const adminMenuItems = [
   ...defaultMenuItems.slice(0, 2),
-  { title: "Org Units", icon: Building2, url: "/org-units" },
+  { title: "Office Units", icon: Building2, url: "/org-units" },
   { title: "User Management", icon: Users, url: "/users" },
   { title: "Audit Logs", icon: History, url: "/audit-logs" },
   { title: "Recycle Bin", icon: Archive, url: "/recycle-bin" },

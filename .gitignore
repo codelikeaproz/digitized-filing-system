@@ -15,18 +15,15 @@ backend/*.log
 
 # Django secrets / local env
 .env
-*.env
-!.env.example
 backend/.env
-backend/*.env
+frontend/.env
+!.env.example
 !backend/.env.example
-scanner_bridge/config.ini
+!frontend/.env.example
 
 # Node / Vite
 frontend/node_modules/
 frontend/dist/
-frontend/.env
-frontend/.env.*
 frontend/.vite/
 frontend/testsprite_tests/tmp/
 

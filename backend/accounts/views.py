@@ -39,9 +39,12 @@ from config.pagination import StandardResultsSetPagination
 from .models import User
 from .serializers import (
     AccountActivationSetPasswordSerializer,
+    build_full_name,
     ForgotPasswordSerializer,
     PasswordChangeSerializer,
     PasswordResetConfirmSerializer,
+    ProfileAvatarSerializer,
+    ProfileSerializer,
     UserSerializer,
 )
 from .throttles import ActivationEmailRateThrottle, LoginRateThrottle
@@ -88,40 +91,128 @@ class LoginView(APIView):
             {
                 "token": str(refresh.access_token),
                 "refresh": str(refresh),
-                "user": UserSerializer(user).data,
+                "user": UserSerializer(user, context={"request": request}).data,
             }
         )
 
 
 class MeView(APIView):
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        return Response(UserSerializer(request.user, context={"request": request}).data)
+
+
+def _password_change_response(request, audit_action):
+    logger.debug("Password update payload keys: %s", sorted(request.data.keys()))
+    serializer = PasswordChangeSerializer(data=request.data, context={"request": request})
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if isinstance(errors, dict) and "message" in errors:
+            message = errors["message"]
+            if isinstance(message, list):
+                message = message[0]
+            response_data = {"message": str(message)}
+            if "errors" in errors:
+                response_data["errors"] = errors["errors"]
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "Password does not meet security requirements.",
+                "errors": errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    serializer.save()
+    log_audit(
+        request.user,
+        audit_action,
+        "Updated personal account password",
+        ip_address=request.META.get("REMOTE_ADDR"),
+    )
+    return Response({"message": "Password updated successfully. Please login again."})
 
 
 class UpdatePasswordView(APIView):
     def post(self, request):
-        logger.debug("Password update payload keys: %s", sorted(request.data.keys()))
-        serializer = PasswordChangeSerializer(data=request.data, context={"request": request})
+        return _password_change_response(request, "UPDATE_PASSWORD")
+
+
+class ProfileView(APIView):
+    def get(self, request):
+        user = User.objects.select_related("org_unit").get(pk=request.user.pk)
+        return Response(ProfileSerializer(user, context={"request": request}).data)
+
+    def patch(self, request):
+        user = User.objects.select_related("org_unit").get(pk=request.user.pk)
+        serializer = ProfileSerializer(
+            user,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         if not serializer.is_valid():
             errors = serializer.errors
-            if isinstance(errors, dict) and "message" in errors:
-                message = errors["message"]
-                if isinstance(message, list):
-                    message = message[0]
-                response_data = {"message": str(message)}
-                if "errors" in errors:
-                    response_data["errors"] = errors["errors"]
-                return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+            message = errors.get("message") if isinstance(errors, dict) else None
+            if isinstance(message, list):
+                message = message[0]
             return Response(
-                {
-                    "message": "Password does not meet security requirements.",
-                    "errors": errors,
-                },
+                {"message": str(message or "Profile update failed."), "errors": errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        serializer.save()
-        log_audit(request.user, "UPDATE_PASSWORD", "Updated personal account password")
-        return Response({"message": "Password updated successfully. Please login again."})
+
+        old_name = build_full_name(user) or user.email
+        user = serializer.save()
+        new_name = build_full_name(user) or user.email
+        details = (
+            f"Updated profile name: {old_name} to {new_name}"
+            if old_name != new_name
+            else f"Updated profile: {user.email}"
+        )
+        log_audit(
+            request.user,
+            "PROFILE_UPDATED",
+            details,
+            target_type="User",
+            target_name=user.email,
+            target_org_unit=user.org_unit.name if user.org_unit else "Global Access",
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(ProfileSerializer(user, context={"request": request}).data)
+
+
+class ProfileAvatarView(APIView):
+    def post(self, request):
+        serializer = ProfileAvatarSerializer(data=request.FILES)
+        if not serializer.is_valid():
+            errors = serializer.errors
+            message = next(iter(errors.values()), ["Invalid image."])[0]
+            return Response(
+                {"message": str(message), "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        old_picture = user.profile_picture
+        user.profile_picture = serializer.validated_data["avatar"]
+        user.save(update_fields=["profile_picture"])
+
+        if old_picture:
+            old_picture.delete(save=False)
+
+        log_audit(
+            user,
+            "PROFILE_PHOTO_UPDATED",
+            f"Updated profile photo for {user.email}",
+            target_type="User",
+            target_name=user.email,
+            target_org_unit=user.org_unit.name if user.org_unit else "Global Access",
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(ProfileSerializer(user, context={"request": request}).data)
+
+
+class ProfileChangePasswordView(APIView):
+    def post(self, request):
+        return _password_change_response(request, "PASSWORD_CHANGED")
 
 
 class ForgotPasswordView(APIView):
@@ -357,7 +448,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 | models.Q(last_name__icontains=search)
             )
         if role:
-            queryset = queryset.filter(role=role)
+            if role == "staff" and actor.role == "dept_head" and actor.org_unit_id:
+                queryset = queryset.filter(
+                    models.Q(role="staff")
+                    | models.Q(role="dept_head", org_unit_id=actor.org_unit_id)
+                )
+            else:
+                queryset = queryset.filter(role=role)
         if org_unit_id:
             queryset = queryset.filter(org_unit_id=org_unit_id)
         return queryset
@@ -550,7 +647,7 @@ class UserViewSet(viewsets.ModelViewSet):
             target_name=user.email,
             target_org_unit=self._target_org_name(user),
         )
-        return Response(UserSerializer(user).data)
+        return Response(UserSerializer(user, context={"request": self.request}).data)
 
     @action(detail=True, methods=["patch"], url_path="status")
     def status(self, request, pk=None):

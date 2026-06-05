@@ -302,7 +302,13 @@ def build_document_queryset(user, query, folders=None):
 
     requestor_name = extract_requestor_name(query)
     if requestor_name:
-        queryset = queryset.filter(requestor__icontains=requestor_name)
+        queryset = queryset.filter(
+            Q(requisitioners__first_name__icontains=requestor_name)
+            | Q(requisitioners__last_name__icontains=requestor_name)
+            | Q(requisitioners__suffix__icontains=requestor_name)
+            | Q(requisitioners__employee_number__icontains=requestor_name)
+            | Q(requestor__icontains=requestor_name)
+        ).distinct()
         filters.append(f"requested by {requestor_name}")
 
     filing_label, filing_filter = filing_year_label_and_filter(query)

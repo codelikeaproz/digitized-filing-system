@@ -133,7 +133,12 @@ class ApiService {
       }
 
       if (!response.ok) {
-        throw new Error(this.formatErrorPayload(data, `Request failed with status ${response.status}`));
+        const error = new Error(
+          this.formatErrorPayload(data, `Request failed with status ${response.status}`)
+        ) as Error & { errors?: unknown; status?: number };
+        error.errors = data?.errors ?? data;
+        error.status = response.status;
+        throw error;
       }
 
       return data;
@@ -223,7 +228,10 @@ class ApiService {
         errorData.detail ||
         text ||
         "Upload failed";
-      throw new Error(message);
+      const error = new Error(message) as Error & { errors?: unknown; status?: number };
+      error.errors = errorData?.errors ?? errorData;
+      error.status = response.status;
+      throw error;
     }
 
     const contentType = response.headers.get("content-type");

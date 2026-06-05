@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -41,6 +43,9 @@ class OrgUnit(models.Model):
         related_name="org_units",
     )
     is_deleted = models.BooleanField(default=False)
+    # Per-unit PDF storage limits (admin-configurable).
+    storage_quota_mb = models.PositiveIntegerField(default=1024)
+    storage_used_mb = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

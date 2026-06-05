@@ -19,7 +19,7 @@ services:
       dockerfile: Dockerfile
     container_name: dfs_backend
     env_file:
-      - ./.env
+      - ./backend/.env
     environment:
       DB_ENGINE: mysql
       DB_NAME: dfs_project
@@ -49,9 +49,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: dfs_frontend
+    env_file:
+      - ./frontend/.env
     environment:
-      VITE_API_URL: http://localhost:8000
-      VITE_SCANNER_STATION_ID: ${VITE_SCANNER_STATION_ID:-SCANNER-PC-01}
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "5173:5173"

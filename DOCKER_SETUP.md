@@ -12,13 +12,14 @@ This guide runs the Digitized Filing System with Docker and explains how to swit
 
 ## 1. First-Time Setup
 
-Create your local `.env` file from the example:
+Create separate environment files for backend and frontend:
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.example frontend\.env
 ```
 
-Edit `.env` and set real values:
+Edit `backend/.env` and set real Django values:
 
 ```env
 DJANGO_SECRET_KEY=replace-with-a-long-random-secret
@@ -30,13 +31,19 @@ EMAIL_HOST_PASSWORD=your_gmail_app_password
 DEFAULT_FROM_EMAIL=your_email@gmail.com
 ```
 
-Do not commit `.env`. It contains secrets.
+Edit `frontend/.env` for Vite variables:
+
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+Do not commit `.env` files. They contain secrets. Do not use a shared root-level `.env`.
 
 ## 2. Run With MySQL
 
 MySQL is the default Docker database.
 
-In `.env`:
+In `backend/.env`:
 
 ```env
 DB_ENGINE=mysql
@@ -183,7 +190,7 @@ backend/data.json
 
 ### Step 2: Configure Docker MySQL
 
-Update root `.env`:
+Update `backend/.env`:
 
 ```env
 DB_ENGINE=mysql

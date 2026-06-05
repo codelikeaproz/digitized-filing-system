@@ -2,7 +2,7 @@
 
 Onboarding guide for the **Digitized Filing System (DFS)** — a Django REST + React/Vite application for OrgUnit-scoped PDF document management.
 
-> **Related docs:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [FRONTEND_ROUTES.md](./FRONTEND_ROUTES.md) · [SCANNER_FEATURE.md](./SCANNER_FEATURE.md) · [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md) · [DOCKER_SETUP.md](../DOCKER_SETUP.md)
+> **Related docs:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [FRONTEND_ROUTES.md](./FRONTEND_ROUTES.md) · [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md) · [DOCKER_SETUP.md](../DOCKER_SETUP.md)
 
 ---
 
@@ -32,7 +32,7 @@ project_dfs/
 ├── backend/                 # Django project root
 │   ├── config/              # Settings, URLs, pagination, middleware
 │   ├── accounts/            # Users, login, password flows
-│   ├── documents/           # Folders, categories, documents, recycle bin, scanner
+│   ├── documents/           # Folders, categories, documents, recycle bin
 │   ├── orgunits/            # OrgUnit + OrgType hierarchy
 │   ├── auditlogs/           # Audit trail + exports
 │   └── ai/                    # Document assistant chatbot
@@ -44,7 +44,8 @@ project_dfs/
 │       ├── lib/             # API client, auth, utilities
 │       └── contexts/        # Shared React context (categories)
 ├── docs/                    # Developer + API documentation
-└── .env                     # Environment variables (never commit secrets)
+├── backend/.env             # Django environment variables (never commit secrets)
+└── frontend/.env            # Vite environment variables (never commit secrets)
 ```
 
 ### Why apps are organized this way
@@ -54,7 +55,7 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 | App | Responsibility |
 |-----|----------------|
 | `accounts` | Custom `User` model, JWT login, password reset/activation, user CRUD |
-| `documents` | Folders, categories, PDF documents, upload, recycle bin, dashboard stats, scanner jobs |
+| `documents` | Folders, categories, PDF documents, upload, recycle bin, dashboard stats |
 | `orgunits` | OrgUnit tree, OrgType lookup |
 | `auditlogs` | Immutable audit records, CSV/XLSX export |
 | `ai` | Document assistant (intent parsing + OpenRouter) |
@@ -183,7 +184,9 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` in root `.env`.
+Copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_URL=http://localhost:8000`.
+
+For backend setup, copy `backend/.env.example` to `backend/.env`. Do not use a shared root-level `.env` file.
 
 ### Key files
 
@@ -275,7 +278,7 @@ Documented in [API_DOCUMENTATION.md §15](./API_DOCUMENTATION.md#15-known-limita
 | New/changed API route | `docs/API_DOCUMENTATION.md` + app `urls.py` header |
 | New role rule | View assert helper + this guide §3 + frontend `RoleRoute` |
 | New page | `App.tsx` + `FRONTEND_ROUTES.md` + sidebar if needed |
-| Scanner flow change | `SCANNER_FEATURE.md` + scanner endpoints in `API_DOCUMENTATION.md` |
+| Document upload / metadata change | `API_DOCUMENTATION.md` upload and edit endpoints |
 | Chatbot behavior | `CHATBOT_CAPABILITIES.md` + `ai/services/intent_service.py` |
 
 ---

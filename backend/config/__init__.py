@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BACKEND_DIR.parent / ".env")
-load_dotenv(BACKEND_DIR / ".env", override=True)
+# Django loads environment variables from backend/.env only.
+load_dotenv(BACKEND_DIR / ".env")
 
 
 if os.getenv("DB_ENGINE", "sqlite").strip().lower() == "mysql":

@@ -165,7 +165,7 @@ export default function RecycleBinPage() {
             <TableRow>
               <TableHead>Type</TableHead>
               <TableHead className="w-[30%]">File Name</TableHead>
-              <TableHead>Org Unit</TableHead>
+              <TableHead>Office Unit</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Date Deleted</TableHead>

@@ -92,12 +92,8 @@ function publicAnswerFor(query: string) {
     return "Picture a filing cabinet, but digital. Files live in folders under your office or department, each tagged with a category and a short description so people can search and pull them up later.";
   }
 
-  if (normalized.includes("scan") || normalized.includes("scanner") || normalized.includes("epson")) {
-    return "Scanner support isn't part of this version yet. For now, you can upload PDFs manually from the Documents page once you're logged in.";
-  }
-
   if (normalized.includes("role")) {
-    return "There are three roles: Admin keeps the whole system running, Department Head oversees their team's files, and Staff handles everyday uploads and filing within their department.";
+    return "There are three roles: Admin keeps the whole system running, Head oversees their team's files, and Staff handles everyday uploads and filing within their office unit.";
   }
 
   if (normalized.includes("log in") || normalized.includes("login")) {

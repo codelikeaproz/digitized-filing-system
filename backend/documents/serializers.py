@@ -4,7 +4,8 @@ from django.utils import timezone
 import re
 
 from config.timezone_utils import format_local_datetime
-from .models import Category, Document, Folder, ScanJob, ScannerStation
+from .models import Category, Document, DocumentRequisitioner, Folder
+from .requisitioners import build_requisitioner_full_name, validate_requisitioners_list
 from .permissions import resolve_category_org_unit_for_create
 
 
@@ -27,13 +28,6 @@ def ensure_unique_document_code(code, *, document_id=None):
         queryset = queryset.exclude(pk=document_id)
     if queryset.exists():
         raise serializers.ValidationError("Document Code is already used.")
-
-    active_scan_job_exists = ScanJob.objects.filter(
-        code__iexact=code,
-        status__in=["PENDING", "WAITING_FOR_SCAN", "UPLOADING"],
-    ).exists()
-    if active_scan_job_exists:
-        raise serializers.ValidationError("Document Code is already used by an active scan job.")
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -177,8 +171,24 @@ class FolderSerializer(serializers.ModelSerializer):
         return value or None
 
 
+class DocumentRequisitionerSerializer(serializers.ModelSerializer):
+    employeeNumber = serializers.CharField(source="employee_number")
+    firstName = serializers.CharField(source="first_name")
+    lastName = serializers.CharField(source="last_name")
+    suffix = serializers.CharField(required=False, allow_blank=True)
+    fullName = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentRequisitioner
+        fields = ["employeeNumber", "firstName", "lastName", "suffix", "fullName"]
+
+    def get_fullName(self, obj):
+        return build_requisitioner_full_name(obj.first_name, obj.last_name, obj.suffix)
+
+
 class DocumentSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
+    requisitioners = serializers.SerializerMethodField()
     file_name = serializers.SerializerMethodField()
     filePath = serializers.SerializerMethodField()
     file_url = serializers.SerializerMethodField()
@@ -210,6 +220,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             "category",
             "code",
             "requestor",
+            "requisitioners",
             "description",
             "keywords",
             "filingYear",
@@ -224,6 +235,10 @@ class DocumentSerializer(serializers.ModelSerializer):
             "createdAt",
             "created_at",
         ]
+
+    def get_requisitioners(self, obj):
+        requisitioners = obj.requisitioners.all()
+        return DocumentRequisitionerSerializer(requisitioners, many=True).data
 
     def get_filePath(self, obj):
         return obj.file_path or obj.folder.get_full_path()
@@ -273,7 +288,7 @@ class DocumentEditSerializer(serializers.Serializer):
     folderId = serializers.CharField()
     categoryId = serializers.CharField()
     code = serializers.CharField()
-    requestor = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    requisitioners = serializers.ListField(child=serializers.DictField(), allow_empty=False)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50)
     keywords = serializers.ListField(child=serializers.CharField(), allow_empty=False)
     file_name = serializers.CharField(required=False, allow_blank=True)
@@ -293,101 +308,39 @@ class DocumentEditSerializer(serializers.Serializer):
     def validate_description(self, value):
         return (value or "").strip()[:50]
 
-    def validate_requestor(self, value):
-        return normalize_requestor_name(value)
+    def validate_requisitioners(self, value):
+        return validate_requisitioners_list(value)
 
 
-class ScannerStationSerializer(serializers.ModelSerializer):
-    id = serializers.CharField(read_only=True)
-    stationId = serializers.CharField(source="station_id")
-    watchedFolder = serializers.CharField(source="watched_folder", required=False, allow_blank=True)
-    lastSeenAt = serializers.SerializerMethodField()
-    errorMessage = serializers.CharField(source="error_message", required=False, allow_blank=True)
-    isOnline = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ScannerStation
-        fields = [
-            "id",
-            "stationId",
-            "name",
-            "status",
-            "watchedFolder",
-            "lastSeenAt",
-            "errorMessage",
-            "isOnline",
-        ]
-
-    def get_lastSeenAt(self, obj):
-        return format_local_datetime(obj.last_seen_at)
-
-    def get_isOnline(self, obj):
-        if not obj.last_seen_at:
-            return False
-        return (timezone.now() - obj.last_seen_at).total_seconds() <= 30 and obj.status == "CONNECTED"
+class DashboardStorageSerializer(serializers.Serializer):
+    org_unit_id = serializers.CharField(allow_null=True, required=False)
+    org_unit_name = serializers.CharField(allow_null=True, required=False)
+    quota_mb = serializers.IntegerField()
+    used_mb = serializers.FloatField()
+    remaining_mb = serializers.FloatField()
+    usage_percentage = serializers.FloatField()
+    percent_used = serializers.FloatField(required=False)
 
 
-class ScanJobSerializer(serializers.ModelSerializer):
-    id = serializers.CharField(read_only=True)
-    stationId = serializers.CharField(source="station_id")
-    folderId = serializers.CharField(source="folder_id")
-    categoryId = serializers.CharField(source="category_id")
-    documentId = serializers.CharField(source="uploaded_document_id", read_only=True)
-    folderName = serializers.CharField(source="folder.name", read_only=True)
-    categoryName = serializers.CharField(source="category.name", read_only=True)
-    originalFilename = serializers.CharField(source="original_filename", read_only=True)
-    errorMessage = serializers.CharField(source="error_message", read_only=True)
-    createdAt = serializers.SerializerMethodField()
-    updatedAt = serializers.SerializerMethodField()
-    completedAt = serializers.SerializerMethodField()
-    document = serializers.SerializerMethodField()
+class OfficeUnitStorageUsageSerializer(serializers.Serializer):
+    org_unit_id = serializers.CharField()
+    org_unit_name = serializers.CharField()
+    quota_mb = serializers.IntegerField()
+    used_mb = serializers.FloatField()
+    remaining_mb = serializers.FloatField()
+    usage_percentage = serializers.FloatField()
 
-    class Meta:
-        model = ScanJob
-        fields = [
-            "id",
-            "stationId",
-            "folderId",
-            "folderName",
-            "categoryId",
-            "categoryName",
-            "documentId",
-            "document",
-            "status",
-            "code",
-            "title",
-            "requestor",
-            "description",
-            "keywords",
-            "originalFilename",
-            "sha256",
-            "errorMessage",
-            "createdAt",
-            "updatedAt",
-            "completedAt",
-        ]
-        read_only_fields = [
-            "status",
-            "documentId",
-            "document",
-            "originalFilename",
-            "sha256",
-            "errorMessage",
-            "createdAt",
-            "updatedAt",
-            "completedAt",
-        ]
 
-    def get_createdAt(self, obj):
-        return format_local_datetime(obj.created_at)
-
-    def get_updatedAt(self, obj):
-        return format_local_datetime(obj.updated_at)
-
-    def get_completedAt(self, obj):
-        return format_local_datetime(obj.completed_at)
-
-    def get_document(self, obj):
-        if not obj.uploaded_document:
-            return None
-        return DocumentSerializer(obj.uploaded_document, context=self.context).data
+class DashboardStatsSerializer(serializers.Serializer):
+    scope = serializers.ChoiceField(choices=["global", "office_unit"])
+    office_unit_id = serializers.CharField(allow_null=True, required=False)
+    office_unit_name = serializers.CharField()
+    office_unit_filter = serializers.CharField()
+    can_filter_office_units = serializers.BooleanField()
+    total_documents = serializers.IntegerField()
+    uploaded_files = serializers.IntegerField()
+    total_org_units = serializers.IntegerField(allow_null=True, required=False)
+    total_users = serializers.IntegerField(allow_null=True, required=False)
+    deleted_files = serializers.IntegerField(allow_null=True, required=False)
+    storage = DashboardStorageSerializer(allow_null=True, required=False)
+    storage_by_office_unit = OfficeUnitStorageUsageSerializer(many=True)

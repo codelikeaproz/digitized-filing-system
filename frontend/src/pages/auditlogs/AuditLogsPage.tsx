@@ -31,13 +31,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  AuditAnalyticsCharts,
+  type AuditAnalytics,
+} from "@/components/auditlogs/AuditAnalyticsCharts";
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
 const ACTION_OPTIONS = [
   { value: "LOGIN", label: "Login" },
   { value: "UPLOAD", label: "Upload" },
-  { value: "SCAN", label: "Scan" },
   { value: "DOWNLOAD_DOCUMENT", label: "Download" },
   { value: "EXPORT_AUDIT_CSV", label: "Export CSV" },
   { value: "EXPORT_AUDIT_XLSX", label: "Export Excel" },
@@ -50,6 +53,10 @@ const ACTION_OPTIONS = [
   { value: "DELETE_USER", label: "Delete User" },
   { value: "PASSWORD_RESET_REQUEST", label: "Password Reset Request" },
   { value: "PASSWORD_RESET_SUCCESS", label: "Password Reset Success" },
+  { value: "PASSWORD_CHANGED", label: "Password Changed" },
+  { value: "UPDATE_PASSWORD", label: "Update Password" },
+  { value: "PROFILE_UPDATED", label: "Profile Updated" },
+  { value: "PROFILE_PHOTO_UPDATED", label: "Profile Photo Updated" },
   { value: "RENAME_FOLDER", label: "Rename Folder" },
   { value: "RENAME_DOCUMENT", label: "Rename Document" },
   { value: "EDIT_DOCUMENT", label: "Edit Document" },
@@ -59,9 +66,10 @@ const ACTION_OPTIONS = [
   { value: "CREATE_ORG_TYPE", label: "Create Org Type" },
   { value: "UPDATE_ORG_TYPE", label: "Update Org Type" },
   { value: "DELETE_ORG_TYPE", label: "Delete Org Type" },
-  { value: "CREATE_ORG_UNIT", label: "Create Org Unit" },
-  { value: "UPDATE_ORG_UNIT", label: "Update Org Unit" },
-  { value: "DELETE_ORG_UNIT", label: "Delete Org Unit" },
+  { value: "CREATE_ORG_UNIT", label: "Create Office Unit" },
+  { value: "UPDATE_ORG_UNIT", label: "Update Office Unit" },
+  { value: "DELETE_ORG_UNIT", label: "Delete Office Unit" },
+  { value: "PERMANENT_DELETE_DOCUMENT", label: "Permanent Delete Document" },
   { value: "CREATE_CATEGORY", label: "Create Category" },
   { value: "UPDATE_CATEGORY", label: "Update Category" },
   { value: "DELETE_CATEGORY", label: "Delete Category" },
@@ -85,6 +93,8 @@ export default function AuditLogsPage() {
   const [draftStartDate, setDraftStartDate] = useState("");
   const [draftEndDate, setDraftEndDate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [analytics, setAnalytics] = useState<AuditAnalytics | null>(null);
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
   const buildFilterParams = (includePagination = true) => {
     const params: Record<string, string | number> = {};
@@ -123,11 +133,27 @@ export default function AuditLogsPage() {
     }
   };
 
+  const fetchAnalytics = async () => {
+    try {
+      setIsAnalyticsLoading(true);
+      const data = await api.get<AuditAnalytics>("/api/audit-logs/analytics/", buildFilterParams(false));
+      setAnalytics(data);
+    } catch (error) {
+      console.error("API Error (Audit Analytics):", error);
+    } finally {
+      setIsAnalyticsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchLogs();
     const interval = setInterval(fetchLogs, 10000);
     return () => clearInterval(interval);
   }, [currentPage, pageSize, debouncedSearch, actionFilter, roleFilter, orgUnitFilter, startDate, endDate]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [debouncedSearch, actionFilter, roleFilter, orgUnitFilter, startDate, endDate]);
 
   useEffect(() => {
     fetchOrgUnits();
@@ -233,7 +259,8 @@ export default function AuditLogsPage() {
       case 'LOGIN': 
       case 'Login': return <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">{formattedAction}</Badge>;
       case 'UPLOAD': return <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">{formattedAction}</Badge>;
-      case 'SCAN': return <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-700 font-bold">{formattedAction}</Badge>;
+      case 'SCAN_UPLOAD':
+      case 'CREATE_SCAN_JOB': return <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-700 font-bold">{formattedAction}</Badge>;
       case 'Routing': return <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-700">{formattedAction}</Badge>;
       case 'DOWNLOAD_DOCUMENT': return <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">{formattedAction}</Badge>;
       case 'EXPORT_AUDIT_CSV':
@@ -283,16 +310,16 @@ export default function AuditLogsPage() {
           >
             <option value="all">All Roles</option>
             <option value="admin">Admin</option>
-            <option value="dept_head">Dept Head</option>
+            <option value="dept_head">Head</option>
             <option value="staff">Staff</option>
           </select>
           <select
-            title="Org Unit"
+            title="Office Unit"
             value={orgUnitFilter}
             onChange={(e) => handleFilterChange(setOrgUnitFilter, e.target.value)}
             className="h-9 px-3 py-1 rounded-md border border-input text-sm focus:outline-none focus:ring-1 focus:ring-ring max-w-[150px]"
           >
-            <option value="all">All Org Units</option>
+            <option value="all">All Office Units</option>
             <option value="Global Access">Global Access</option>
             {orgUnits.map(ou => (
               <option key={ou.id} value={ou.name}>{ou.name}</option>
@@ -318,6 +345,8 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
+      <AuditAnalyticsCharts analytics={analytics} isLoading={isAnalyticsLoading} />
+
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
@@ -325,7 +354,7 @@ export default function AuditLogsPage() {
               <TableHead className="w-[180px]">Timestamp</TableHead>
               <TableHead className="w-[150px]">Name</TableHead>
               <TableHead className="w-[100px]">Role</TableHead>
-              <TableHead className="w-[150px]">Org Unit</TableHead>
+              <TableHead className="w-[150px]">Office Unit</TableHead>
               <TableHead className="w-[120px]">Action</TableHead>
               <TableHead>Details</TableHead>
             </TableRow>
