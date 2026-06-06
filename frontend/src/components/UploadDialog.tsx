@@ -86,6 +86,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
   const [uploadLimitMb, setUploadLimitMb] = useState(15);
 
   const uploadLimitBytes = uploadLimitMb * 1024 * 1024;
+  const selectedCategoryCode = categories.find((category) => category.id === categoryId)?.code ?? "";
 
   const reset = () => {
     setState("manual-upload");
@@ -153,7 +154,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
     return () => {
       cancelled = true;
     };
-  }, [categoryId]);
+  }, [categoryId, selectedCategoryCode]);
 
   const fetchFolders = async () => {
     try {

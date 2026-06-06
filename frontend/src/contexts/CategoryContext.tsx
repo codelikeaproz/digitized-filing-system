@@ -8,7 +8,7 @@ interface CategoryContextType {
   categories: Category[];
   loading: boolean;
   addCategory: (name: string, orgUnitId?: string) => Promise<{ id: string | null; duplicate: boolean }>;
-  updateCategory: (id: string, name: string) => Promise<{ ok: boolean; duplicate: boolean }>;
+  updateCategory: (id: string, name: string, code?: string) => Promise<{ ok: boolean; duplicate: boolean }>;
   deleteCategory: (id: string) => Promise<boolean>;
   refreshCategories: (orgUnitId?: string) => Promise<void>;
 }
@@ -74,19 +74,39 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const updateCategory = useCallback(async (id: string, name: string) => {
+  const updateCategory = useCallback(async (id: string, name: string, code?: string) => {
     const trimmedName = name.trim();
     if (!trimmedName) return { ok: false, duplicate: false };
 
     try {
+      const payload: Record<string, string> = { name: trimmedName };
+      if (code !== undefined) {
+        payload.code = code.trim().toUpperCase();
+      }
+
+      const previous = categories.find((category) => category.id === id);
       const updatedCategory = normalizeCategory(
-        await api.put<Category>(`/api/categories/${id}`, { name: trimmedName })
+        await api.put<Category>(`/api/categories/${id}`, payload)
       );
       setCategories((prev) =>
         prev.map((c) => (c.id === id ? updatedCategory : c)).sort((a, b) => a.name.localeCompare(b.name))
       );
 
-      toast.success(`Category renamed to "${updatedCategory.name}".`);
+      const nameChanged = previous?.name !== updatedCategory.name;
+      const codeChanged = (previous?.code || "") !== (updatedCategory.code || "");
+      if (nameChanged && codeChanged) {
+        toast.success(
+          `Category updated: "${updatedCategory.name}" (${updatedCategory.code || "—"}).`
+        );
+      } else if (nameChanged) {
+        toast.success(`Category renamed to "${updatedCategory.name}".`);
+      } else if (codeChanged) {
+        toast.success(
+          `Category code updated to ${updatedCategory.code} for "${updatedCategory.name}".`
+        );
+      } else {
+        toast.success(`Category "${updatedCategory.name}" saved.`);
+      }
       return { ok: true, duplicate: false };
     } catch (error: any) {
       console.error("Error updating category:", error);
@@ -95,7 +115,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       toast.error(message);
       return { ok: false, duplicate };
     }
-  }, []);
+  }, [categories]);
 
   const deleteCategory = useCallback(async (id: string) => {
     try {

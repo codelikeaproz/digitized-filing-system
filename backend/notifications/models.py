@@ -41,6 +41,8 @@ class StorageThresholdState(models.Model):
     fired_90 = models.BooleanField(default=False)
     fired_95 = models.BooleanField(default=False)
     fired_100 = models.BooleanField(default=False)
+    alloc_fired_90 = models.BooleanField(default=False)
+    alloc_fired_100 = models.BooleanField(default=False)
     quota_mb_at_last_reset = models.PositiveIntegerField(default=0)
 
     class Meta:

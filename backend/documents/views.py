@@ -46,7 +46,12 @@ from rest_framework.views import APIView
 from auditlogs.models import log_audit
 from ai.services.extraction_service import index_document_text
 
-from .document_code import generate_document_code, preview_next_document_code
+from .document_code import (
+    generate_document_code,
+    preview_next_document_code,
+    recode_documents_for_category_code_change,
+    swap_document_code_prefix,
+)
 from .models import Category, Document, Folder
 from .requisitioners import (
     format_requisitioners_display,
@@ -69,6 +74,7 @@ from .permissions import (
     assert_folder_write_access,
     assert_recycle_bin_access,
     org_unit_scope_ids,
+    scoped_categories_queryset,
 )
 from .services import permanently_delete_folder, restore_folder, soft_delete_folder
 from accounts.models import User
@@ -173,19 +179,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
 
     def get_queryset(self):
-        queryset = Category.objects.select_related("org_unit").annotate(
+        queryset = scoped_categories_queryset(self.request.user).select_related("org_unit").annotate(
             active_document_count=Count("documents", filter=Q(documents__is_deleted=False))
         ).order_by("name")
-        user = self.request.user
-        if getattr(user, "role", None) != "admin":
-            org_unit = getattr(user, "org_unit", None)
-            if not org_unit:
-                return queryset.none()
-            queryset = queryset.exclude(org_unit__isnull=True)
-            if getattr(user, "role", None) == "dept_head":
-                queryset = queryset.filter(org_unit_id__in=org_unit_scope_ids(user))
-            else:
-                queryset = queryset.filter(org_unit_id=org_unit.id)
 
         org_unit_id = self.request.query_params.get("orgUnitId")
         if org_unit_id:
@@ -203,12 +199,48 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         old_name = serializer.instance.name
-        category = serializer.save()
-        if old_name != category.name:
+        old_code = serializer.instance.code
+        recoded_count = 0
+        try:
+            with transaction.atomic():
+                category = serializer.save()
+                old_normalized = (old_code or "").strip().upper()
+                new_normalized = (category.code or "").strip().upper()
+                if old_normalized and new_normalized and old_normalized != new_normalized:
+                    recoded_count = recode_documents_for_category_code_change(
+                        category,
+                        old_code,
+                        category.code,
+                    )
+        except ValidationError:
+            raise
+        except IntegrityError:
+            raise ValidationError(
+                {"name": "A category with this name or code already exists in this Org Unit."}
+            ) from None
+
+        name_changed = old_name != category.name
+        code_changed = (old_code or "") != (category.code or "")
+        if name_changed or code_changed:
+            if name_changed and code_changed:
+                message = (
+                    f"Renamed category: {old_name} to {category.name} "
+                    f"({old_code or '—'} → {category.code or '—'})"
+                )
+            elif name_changed:
+                message = f"Renamed category: {old_name} to {category.name}"
+            else:
+                message = (
+                    f"Updated category code: {category.name} "
+                    f"({old_code or '—'} → {category.code or '—'})"
+                )
+            if recoded_count:
+                suffix = "document" if recoded_count == 1 else "documents"
+                message = f"{message}; recoded {recoded_count} {suffix}"
             log_audit(
                 self.request.user,
                 "UPDATE_CATEGORY",
-                f"Renamed category: {old_name} to {category.name}",
+                message,
                 target_type="category",
                 target_name=category.name,
                 target_org_unit=category.org_unit.name if category.org_unit else None,
@@ -586,6 +618,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
             raise ValidationError({"categoryId": "Valid category is required."})
         if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
             raise ValidationError({"categoryId": "Category must belong to the selected folder's Org Unit."})
+        if not (category.code or "").strip():
+            raise ValidationError({"categoryId": "Category must have a code before it can be assigned."})
 
         new_name = document.title
         if data.get("file_name"):
@@ -631,6 +665,15 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 old_category = document.category.name if document.category else "None"
                 changes.append(f"category: {old_category} → {category.name}")
                 document.category = category
+                old_document_code = document.code
+                new_document_code = swap_document_code_prefix(
+                    document.code,
+                    category.code,
+                    document_id=document.pk,
+                )
+                if new_document_code != (old_document_code or ""):
+                    changes.append(f"code: {old_document_code} → {new_document_code}")
+                    document.code = new_document_code
 
             new_requisitioners = data["requisitioners"]
             old_display = document.requestor or ""
@@ -647,18 +690,20 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 changes.append("keywords updated")
                 document.keywords = data["keywords"]
 
-            document.save(
-                update_fields=[
-                    "title",
-                    "file",
-                    "folder",
-                    "file_path",
-                    "category",
-                    "description",
-                    "keywords",
-                    "updated_at",
-                ]
-            )
+            update_fields = [
+                "title",
+                "file",
+                "folder",
+                "file_path",
+                "category",
+                "description",
+                "keywords",
+                "updated_at",
+            ]
+            if any(change.startswith("code:") for change in changes):
+                update_fields.insert(5, "code")
+
+            document.save(update_fields=update_fields)
             sync_document_requisitioners(document, new_requisitioners)
 
         change_summary = "; ".join(changes) if changes else "metadata refreshed"
@@ -697,6 +742,11 @@ class DocumentUploadView(APIView):
         if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
             return Response(
                 {"error": "Category must belong to the selected folder's Office Unit."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not (category.code or "").strip():
+            return Response(
+                {"error": "Category must have a code before documents can be uploaded."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -816,7 +866,7 @@ class DocumentNextCodeAPIView(APIView):
         if not category_id:
             return Response({"error": "categoryId is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        category = Category.objects.filter(pk=category_id).first()
+        category = scoped_categories_queryset(request.user).filter(pk=category_id).first()
         if not category:
             return Response({"error": "Valid category is required."}, status=status.HTTP_400_BAD_REQUEST)
 

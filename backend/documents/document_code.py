@@ -56,6 +56,60 @@ def format_document_code(category_code, year, sequence):
     return f"{category_code}-{year}-{sequence:06d}"
 
 
+def parse_generated_document_code(code):
+    match = GENERATED_DOCUMENT_CODE_PATTERN.match((code or "").strip().upper())
+    if not match:
+        return None
+    return match.group(1), int(match.group(2)), int(match.group(3))
+
+
+def swap_document_code_prefix(current_code, new_category_code, *, document_id=None):
+    parsed = parse_generated_document_code(current_code)
+    if not parsed:
+        return current_code or ""
+
+    _old_prefix, year, sequence = parsed
+    new_prefix = normalize_category_code(new_category_code)
+    if new_prefix == parsed[0]:
+        return (current_code or "").strip().upper()
+
+    new_code = format_document_code(new_prefix, year, sequence)
+    queryset = Document.objects.filter(code__iexact=new_code)
+    if document_id:
+        queryset = queryset.exclude(pk=document_id)
+    if queryset.exists():
+        raise ValidationError(f"Document code {new_code} is already in use.")
+    return new_code
+
+
+def recode_documents_for_category_code_change(category, old_code, new_code):
+    old_normalized = (old_code or "").strip().upper()
+    if not old_normalized:
+        return 0
+
+    new_normalized = normalize_category_code(new_code)
+    if old_normalized == new_normalized:
+        return 0
+
+    recoded = 0
+    documents = (
+        Document.objects.filter(category=category, is_deleted=False)
+        .exclude(code__isnull=True)
+        .exclude(code="")
+    )
+    for document in documents:
+        new_document_code = swap_document_code_prefix(
+            document.code,
+            new_normalized,
+            document_id=document.pk,
+        )
+        if new_document_code != (document.code or ""):
+            document.code = new_document_code
+            document.save(update_fields=["code", "updated_at"])
+            recoded += 1
+    return recoded
+
+
 def _next_sequence_number(category_code, year):
     seq = DocumentSequence.objects.filter(category_code=category_code, current_year=year).first()
     return (seq.current_number + 1) if seq else 1

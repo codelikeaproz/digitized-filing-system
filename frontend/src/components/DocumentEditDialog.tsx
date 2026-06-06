@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { CategorySelect } from "@/components/CategorySelect";
 import { RequisitionersEditor } from "@/components/documents/RequisitionersEditor";
+import { useCategories } from "@/contexts/CategoryContext";
 import { api } from "@/lib/api";
 import {
   type RequisitionerInput,
@@ -30,6 +31,7 @@ import {
   serializeRequisitionersForApi,
   validateRequisitioners,
 } from "@/lib/requisitioner";
+import { swapDocumentCodePrefixPreview } from "@/lib/category-code";
 import { cn, compareByNaturalName } from "@/lib/utils";
 import { Document, Folder } from "@/types";
 
@@ -41,6 +43,7 @@ type DocumentEditDialogProps = {
 };
 
 export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: DocumentEditDialogProps) {
+  const { categories } = useCategories();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [targetFolderId, setTargetFolderId] = useState("");
   const [customFileName, setCustomFileName] = useState("");
@@ -94,6 +97,16 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
     setKeywords(Array.isArray(document.keywords) ? [...document.keywords] : []);
     setKeywordInput("");
   }, [open, document]);
+
+  const selectedCategory = categories.find((category) => category.id === categoryId);
+  const categoryChanged = Boolean(document && categoryId && String(document.categoryId || "") !== categoryId);
+  const previewDocumentCode =
+    document?.code && selectedCategory?.code && categoryChanged
+      ? swapDocumentCodePrefixPreview(document.code, selectedCategory.code)
+      : null;
+  const willUpdateDocumentCode = Boolean(
+    previewDocumentCode && previewDocumentCode !== (document?.code || "").trim().toUpperCase()
+  );
 
   const addKeyword = () => {
     const value = keywordInput.trim();
@@ -224,12 +237,11 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
                 </Label>
                 <Input
                   id="edit-doc-code"
-                  value={document.code || "—"}
+                  value={willUpdateDocumentCode && previewDocumentCode ? previewDocumentCode : document.code || "—"}
                   readOnly
                   disabled
                   className="h-10 font-mono bg-muted"
                 />
-                <p className="text-[11px] text-muted-foreground">Permanent after creation.</p>
               </div>
             </div>
 

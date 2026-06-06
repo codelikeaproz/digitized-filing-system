@@ -12,6 +12,8 @@ Rules summary:
 
 from rest_framework.exceptions import PermissionDenied
 
+from documents.models import Category
+
 
 def org_unit_scope_ids(user):
     """
@@ -26,6 +28,23 @@ def org_unit_scope_ids(user):
     if getattr(user, "role", None) == "dept_head":
         return [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
     return [org_unit.id]
+
+
+def scoped_categories_queryset(user):
+    """Categories visible to the user (admin: all; dept_head/staff: scoped org units)."""
+    queryset = Category.objects.all()
+    role = getattr(user, "role", None)
+    if role == "admin":
+        return queryset
+
+    org_unit = getattr(user, "org_unit", None)
+    if not org_unit:
+        return queryset.none()
+
+    queryset = queryset.exclude(org_unit__isnull=True)
+    if role == "dept_head":
+        return queryset.filter(org_unit_id__in=org_unit_scope_ids(user))
+    return queryset.filter(org_unit_id=org_unit.id)
 
 
 def assert_recycle_bin_access(user, folder_or_document):

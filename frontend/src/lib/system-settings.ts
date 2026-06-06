@@ -10,6 +10,12 @@ function mapSystemSettings(raw: Record<string, unknown>): SystemSettings {
     storageRemainingMb: raw.storage_remaining_mb != null ? Number(raw.storage_remaining_mb) : undefined,
     storageUsagePercentage:
       raw.storage_usage_percentage != null ? Number(raw.storage_usage_percentage) : undefined,
+    allocatedStorageMb:
+      raw.allocated_storage_mb != null ? Number(raw.allocated_storage_mb) : undefined,
+    allocationRemainingMb:
+      raw.allocation_remaining_mb != null ? Number(raw.allocation_remaining_mb) : undefined,
+    allocationPercentage:
+      raw.allocation_percentage != null ? Number(raw.allocation_percentage) : undefined,
     updatedAt: typeof raw.updated_at === "string" ? raw.updated_at : undefined,
   };
 }

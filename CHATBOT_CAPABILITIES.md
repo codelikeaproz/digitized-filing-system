@@ -2,7 +2,7 @@
 
 This document describes the current capabilities and limitations of the Digitized Filing System Document Assistant.
 
-**Document codes:** New uploads receive auto-generated codes in the format `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Category codes are assigned automatically from the category name. Legacy manual codes remain searchable.
+**Document codes:** New uploads receive auto-generated codes in the format `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Category abbreviations are auto-generated or editable in Manage Categories. When the abbreviation changes or a document is reassigned to another category, auto-generated codes update their prefix only (sequence preserved). Legacy manual codes remain searchable and unchanged.
 
 ## Current Capabilities
 

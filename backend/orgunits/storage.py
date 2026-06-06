@@ -9,6 +9,7 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from documents.models import Document
+from .models import OrgUnit
 
 
 BYTES_PER_MB = 1024 * 1024
@@ -72,6 +73,60 @@ def recalculate_org_unit_storage(org_unit):
     org_unit.storage_used_mb = bytes_to_mb(total_bytes)
     org_unit.save(update_fields=["storage_used_mb"])
     return org_unit.storage_used_mb
+
+
+def get_total_allocated_quota_mb(exclude_org_unit=None):
+    """Sum of storage_quota_mb across active (non-deleted) Office Units."""
+    queryset = OrgUnit.objects.filter(is_deleted=False)
+    if exclude_org_unit is not None:
+        queryset = queryset.exclude(pk=exclude_org_unit.pk)
+    total = queryset.aggregate(total=Sum("storage_quota_mb"))["total"]
+    return int(total or 0)
+
+
+def get_available_allocation_mb(org_unit=None):
+    """Remaining system storage headroom for new or updated Office Unit quotas."""
+    from system.services import get_storage_quota_mb
+
+    system_mb = get_storage_quota_mb()
+    others_mb = get_total_allocated_quota_mb(exclude_org_unit=org_unit)
+    return max(0, int(system_mb) - others_mb)
+
+
+def validate_org_unit_allocation_quota(requested_mb, org_unit=None):
+    """
+    Raise ValidationError if requested quota exceeds available allocation headroom.
+    On update, org_unit is excluded from the allocated sum so its own quota can be reallocated.
+    """
+    from rest_framework.exceptions import ValidationError
+
+    if requested_mb is None:
+        return
+
+    if org_unit is not None:
+        used_mb = float(org_unit.storage_used_mb or 0)
+        if requested_mb < used_mb:
+            raise ValidationError(
+                {
+                    "storageQuotaMb": (
+                        f"Storage quota cannot be less than current usage ({used_mb} MB)."
+                    )
+                }
+            )
+
+    available_mb = get_available_allocation_mb(org_unit=org_unit)
+    if requested_mb > available_mb:
+        raise ValidationError(
+            {
+                "storageQuotaMb": (
+                    "Insufficient available system storage.\n\n"
+                    f"Requested: {requested_mb} MB\n"
+                    f"Available: {available_mb} MB\n\n"
+                    "Please reduce the storage allocation or increase the system storage quota."
+                ),
+                "message": "Insufficient available system storage.",
+            }
+        )
 
 
 def get_storage_summary(org_unit):

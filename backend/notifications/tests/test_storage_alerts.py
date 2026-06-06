@@ -4,7 +4,9 @@ from rest_framework.exceptions import ValidationError
 
 from notifications.models import Notification, StorageThresholdState
 from notifications.storage_alerts import (
+    check_allocation_thresholds,
     check_storage_thresholds,
+    get_allocation_summary,
     get_global_storage_summary,
     reset_thresholds_if_quota_increased,
     validate_global_storage_quota,
@@ -82,3 +84,35 @@ class StorageAlertsTests(TestCase):
         self.assertFalse(state.fired_100)
         summary = get_global_storage_summary()
         self.assertEqual(summary["quota_mb"], 1000)
+
+    def test_allocation_summary_tracks_allocated_quotas(self):
+        OrgUnit.objects.all().delete()
+        OrgUnit.objects.create(name="Unit A", storage_quota_mb=2000)
+        OrgUnit.objects.create(name="Unit B", storage_quota_mb=1500)
+        summary = get_allocation_summary()
+        self.assertEqual(summary["quota_mb"], 500)
+        self.assertEqual(summary["allocated_mb"], 3500)
+        self.assertEqual(summary["remaining_mb"], 0)
+        self.assertTrue(summary["allocation_exceeded"])
+
+    def test_allocation_threshold_fires_once_at_ninety_percent(self):
+        OrgUnit.objects.all().delete()
+        StorageThresholdState.objects.all().delete()
+        OrgUnit.objects.create(name="Unit A", storage_quota_mb=450)
+        first = check_allocation_thresholds()
+        second = check_allocation_thresholds()
+        self.assertEqual(len(first), 1)
+        self.assertEqual(second, [])
+        self.assertEqual(first[0].title, "Storage Alert")
+        self.assertEqual(first[0].audience, Notification.AUDIENCE_ADMIN)
+        self.assertTrue(StorageThresholdState.load().alloc_fired_90)
+
+    def test_allocation_threshold_fires_at_one_hundred_percent(self):
+        OrgUnit.objects.all().delete()
+        StorageThresholdState.objects.all().delete()
+        OrgUnit.objects.create(name="Unit A", storage_quota_mb=500)
+        created = check_allocation_thresholds()
+        titles = {item.title for item in created}
+        self.assertIn("Storage Alert", titles)
+        self.assertIn("Storage Quota Exceeded", titles)
+        self.assertTrue(StorageThresholdState.load().alloc_fired_100)

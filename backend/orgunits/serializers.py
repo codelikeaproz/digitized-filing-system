@@ -121,12 +121,14 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Storage quota must be at least 1 MB.")
         if value is not None:
             from system.services import get_storage_quota_mb
+            from orgunits.storage import validate_org_unit_allocation_quota
 
             system_quota_mb = get_storage_quota_mb()
             if value > system_quota_mb:
                 raise serializers.ValidationError(
                     f"Office Unit quota cannot exceed the system-wide storage limit ({system_quota_mb} MB)."
                 )
+            validate_org_unit_allocation_quota(value, org_unit=getattr(self, "instance", None))
         return value
 
     def validate_parentId(self, value):

@@ -1,10 +1,10 @@
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from django.utils import timezone
 import re
 
 from config.timezone_utils import format_local_datetime
-from .document_code import derive_category_code
+from .document_code import derive_category_code, normalize_category_code
 from .models import Category, Document, DocumentRequisitioner, Folder
 from .requisitioners import build_requisitioner_full_name, validate_requisitioners_list
 from .permissions import resolve_category_org_unit_for_create
@@ -31,9 +31,29 @@ def ensure_unique_document_code(code, *, document_id=None):
         raise serializers.ValidationError("Document Code is already used.")
 
 
+def category_code_is_taken(code, org_unit_id, *, exclude_pk=None):
+    queryset = Category.objects.filter(code__iexact=code)
+    if org_unit_id:
+        queryset = queryset.filter(org_unit_id=org_unit_id)
+    else:
+        queryset = queryset.filter(org_unit__isnull=True)
+    if exclude_pk:
+        queryset = queryset.exclude(pk=exclude_pk)
+    return queryset.exists()
+
+
+def normalize_category_code_field(value):
+    try:
+        return normalize_category_code(value)
+    except DRFValidationError as exc:
+        detail = exc.detail
+        message = detail[0] if isinstance(detail, list) else str(detail)
+        raise serializers.ValidationError(str(message)) from exc
+
+
 class CategorySerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
-    code = serializers.CharField(max_length=10, read_only=True)
+    code = serializers.CharField(max_length=10, required=False, allow_blank=True)
     org_unit = serializers.IntegerField(source="org_unit_id", read_only=True, allow_null=True)
     orgUnitId = serializers.CharField(source="org_unit_id", required=False, allow_null=True)
     createdAt = serializers.SerializerMethodField()
@@ -79,6 +99,18 @@ class CategorySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Category name cannot be empty.")
         return name
 
+    def _code_was_provided(self):
+        initial = getattr(self, "initial_data", None)
+        if not isinstance(initial, dict):
+            return False
+        return "code" in initial and str(initial.get("code", "")).strip() != ""
+
+    def _ensure_unique_category_code(self, code, org_unit_id, *, exclude_pk=None):
+        if category_code_is_taken(code, org_unit_id, exclude_pk=exclude_pk):
+            raise serializers.ValidationError(
+                {"code": "A category with this code already exists in this Org Unit."}
+            )
+
     def _assign_category_org_unit(self, attrs):
         request = self.context.get("request")
         user = getattr(request, "user", None) if request else None
@@ -105,11 +137,32 @@ class CategorySerializer(serializers.ModelSerializer):
         if not self.instance:
             attrs = self._assign_category_org_unit(attrs)
             org_unit_id = attrs.get("org_unit_id")
-            attrs["code"] = derive_category_code(name.strip(), org_unit_id)
+            explicit_code = attrs.pop("code", None)
+            if explicit_code and str(explicit_code).strip():
+                attrs["code"] = normalize_category_code_field(explicit_code)
+                self._ensure_unique_category_code(attrs["code"], org_unit_id)
+            else:
+                attrs["code"] = derive_category_code(name.strip(), org_unit_id)
         else:
             attrs.pop("org_unit_id", None)
-            attrs.pop("code", None)
             org_unit_id = self.instance.org_unit_id
+            explicit_code = attrs.pop("code", None)
+            name_changed = name and name.strip().casefold() != self.instance.name.casefold()
+            code_missing = not (self.instance.code or "").strip()
+
+            if self._code_was_provided():
+                attrs["code"] = normalize_category_code_field(explicit_code)
+                self._ensure_unique_category_code(
+                    attrs["code"],
+                    org_unit_id,
+                    exclude_pk=self.instance.pk,
+                )
+            elif name_changed or code_missing:
+                attrs["code"] = derive_category_code(
+                    name.strip(),
+                    org_unit_id,
+                    exclude_category_id=self.instance.pk,
+                )
 
         if not name:
             return attrs

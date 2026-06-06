@@ -127,6 +127,9 @@ export interface SystemSettings {
   storageUsedMb?: number;
   storageRemainingMb?: number;
   storageUsagePercentage?: number;
+  allocatedStorageMb?: number;
+  allocationRemainingMb?: number;
+  allocationPercentage?: number;
   updatedAt?: string;
 }
 

@@ -72,12 +72,6 @@ Applying migrations...
 Starting development server at http://0.0.0.0:8000/
 ```
 
-Create an admin account after the containers are running:
-
-```powershell
-docker compose exec backend python manage.py createsuperuser
-```
-
 Open:
 
 ```text
@@ -88,9 +82,24 @@ MySQL:    localhost:3307
 
 **Backup Management (admin only):** The backend image includes `default-mysql-client` so database backups can run `mysqldump` against the MySQL container. Use **Administration → Backup Management** in the UI or `GET /api/backups/database` and `GET /api/backups/media` with a JWT.
 
+### Create the first admin account
+
+Migrations do **not** create a login user. After the stack is up, run once:
+
+```powershell
+docker compose exec backend python manage.py createsuperuser
+```
+
+- **Email:** your admin login (for example `admin@dfs.local`)
+- **Password:** choose a strong password when prompted
+- **Role:** set automatically to `admin` for superusers
+- **Org Unit:** leave empty (global admin)
+
+Use this account to sign in at `http://localhost:5173`.
+
 ## 3. Clean First Run
 
-If you want a fresh MySQL database volume:
+If you want a fresh MySQL database volume (for example after migration squashes or to wipe test data):
 
 ```powershell
 docker compose down -v
@@ -99,13 +108,7 @@ docker compose up --build
 
 This deletes Docker volumes, including the MySQL database. Do not run it if you need to keep data.
 
-On first startup, the backend runs migrations only. Create your own superuser after the stack is up:
-
-```powershell
-docker compose exec backend python manage.py createsuperuser
-```
-
-Use your preferred email (for example `admin@dfs.local`) and password when prompted.
+Then create the first admin account as described in **Create the first admin account** above.
 
 ## 4. Wait-For-MySQL Logic
 
@@ -300,6 +303,18 @@ Confirm the backend command includes the wait loop:
 ```powershell
 docker compose config
 ```
+
+### Migration Errors After Pulling New Code
+
+If migrations were squashed into `0001_initial` files (for example `notifications`), an old database may be out of sync. For local dev with disposable data:
+
+```powershell
+docker compose down -v
+docker compose up --build
+docker compose exec backend python manage.py createsuperuser
+```
+
+Do not use `-v` on production or when you need to keep records.
 
 ### MySQL Encoding Problems
 

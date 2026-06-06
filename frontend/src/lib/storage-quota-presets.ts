@@ -62,6 +62,61 @@ export function formatStorageQuotaMb(mb: number): string {
   return matched?.label ?? `${mb} MB`;
 }
 
+/** Human-readable MB + GB pair for allocation displays (e.g. 13836 → 13.5 GB / 13,836 MB). */
+export function formatStorageQuotaDual(mb: number): { primary: string; secondary: string | null } {
+  const mbLabel = `${mb.toLocaleString()} MB`;
+  if (mb < 1024) {
+    return { primary: mbLabel, secondary: null };
+  }
+  const gb = mb / 1024;
+  const gbLabel =
+    gb >= 100 ? `${Math.round(gb)} GB` : `${Math.round(gb * 10) / 10} GB`.replace(/\.0 GB$/, " GB");
+  return { primary: gbLabel, secondary: mbLabel };
+}
+
 export function orgUnitQuotaExceedsSystemLimit(orgUnitQuotaMb: number, systemQuotaMb: number): boolean {
   return Number.isFinite(orgUnitQuotaMb) && Number.isFinite(systemQuotaMb) && orgUnitQuotaMb > systemQuotaMb;
+}
+
+export function sumOrgUnitAllocatedMb(
+  orgUnits: ReadonlyArray<{ storageQuotaMb?: number }>,
+  excludeOrgUnitId?: string | null
+): number {
+  return orgUnits.reduce((total, unit) => {
+    if (excludeOrgUnitId && "id" in unit && unit.id === excludeOrgUnitId) {
+      return total;
+    }
+    const quota = Number(unit.storageQuotaMb ?? 0);
+    return total + (Number.isFinite(quota) && quota > 0 ? quota : 0);
+  }, 0);
+}
+
+export function getAvailableAllocationMb(
+  systemQuotaMb: number | null,
+  orgUnits: ReadonlyArray<{ id?: string; storageQuotaMb?: number }>,
+  excludeOrgUnitId?: string | null
+): number | null {
+  if (systemQuotaMb == null || !Number.isFinite(systemQuotaMb)) {
+    return null;
+  }
+  const allocated = sumOrgUnitAllocatedMb(orgUnits, excludeOrgUnitId);
+  return Math.max(0, systemQuotaMb - allocated);
+}
+
+export function orgUnitQuotaExceedsAvailableAllocation(
+  requestedQuotaMb: number,
+  availableAllocationMb: number | null
+): boolean {
+  if (availableAllocationMb == null) return false;
+  if (!Number.isFinite(requestedQuotaMb) || requestedQuotaMb < 1) return false;
+  return requestedQuotaMb > availableAllocationMb;
+}
+
+export function formatAllocationError(requestedMb: number, availableMb: number): string {
+  return (
+    "Insufficient available system storage.\n\n" +
+    `Requested: ${requestedMb} MB\n` +
+    `Available: ${availableMb} MB\n\n` +
+    "Please reduce the storage allocation or increase the system storage quota."
+  );
 }

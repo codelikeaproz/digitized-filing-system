@@ -64,6 +64,14 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 
 **Recycle bin** and **dashboard** live inside `documents` because they operate on folder/document querysets — splitting them would duplicate scoping logic.
 
+### First-time setup (Docker)
+
+1. Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` → `frontend/.env`
+2. `docker compose up --build`
+3. Create the admin login once: `docker compose exec backend python manage.py createsuperuser` (email = username, role auto-set to `admin`, Org Unit optional)
+
+See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for MySQL config, clean reset (`docker compose down -v`), and troubleshooting. Migrations do **not** seed a default user.
+
 ---
 
 ## 3. Access control model
@@ -184,7 +192,7 @@ log_audit(
 7. `add_storage_usage()` + `check_storage_thresholds()` — updates usage and may create bell notifications
 8. `index_document_text(document)` — extract text for AI search
 
-**Document codes:** Preview with `GET /api/documents/next-code?categoryId=`. Assigned once at upload; immutable on edit. Category codes are auto-generated from the category name on create. Sequence counters are shared globally per category code and year.
+**Document codes:** Preview with `GET /api/documents/next-code?categoryId=`. Assigned at upload. When a document's category is changed on edit, or when a category abbreviation changes in Manage Categories, auto-generated document codes swap their prefix only (e.g. `MEM-2026-000001` → `TES-2026-000001`); legacy non-standard codes are unchanged. Category codes are auto-generated from the category name on create/rename, or set manually via Manage Categories. Sequence counters are shared globally per category code and year.
 
 ### Soft delete / recycle bin
 
@@ -194,11 +202,12 @@ log_audit(
 
 ### Storage quota notifications
 
-- **Global cap:** `SystemSettings.storage_quota_mb` (default 500 MB) — drives notification thresholds and upload blocking at 100%
-- **Per–Office Unit cap:** `OrgUnit.storage_quota_mb` — unchanged; both checks must pass on upload
-- **Service:** `notifications/storage_alerts.py` — `check_storage_thresholds()`, `validate_global_storage_quota()`
-- **Hooks:** After upload, permanent delete, and when admin increases system quota
-- **UI:** Notification bell in `AppShell`; admin configures limits under Settings → System
+- **Global cap (physical):** `SystemSettings.storage_quota_mb` — compared against total document file sizes; drives upload blocking at 100% and physical-usage bell alerts at 80/90/95/100%
+- **Allocation pool:** sum of `OrgUnit.storage_quota_mb` cannot exceed system quota on Office Unit create/update (`orgunits/storage.py` → `validate_org_unit_allocation_quota()`)
+- **Per–Office Unit cap:** `OrgUnit.storage_quota_mb` — upload blocking when unit usage exceeds its quota; both global physical and per-unit checks must pass on upload
+- **Service:** `notifications/storage_alerts.py` — `check_storage_thresholds()` (physical), `check_allocation_thresholds()` (allocated quotas), `validate_global_storage_quota()`
+- **Hooks:** After upload, permanent delete, Office Unit quota changes, and when admin changes system quota
+- **UI:** Notification bell in `AppShell`; admin configures limits under Settings → System; Office Units modal shows allocation headroom remaining
 
 ---
 
@@ -292,7 +301,7 @@ After frontend changes:
 Documented in [API_DOCUMENTATION.md §15](./API_DOCUMENTATION.md#15-known-limitations--needs-review):
 
 - Dashboard stats not role-scoped
-- OrgUnit write endpoints lack Admin-only backend guard
+- OrgUnit write endpoints enforce Admin-only on create/update
 - AuditLog ViewSet exposes full ModelViewSet verbs
 - No server-side logout / token denylist
 - JWT refresh not wired in frontend

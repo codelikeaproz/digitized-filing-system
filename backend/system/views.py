@@ -31,9 +31,16 @@ class SystemSettingsAPIView(APIView):
 
         new_quota = serializer.instance.storage_quota_mb
         if new_quota > old_quota:
-            from notifications.storage_alerts import reset_thresholds_if_quota_increased
+            from notifications.storage_alerts import (
+                check_allocation_thresholds,
+                reset_thresholds_if_quota_increased,
+            )
 
             reset_thresholds_if_quota_increased(new_quota)
+        else:
+            from notifications.storage_alerts import check_allocation_thresholds
+
+            check_allocation_thresholds(trigger_user=request.user)
 
         log_audit(
             request.user,

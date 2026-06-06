@@ -118,6 +118,79 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
             )
         return queryset
 
+    def _require_admin(self):
+        if getattr(self.request.user, "role", None) != "admin":
+            raise PermissionDenied("Only Admin users can manage Office Units.")
+
+    def _is_allocation_validation_error(self, exc):
+        detail = getattr(exc, "detail", None)
+        if not isinstance(detail, dict):
+            return False
+        if detail.get("message") == "Insufficient available system storage.":
+            return True
+        storage_err = detail.get("storageQuotaMb") or detail.get("storage_quota_mb")
+        return storage_err is not None and "Insufficient available system storage" in str(storage_err)
+
+    def _audit_allocation_failure(self, request, *, org_unit_name="", previous_quota=None, requested_quota=None):
+        parts = ["Storage allocation validation failed."]
+        if org_unit_name:
+            parts.append(f"Office Unit: {org_unit_name}.")
+        if previous_quota is not None:
+            parts.append(f"Previous quota: {previous_quota} MB.")
+        if requested_quota is not None:
+            parts.append(f"Requested quota: {requested_quota} MB.")
+        log_audit(
+            request.user,
+            "STORAGE_ALLOCATION_VALIDATION_FAILED",
+            " ".join(parts),
+            target_type="org_unit",
+            target_name=org_unit_name or "Office Unit",
+            target_org_unit=org_unit_name or None,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as exc:
+            if self._is_allocation_validation_error(exc):
+                self._audit_allocation_failure(
+                    request,
+                    org_unit_name=(request.data.get("name") or "").strip(),
+                    requested_quota=request.data.get("storageQuotaMb"),
+                )
+            raise
+        self.perform_create(serializer)
+        if "storage_quota_mb" in serializer.validated_data:
+            from notifications.storage_alerts import check_allocation_thresholds
+
+            check_allocation_thresholds(trigger_user=request.user)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        previous_quota = instance.storage_quota_mb
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as exc:
+            if self._is_allocation_validation_error(exc):
+                self._audit_allocation_failure(
+                    request,
+                    org_unit_name=instance.name,
+                    previous_quota=previous_quota,
+                    requested_quota=request.data.get("storageQuotaMb"),
+                )
+            raise
+        self.perform_update(serializer)
+        if "storage_quota_mb" in serializer.validated_data:
+            from notifications.storage_alerts import check_allocation_thresholds
+
+            check_allocation_thresholds(trigger_user=request.user)
+        return Response(serializer.data)
+
     def _validate_hierarchy(self, *, instance=None, name=None, parent=None):
         org_unit_name = (name or "").strip()
         if not org_unit_name:
@@ -155,25 +228,45 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
         return parent
 
     def perform_create(self, serializer):
+        self._require_admin()
         parent = self._resolve_parent(serializer)
         name = serializer.validated_data.get("name")
         self._validate_hierarchy(name=name, parent=parent)
         instance = serializer.save(name=name.strip(), parent=parent)
+        quota_note = ""
+        if "storage_quota_mb" in serializer.validated_data:
+            quota_note = f"; storage quota {instance.storage_quota_mb} MB"
         log_audit(
             self.request.user,
             "CREATE_ORG_UNIT",
-            f"Created OrgUnit: {instance.name} ({instance.type_name or 'Unassigned'})",
+            f"Created OrgUnit: {instance.name} ({instance.type_name or 'Unassigned'}){quota_note}",
             target_type="org_unit",
             target_name=instance.name,
             target_org_unit=instance.name,
         )
 
     def perform_update(self, serializer):
+        self._require_admin()
         instance = serializer.instance
+        previous_quota = instance.storage_quota_mb
         parent = self._resolve_parent(serializer, instance)
         name = serializer.validated_data.get("name", instance.name)
         self._validate_hierarchy(instance=instance, name=name, parent=parent)
         instance = serializer.save(name=name.strip(), parent=parent)
+        if "storage_quota_mb" in serializer.validated_data:
+            new_quota = instance.storage_quota_mb
+            if previous_quota != new_quota:
+                log_audit(
+                    self.request.user,
+                    "STORAGE_ALLOCATION_UPDATED",
+                    (
+                        f"Storage allocation updated for {instance.name}: "
+                        f"{previous_quota} MB → {new_quota} MB"
+                    ),
+                    target_type="org_unit",
+                    target_name=instance.name,
+                    target_org_unit=instance.name,
+                )
         quota_note = ""
         if "storage_quota_mb" in serializer.validated_data:
             quota_note = f"; storage quota set to {instance.storage_quota_mb} MB"

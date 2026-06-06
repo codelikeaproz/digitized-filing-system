@@ -69,11 +69,18 @@ export function CategorySelect({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [editingCategoryCode, setEditingCategoryCode] = useState("");
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
 
   const [orgUnits, setOrgUnits] = useState<{id: string, name: string}[]>([]);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [addCategoryNameError, setAddCategoryNameError] = useState(false);
   const [renameCategoryNameError, setRenameCategoryNameError] = useState(false);
+  const [renameCategoryCodeError, setRenameCategoryCodeError] = useState(false);
+  const [recodeConfirmOpen, setRecodeConfirmOpen] = useState(false);
+  const [pendingRecodeCount, setPendingRecodeCount] = useState(0);
+  const [pendingRecodeOldCode, setPendingRecodeOldCode] = useState("");
+  const [pendingRecodeNewCode, setPendingRecodeNewCode] = useState("");
 
   const getPayloadOrgUnit = () => {
     if (orgUnitId) return orgUnitId;
@@ -99,6 +106,22 @@ export function CategorySelect({
   };
 
   const duplicateCategoryMessage = "A category with this name already exists in this Office Unit.";
+  const invalidCategoryCodeMessage = "Code must use uppercase letters and numbers only (max 10).";
+
+  const isValidCategoryCode = (code: string) => /^[A-Z0-9]{1,10}$/.test(code.trim().toUpperCase());
+
+  const getRenamePreviewCode = (category: Category, name: string) =>
+    previewCategoryCode(
+      name,
+      categories
+        .filter(
+          (item) =>
+            item.id !== category.id &&
+            String(item.orgUnitId ?? "") === String(category.orgUnitId ?? "")
+        )
+        .map((item) => item.code || "")
+        .filter(Boolean)
+    );
 
   useEffect(() => {
     if (orgUnitId) {
@@ -195,38 +218,111 @@ export function CategorySelect({
   const handleStartRenameCategory = (category: Category) => {
     setEditingCategoryId(category.id);
     setEditingCategoryName(category.name);
+    setEditingCategoryCode(category.code || "");
+    setCodeManuallyEdited(false);
     setRenameCategoryNameError(false);
+    setRenameCategoryCodeError(false);
   };
 
   const handleCancelRenameCategory = () => {
     setEditingCategoryId(null);
     setEditingCategoryName("");
+    setEditingCategoryCode("");
+    setCodeManuallyEdited(false);
     setRenameCategoryNameError(false);
+    setRenameCategoryCodeError(false);
+  };
+
+  const handleEditingCategoryNameChange = (category: Category, nextName: string) => {
+    setEditingCategoryName(nextName);
+    if (renameCategoryNameError) setRenameCategoryNameError(false);
+    if (!codeManuallyEdited) {
+      setEditingCategoryCode(
+        nextName.trim() ? getRenamePreviewCode(category, nextName) : category.code || ""
+      );
+    }
+  };
+
+  const handleEditingCategoryCodeChange = (nextCode: string) => {
+    setEditingCategoryCode(nextCode.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10));
+    setCodeManuallyEdited(true);
+    if (renameCategoryCodeError) setRenameCategoryCodeError(false);
+  };
+
+  const resolveEffectiveNewCode = (category: Category) => {
+    if (codeManuallyEdited) {
+      return editingCategoryCode.trim().toUpperCase();
+    }
+    const nameChanged =
+      editingCategoryName.trim().toLowerCase() !== category.name.trim().toLowerCase();
+    if (nameChanged && editingCategoryName.trim()) {
+      return getRenamePreviewCode(category, editingCategoryName);
+    }
+    return (category.code || "").toUpperCase();
+  };
+
+  const submitCategoryUpdate = async () => {
+    if (!editingCategoryId) return;
+
+    setRenameCategoryNameError(false);
+    setRenameCategoryCodeError(false);
+    setIsSubmitting(true);
+    try {
+      const payloadCode = codeManuallyEdited ? editingCategoryCode.trim().toUpperCase() : undefined;
+      const result = await updateCategory(editingCategoryId, editingCategoryName, payloadCode);
+      if (result.ok) {
+        handleCancelRenameCategory();
+        setRecodeConfirmOpen(false);
+        setPendingRecodeCount(0);
+        setPendingRecodeOldCode("");
+        setPendingRecodeNewCode("");
+      } else if (result.duplicate) {
+        if (codeManuallyEdited) {
+          setRenameCategoryCodeError(true);
+        } else {
+          setRenameCategoryNameError(true);
+        }
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleRenameCategory = async () => {
     if (!editingCategoryId || !editingCategoryName.trim()) return;
 
     const currentCategory = categories.find((category) => category.id === editingCategoryId);
+    if (!currentCategory) return;
+
     const normalizedName = editingCategoryName.trim();
-    if (isDuplicateCategoryName(normalizedName, currentCategory?.orgUnitId ?? undefined, editingCategoryId)) {
+    if (isDuplicateCategoryName(normalizedName, currentCategory.orgUnitId ?? undefined, editingCategoryId)) {
       setRenameCategoryNameError(true);
       toast.error(`"${normalizedName}" already exists in this Office Unit.`);
       return;
     }
 
-    setRenameCategoryNameError(false);
-    setIsSubmitting(true);
-    try {
-      const result = await updateCategory(editingCategoryId, editingCategoryName);
-      if (result.ok) {
-        handleCancelRenameCategory();
-      } else if (result.duplicate) {
-        setRenameCategoryNameError(true);
+    if (codeManuallyEdited) {
+      const normalizedCode = editingCategoryCode.trim().toUpperCase();
+      if (!normalizedCode || !isValidCategoryCode(normalizedCode)) {
+        setRenameCategoryCodeError(true);
+        toast.error(invalidCategoryCodeMessage);
+        return;
       }
-    } finally {
-      setIsSubmitting(false);
     }
+
+    const effectiveNewCode = resolveEffectiveNewCode(currentCategory);
+    const oldCode = (currentCategory.code || "").toUpperCase();
+    const documentCount = getCategoryDocumentCount(currentCategory);
+
+    if (effectiveNewCode !== oldCode && documentCount > 0) {
+      setPendingRecodeCount(documentCount);
+      setPendingRecodeOldCode(oldCode);
+      setPendingRecodeNewCode(effectiveNewCode);
+      setRecodeConfirmOpen(true);
+      return;
+    }
+
+    await submitCategoryUpdate();
   };
 
   const getCategoryDocumentCount = (category: Category) => {
@@ -238,6 +334,12 @@ export function CategorySelect({
     if (inUse) return;
     setCategoryToDelete(category);
   };
+
+  const recodeExampleYear = new Date().getFullYear();
+  const recodeExampleBefore =
+    pendingRecodeOldCode && `${pendingRecodeOldCode}-${recodeExampleYear}-000001`;
+  const recodeExampleAfter =
+    pendingRecodeNewCode && `${pendingRecodeNewCode}-${recodeExampleYear}-000001`;
 
   return (
     <>
@@ -401,8 +503,7 @@ export function CategorySelect({
                           <Input
                             value={editingCategoryName}
                             onChange={(e) => {
-                              setEditingCategoryName(e.target.value);
-                              if (renameCategoryNameError) setRenameCategoryNameError(false);
+                              handleEditingCategoryNameChange(c, e.target.value);
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleRenameCategory();
@@ -419,6 +520,34 @@ export function CategorySelect({
                           {renameCategoryNameError && (
                             <p className="mt-1 text-xs text-destructive">{duplicateCategoryMessage}</p>
                           )}
+                          <label className="mt-2 text-[11px] font-medium text-muted-foreground">
+                            Code abbreviation
+                          </label>
+                          <Input
+                            value={editingCategoryCode}
+                            onChange={(e) => handleEditingCategoryCodeChange(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRenameCategory();
+                              if (e.key === 'Escape') handleCancelRenameCategory();
+                            }}
+                            aria-invalid={renameCategoryCodeError}
+                            maxLength={10}
+                            placeholder="e.g. REP"
+                            className={cn(
+                              "h-8 font-mono text-xs",
+                              renameCategoryCodeError &&
+                                "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30"
+                            )}
+                            aria-label="Category code abbreviation"
+                          />
+                          {renameCategoryCodeError && (
+                            <p className="mt-1 text-xs text-destructive">{invalidCategoryCodeMessage}</p>
+                          )}
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {codeManuallyEdited
+                              ? "Manual abbreviation override. Existing document codes are not changed."
+                              : "Abbreviation updates from the name when you rename. Edit the code field to override."}
+                          </p>
                         </>
                       ) : (
                         <>
@@ -505,6 +634,58 @@ export function CategorySelect({
           </div>
           <DialogFooter>
             <Button variant="default" className="bg-[#0A4D27] hover:bg-[#0A4D27]/90" onClick={() => setIsManageModalOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recode confirmation when abbreviation changes */}
+      <Dialog
+        open={recodeConfirmOpen}
+        onOpenChange={(open) => {
+          setRecodeConfirmOpen(open);
+          if (!open) {
+            setPendingRecodeCount(0);
+            setPendingRecodeOldCode("");
+            setPendingRecodeNewCode("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Update document codes?
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              {pendingRecodeCount}{" "}
+              {pendingRecodeCount === 1 ? "document" : "documents"} in this category will have
+              their code prefix updated from{" "}
+              <span className="font-mono font-medium">{pendingRecodeOldCode}</span> to{" "}
+              <span className="font-mono font-medium">{pendingRecodeNewCode}</span>. Sequence
+              numbers stay the same
+              {recodeExampleBefore && recodeExampleAfter ? (
+                <>
+                  {" "}
+                  (e.g.{" "}
+                  <span className="font-mono font-medium">{recodeExampleBefore}</span> becomes{" "}
+                  <span className="font-mono font-medium">{recodeExampleAfter}</span>).
+                </>
+              ) : (
+                "."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setRecodeConfirmOpen(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#0A4D27] hover:bg-[#0A4D27]/90"
+              onClick={() => submitCategoryUpdate()}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Saving..." : "Continue"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

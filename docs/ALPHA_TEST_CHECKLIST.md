@@ -59,7 +59,9 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | PDF upload with folder, category (with code), auto document code preview, and ≥1 keyword | All | [ ] |
-| Document code read-only on edit; category code auto-generated from name on create | All | [ ] |
+| Document code read-only on edit unless category changes; prefix swaps when category reassigned | All | [ ] |
+| Category abbreviation change in Manage Categories recodes existing document prefixes | All | [ ] |
+| Category code auto-generated from name on create/rename or editable manually in Manage Categories | All | [ ] |
 | Non-PDF, missing fields, duplicate name, and out-of-scope folder rejected | All | [ ] |
 | File over configured upload limit (default 15 MB) rejected | All | [ ] |
 | Upload blocked when global or Office Unit storage quota exceeded | All | [ ] |
@@ -90,7 +92,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| Create, rename, delete (blocked if in use); scoped to Org Unit | All | [ ] |
+| Create, rename, delete (blocked if in use); scoped to Org Unit; manual code abbreviation edit in Manage Categories | All | [ ] |
 
 ---
 
@@ -135,6 +137,11 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | CRUD org units and org types | Admin | [ ] |
+| Add Office Unit disabled when 0 MB allocation headroom remains; Create/Save disabled when quota exceeds headroom or system cap | Admin | [ ] |
+| Modal shows Available System Storage (allocation headroom remaining) | Admin | [ ] |
+| Create/update blocked with clear error when quota exceeds remaining allocation | Admin | [ ] |
+| Audit log records allocation validation failure and quota updates | Admin | [ ] |
+| Allocation threshold bell alerts at 90% and 100% of allocated quotas | Admin | [ ] |
 | Dept Head / Staff blocked | Dept Head, Staff | [ ] |
 
 ---

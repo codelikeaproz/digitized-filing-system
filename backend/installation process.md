@@ -92,24 +92,19 @@ Applying migrations...
 Starting development server at http://0.0.0.0:8000/
 ```
 
-Then create a new Admin account:
+Then create the first admin account (same as [DOCKER_SETUP.md](../DOCKER_SETUP.md)):
 
 ```powershell
 docker compose exec backend python manage.py createsuperuser
 ```
 
-Recommended first admin:
+Use your email as the login. Superusers get role `admin`; leave Org Unit empty.
 
-```text
-Role: admin
-Org Unit: leave empty / null
-```
-
-After creating the superuser, open:
+Open:
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
-- Admin: `http://localhost:8000/admin/`
+- Django admin: `http://localhost:8000/admin/`
 
 Do not run `docker compose down -v` if you need to keep real records.
 

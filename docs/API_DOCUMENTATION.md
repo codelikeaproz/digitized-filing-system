@@ -677,7 +677,7 @@ Or custom:
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `categoryId` | Yes | Category ID with a configured `code` |
+| `categoryId` | Yes | Category ID with a configured `code` (must be visible in the caller's Office Unit scope) |
 
 **Success `200`:**
 
@@ -698,7 +698,7 @@ Preview only — the final code is assigned atomically when upload completes.
 | **Auth** | Bearer JWT |
 | **Scope** | Must be in accessible OrgUnit |
 
-Uses `DocumentSerializer` — document `code` is read-only after creation.
+Uses `DocumentSerializer` — document `code` is read-only in the serializer; prefix may update when category assignment changes via edit (see Edit document details).
 
 ---
 
@@ -728,7 +728,7 @@ Uses `DocumentSerializer` — document `code` is read-only after creation.
 ```
 
 - Replaces the full requisitioner list (add/update/remove sync)
-- Document `code` cannot be changed via this endpoint
+- Document `code` is not sent in the body; when `categoryId` changes, auto-generated codes swap prefix only (`MEM-2026-000001` → `REP-2026-000001`). Legacy codes are unchanged.
 - `requestor` in responses is derived as `"emp - name, emp - name"` for backward compatibility
 - At least one requisitioner required; employee numbers must be digits only and unique per document
 
@@ -950,8 +950,8 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 }
 ```
 
-- `code` — auto-generated from the category name (first 3 alphanumeric characters, deduped per Office Unit); read-only in responses; do not send on create
-- Unique `(name, org_unit)` per category name
+- `code` — auto-generated from the category name when omitted (first 3 alphanumeric characters, deduped per Office Unit). Optional on create: send `"code": "AUD"` to set manually.
+- Unique `(name, org_unit)` per category name; unique `(code, org_unit)` when code is non-empty
 
 ---
 
@@ -961,6 +961,12 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 |---|---|
 | **Method** | `PUT` / `PATCH` |
 | **Path** | `/api/categories/{id}` |
+
+**Body:** `{ "name": "Updated Name", "code": "AUD" }` — `code` is optional.
+
+- When `code` is sent, it is normalized (uppercase A–Z, 0–9, max 10) and saved as a **manual abbreviation override**.
+- When `code` is omitted and the name changes, the server regenerates `code` from the new name (deduped within the Office Unit).
+- When the category abbreviation changes, active documents in that category with auto-generated codes (`PREFIX-YEAR-SEQ`) have their prefix updated; sequence numbers are preserved (e.g. `MEM-2026-000001` → `TES-2026-000001`).
 
 ---
 
@@ -1020,7 +1026,8 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 {
   "name": "Software Development Department",
   "parentId": "1",
-  "org_type_id": 2
+  "org_type_id": 2,
+  "storageQuotaMb": 1024
 }
 ```
 
@@ -1029,8 +1036,23 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 - Name required; unique among siblings
 - No circular parent relationships
 - Active Org Type required (`org_type_id`)
+- `storageQuotaMb` — admin only; minimum 1 MB; cannot exceed system-wide `storage_quota_mb`
+- **Allocation validation:** sum of all active Office Unit quotas (excluding the unit being edited) plus requested quota must not exceed `storage_quota_mb`
 
-**Status: Needs Review** — No explicit Admin-only permission check in `OrgUnitViewSet`; any authenticated user can call this endpoint. Frontend restricts to Admin UI.
+**Allocation error `400`:**
+
+```json
+{
+  "storageQuotaMb": [
+    "Insufficient available system storage.\n\nRequested: 500 MB\nAvailable: 200 MB\n\nPlease reduce the storage allocation or increase the system storage quota."
+  ],
+  "message": "Insufficient available system storage."
+}
+```
+
+**Audit actions:** `CREATE_ORG_UNIT`, `UPDATE_ORG_UNIT`, `STORAGE_ALLOCATION_UPDATED` (quota change), `STORAGE_ALLOCATION_VALIDATION_FAILED`
+
+**Permissions:** Admin only (`403` for non-admin create/update).
 
 ---
 
@@ -1040,6 +1062,8 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 |---|---|
 | **Method** | `PUT` / `PATCH` |
 | **Path** | `/api/org-units/{id}/` |
+
+Same storage allocation validation as create. When updating quota, the unit's previous allocation is excluded from the allocated sum before checking headroom.
 
 ---
 
@@ -1503,7 +1527,12 @@ Archives all files under `MEDIA_ROOT` (uploaded PDFs, profile pictures, etc.).
 
 Singleton configuration for upload limits and **system-wide total storage quota** (all Office Units combined).
 
-`storage_quota_mb` is compared against the sum of all document file sizes across the entire deployment. It drives notification thresholds and global upload blocking at 100%. Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) remain separate sub-limits configured under Office Units.
+`storage_quota_mb` serves two roles:
+
+1. **Physical usage cap** — compared against the sum of all document file sizes; drives upload blocking at 100% and physical-usage notification thresholds.
+2. **Allocation pool** — the sum of all Office Unit `storage_quota_mb` values cannot exceed this limit when creating or updating Office Units.
+
+Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) remain separate sub-limits configured under Office Units.
 
 **Admin UI presets:** 5 GB, 15 GB, 100 GB, 500 GB, 1 TB, or Custom (any value from 1 MB up to 1 TB / 1048576 MB).
 
@@ -1522,9 +1551,15 @@ Singleton configuration for upload limits and **system-wide total storage quota*
   "storage_quota_exceeded": false,
   "storage_used_mb": 120.5,
   "storage_remaining_mb": 4999.5,
-  "storage_usage_percentage": 2.4
+  "storage_usage_percentage": 2.4,
+  "allocated_storage_mb": 4096,
+  "allocation_remaining_mb": 1024,
+  "allocation_percentage": 80.0
 }
 ```
+
+- `storage_*` fields — physical file usage vs system quota
+- `allocated_storage_mb` / `allocation_remaining_mb` / `allocation_percentage` — sum of Office Unit quota allocations vs system quota
 
 **GET (admin):** Also includes `updated_at`.
 
@@ -1539,7 +1574,7 @@ Singleton configuration for upload limits and **system-wide total storage quota*
 
 `storage_quota_mb` must be between 1 and 1048576 (1 TB).
 
-Increasing `storage_quota_mb` resets storage threshold notification flags for thresholds no longer crossed.
+Increasing `storage_quota_mb` resets storage threshold notification flags (physical usage and allocation) for thresholds no longer crossed.
 
 **Audit action:** `UPDATE_SYSTEM_SETTINGS`
 

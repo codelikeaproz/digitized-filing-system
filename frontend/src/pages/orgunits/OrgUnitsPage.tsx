@@ -18,7 +18,11 @@ import {
   getPresetForQuotaMb,
   getQuotaMbForPreset,
   formatStorageQuotaMb,
+  formatStorageQuotaDual,
   orgUnitQuotaExceedsSystemLimit,
+  orgUnitQuotaExceedsAvailableAllocation,
+  getAvailableAllocationMb,
+  formatAllocationError,
   ORG_UNIT_STORAGE_QUOTA_PRESETS,
   type OrgUnitStorageQuotaPreset,
 } from '@/lib/storage-quota-presets';
@@ -77,6 +81,7 @@ export default function OrgUnitsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingType, setIsSavingType] = useState(false);
   const [systemStorageQuotaMb, setSystemStorageQuotaMb] = useState<number | null>(null);
+  const [storageQuotaError, setStorageQuotaError] = useState('');
 
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
@@ -136,6 +141,7 @@ export default function OrgUnitsPage() {
     fetchSystemSettings()
       .then((settings) => setSystemStorageQuotaMb(settings.storageQuotaMb))
       .catch(() => setSystemStorageQuotaMb(null));
+    fetchAllOrgUnits();
   }, [isModalOpen]);
 
   const selectedOrgUnitQuotaMb = Number(formData.storageQuotaMb);
@@ -144,6 +150,28 @@ export default function OrgUnitsPage() {
     if (!Number.isFinite(selectedOrgUnitQuotaMb) || selectedOrgUnitQuotaMb < 1) return false;
     return orgUnitQuotaExceedsSystemLimit(selectedOrgUnitQuotaMb, systemStorageQuotaMb);
   }, [formData.storageQuotaMb, selectedOrgUnitQuotaMb, systemStorageQuotaMb]);
+
+  const availableAllocationMb = useMemo(
+    () => getAvailableAllocationMb(systemStorageQuotaMb, allOrgUnits, isEditMode ? editId : null),
+    [systemStorageQuotaMb, allOrgUnits, isEditMode, editId]
+  );
+
+  const quotaExceedsAvailableAllocation = useMemo(() => {
+    return orgUnitQuotaExceedsAvailableAllocation(selectedOrgUnitQuotaMb, availableAllocationMb);
+  }, [selectedOrgUnitQuotaMb, availableAllocationMb]);
+
+  const availableAllocationDisplay = useMemo(() => {
+    if (availableAllocationMb == null) return null;
+    return formatStorageQuotaDual(availableAllocationMb);
+  }, [availableAllocationMb]);
+
+  const availableForNewUnitMb = useMemo(
+    () => getAvailableAllocationMb(systemStorageQuotaMb, allOrgUnits, null),
+    [systemStorageQuotaMb, allOrgUnits]
+  );
+
+  const isAddOfficeUnitDisabled =
+    systemStorageQuotaMb != null && availableForNewUnitMb === 0;
 
   const systemQuotaLabel =
     systemStorageQuotaMb != null ? formatStorageQuotaMb(systemStorageQuotaMb) : null;
@@ -163,6 +191,9 @@ export default function OrgUnitsPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'storageQuotaMb') {
+      setStorageQuotaError('');
+    }
   };
 
   const handleQuotaPresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -173,6 +204,7 @@ export default function OrgUnitsPage() {
       storageQuotaPreset: preset,
       storageQuotaMb: getQuotaMbForPreset(preset, STORAGE_QUOTA_PRESETS, prev.storageQuotaMb),
     }));
+    setStorageQuotaError('');
   };
 
   const handleTypeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -188,6 +220,7 @@ export default function OrgUnitsPage() {
       storageQuotaMb: '1024',
       storageQuotaPreset: '1024',
     });
+    setStorageQuotaError('');
     setIsEditMode(false);
     setEditId(null);
     setIsModalOpen(true);
@@ -202,6 +235,7 @@ export default function OrgUnitsPage() {
       storageQuotaMb: quotaMb,
       storageQuotaPreset: resolvePresetForQuotaMb(quotaMb),
     });
+    setStorageQuotaError('');
     setIsEditMode(true);
     setEditId(ou.id);
     setIsModalOpen(true);
@@ -240,14 +274,24 @@ export default function OrgUnitsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setStorageQuotaError('');
+
     if (quotaExceedsSystemLimit) {
-      toast.error(
-        systemQuotaLabel
-          ? `Office Unit quota cannot exceed the system-wide limit (${systemQuotaLabel}).`
-          : 'Office Unit quota cannot exceed the system-wide storage limit.'
-      );
+      const message = systemQuotaLabel
+        ? `Office Unit quota cannot exceed the system-wide limit (${systemQuotaLabel}).`
+        : 'Office Unit quota cannot exceed the system-wide storage limit.';
+      setStorageQuotaError(message);
+      toast.error(message);
       return;
     }
+
+    if (quotaExceedsAvailableAllocation && availableAllocationMb != null) {
+      const message = formatAllocationError(selectedOrgUnitQuotaMb, availableAllocationMb);
+      setStorageQuotaError(message);
+      toast.error('Insufficient available system storage.');
+      return;
+    }
+
     try {
       if (isEditMode && editId) {
         await api.put<OrgUnit>(`/api/org-units/${editId}/`, {
@@ -276,6 +320,13 @@ export default function OrgUnitsPage() {
       }
       setIsModalOpen(false);
     } catch (error: any) {
+      const fieldError =
+        error.errors?.storageQuotaMb?.[0] ??
+        error.errors?.storage_quota_mb?.[0] ??
+        (typeof error.errors?.storageQuotaMb === 'string' ? error.errors.storageQuotaMb : null);
+      if (fieldError) {
+        setStorageQuotaError(String(fieldError));
+      }
       toast.error(error.message || 'Failed to save org unit');
     }
   };
@@ -359,10 +410,22 @@ export default function OrgUnitsPage() {
             Office Units
           </h1>
           <p className="text-gray-500 mt-1">Manage office structure, storage quotas, and database-driven types.</p>
+          {isAddOfficeUnitDisabled ? (
+            <p className="text-xs text-muted-foreground mt-2 max-w-xl">
+              All system storage has been allocated. Increase the system quota under Settings → System
+              or reduce an existing Office Unit quota.
+            </p>
+          ) : null}
         </div>
         <Button
           onClick={handleOpenAdd}
-          className="bg-[#0A4D27] hover:bg-[#083E1D] text-white gap-2 h-11 px-6 rounded-xl shadow-sm"
+          disabled={isAddOfficeUnitDisabled}
+          title={
+            isAddOfficeUnitDisabled
+              ? 'No system storage remaining for new Office Units.'
+              : undefined
+          }
+          className="bg-[#0A4D27] hover:bg-[#083E1D] text-white gap-2 h-11 px-6 rounded-xl shadow-sm disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           Add Office Unit
@@ -490,8 +553,21 @@ export default function OrgUnitsPage() {
                 </select>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <label htmlFor="org-unit-storage-quota-preset" className="text-sm font-medium text-gray-700">Storage Quota</label>
+                {availableAllocationDisplay != null ? (
+                  <div className="rounded-xl border border-[#0A4D27]/20 bg-[#0A4D27]/5 px-3 py-2.5">
+                    <p className="text-xs font-medium text-[#0A4D27]">Available System Storage</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                      {availableAllocationDisplay.primary} remaining
+                    </p>
+                    {availableAllocationDisplay.secondary ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {availableAllocationDisplay.secondary}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <select
                   id="org-unit-storage-quota-preset"
                   name="storageQuotaPreset"
@@ -537,6 +613,14 @@ export default function OrgUnitsPage() {
                     quota or increase the system limit under Settings → System.
                   </p>
                 ) : null}
+                {quotaExceedsAvailableAllocation && availableAllocationMb != null ? (
+                  <p className="text-xs font-medium text-destructive">
+                    Selected quota exceeds available system storage ({formatStorageQuotaDual(availableAllocationMb).primary} remaining).
+                  </p>
+                ) : null}
+                {storageQuotaError ? (
+                  <p className="text-xs font-medium text-destructive whitespace-pre-line">{storageQuotaError}</p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -566,8 +650,13 @@ export default function OrgUnitsPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!formData.orgTypeId || isTypeLoading || quotaExceedsSystemLimit}
-                  className="h-11 rounded-xl px-6 bg-[#0A4D27] hover:bg-[#083E1D] text-white"
+                  disabled={
+                    !formData.orgTypeId ||
+                    isTypeLoading ||
+                    quotaExceedsSystemLimit ||
+                    quotaExceedsAvailableAllocation
+                  }
+                  className="h-11 rounded-xl px-6 bg-[#0A4D27] hover:bg-[#083E1D] text-white disabled:opacity-50"
                 >
                   {isEditMode ? 'Save Changes' : 'Create'}
                 </Button>
