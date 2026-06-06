@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatPersonName } from "@/lib/utils";
-import { sanitizeEmployeeNumberInput } from "@/lib/employee-number";
+import { formatEmployeeNumberDisplay, sanitizeEmployeeNumberInput } from "@/lib/employee-number";
 import {
   buildRequisitionerFullName,
   createEmptyRequisitioner,
@@ -126,7 +126,8 @@ export function RequisitionersEditor({
           value.map((row, index) => {
             const errors = rowErrors[index] || {};
             const displayName = buildRequisitionerFullName(row) || "—";
-            const displayEmployeeNumber = row.employeeNumber.trim() || "—";
+            const displayEmployeeNumber =
+              formatEmployeeNumberDisplay(row.employeeNumber) ?? "—";
 
             return (
               <div

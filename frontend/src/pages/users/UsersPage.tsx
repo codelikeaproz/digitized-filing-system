@@ -46,7 +46,7 @@ import {
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatManilaDate } from '@/lib/time';
 import { RolePermissionLegend } from '@/components/users/RolePermissionLegend';
-import { sanitizeEmployeeNumberInput, validateEmployeeNumber } from '@/lib/employee-number';
+import { formatEmployeeNumberDisplay, sanitizeEmployeeNumberInput, validateEmployeeNumber } from '@/lib/employee-number';
 
 const SUFFIX_OPTIONS = [
   { value: '', label: 'No Suffix' },
@@ -563,7 +563,9 @@ export default function UsersPage() {
                         )}
                       </div>
                       {user.employeeNumber && (
-                        <div className="text-xs text-muted-foreground">#{user.employeeNumber}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatEmployeeNumberDisplay(user.employeeNumber)}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
