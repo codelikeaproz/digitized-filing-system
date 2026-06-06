@@ -14,7 +14,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 |------|--------|
 | Public | Login page + public assistant |
 | Staff | Dashboard, Documents, Settings |
-| Dept Head | + Users (Staff in org), Recycle Bin |
+| Dept Head | + Users (Staff in org subtree), Recycle Bin |
 | Admin | + Org Units, Audit Logs, Backup Management, full Recycle Bin |
 
 **Sign-off:** Tester __________ · Date __________ · Pass / Fail __________
@@ -40,6 +40,10 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Admin-only cards (Org Units, Users) visible to Admin only | Admin | [ ] |
 | Global view shows System Storage Limit vs Total Office Unit Quotas in Storage Utilization | Admin | [ ] |
 | Office Unit Storage Comparison footer shows total used and total quota across all units | Admin | [ ] |
+| Parent Dept Head sees subtree folder tree (assigned unit + descendants) | Dept Head | [ ] |
+| Parent Dept Head dashboard aggregates docs across subtree; comparison chart lists child units | Dept Head | [ ] |
+| Child Dept Head / Staff see only assigned unit in tree, org-unit list, and documents | Dept Head, Staff | [ ] |
+| Tampered `orgUnitId` on document list returns 403 for out-of-scope unit | Dept Head | [ ] |
 
 ---
 
@@ -105,6 +109,8 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | "This folder" / "this category" with page context | All | [ ] |
 | Follow-up after code (e.g. `120-12` → `What is about?`) | All | [ ] |
 | RBAC respected; no out-of-scope results | Staff, Dept Head | [ ] |
+| Parent Dept Head assistant counts/search include child-unit documents | Dept Head | [ ] |
+| Child Dept Head / Staff assistant excludes parent and sibling units | Dept Head, Staff | [ ] |
 
 > More queries: [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md)
 
@@ -126,7 +132,11 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 |-----------|------|------|
 | List, search, pagination | Admin, Dept Head | [ ] |
 | Create user + activation email; resend activation | Admin, Dept Head | [ ] |
-| Admin: all roles. Dept Head: Staff in own org only | Admin, Dept Head | [ ] |
+| Admin: all roles. Dept Head: Staff in accessible org subtree; child Heads read-only | Admin, Dept Head | [ ] |
+| Parent Dept Head lists and manages Staff in child Office Units | Dept Head | [ ] |
+| Parent Dept Head can assign new Staff to child Office Unit on create | Dept Head | [ ] |
+| Child Dept Head sees only own-unit users; cannot access parent unit staff | Dept Head | [ ] |
+| Tampered orgUnitId filter on user list returns 403 | Dept Head | [ ] |
 | Deactivate / reactivate; cannot remove last active Admin | Admin | [ ] |
 | Staff blocked from route | Staff | [ ] |
 
@@ -180,7 +190,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | Sidebar and routes match role | All | [ ] |
-| No cross–Org Unit document access | Staff, Dept Head | [ ] |
+| No out-of-scope Org Unit access (Staff: own unit; Dept Head: subtree only) | Staff, Dept Head | [ ] |
 | Unauthenticated API returns 401 | All | [ ] |
 | Empty states and upload errors handled cleanly | All | [ ] |
 

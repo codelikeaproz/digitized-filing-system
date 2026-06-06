@@ -59,7 +59,12 @@ class OrgUnit(models.Model):
         return self.org_type.name if self.org_type_id else self.type
 
     def get_all_children(self):
-        children = list(self.children.all())
-        for child in self.children.all():
-            children.extend(child.get_all_children())
-        return children
+        """Return all descendant OrgUnits (depth-first, excludes self)."""
+        descendants = []
+        for child in self.children.filter(is_deleted=False):
+            descendants.append(child)
+            descendants.extend(child.get_all_children())
+        return descendants
+
+    def get_descendant_ids(self):
+        return [child.id for child in self.get_all_children()]

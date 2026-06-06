@@ -64,7 +64,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin && !canFilter) return;
     const fetchOrgUnits = async () => {
       try {
         const data = await api.get<PaginatedResponse<OrgUnitOption>>("/api/org-units/", {
@@ -76,7 +76,7 @@ export default function DashboardPage() {
       }
     };
     fetchOrgUnits();
-  }, [isAdmin]);
+  }, [canFilter, isAdmin]);
 
   const buildStatCards = (data: DashboardResponse): StatCard[] => {
     if (data.scope === "global") {
@@ -144,7 +144,7 @@ export default function DashboardPage() {
     try {
       setIsLoading(true);
       const params: Record<string, string> = {};
-      if (isAdmin && officeUnitFilter !== "all") {
+      if (canFilter && officeUnitFilter !== "all") {
         params.office_unit = officeUnitFilter;
       } else if (isAdmin) {
         params.office_unit = "all";
@@ -162,7 +162,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [isAdmin, officeUnitFilter]);
+  }, [isAdmin, officeUnitFilter, canFilter]);
 
   useEffect(() => {
     fetchStats();
@@ -239,11 +239,11 @@ export default function DashboardPage() {
 
       {storage && <StorageUtilizationChart storage={storage} isGlobal={dashboardScope === "global"} />}
 
-      {dashboardScope === "global" && storageComparison.length > 0 && (
+      {storageComparison.length > 0 && (
         <OfficeUnitStorageComparisonChart
           data={storageComparison}
           totalUsedMb={storage?.used_mb}
-          totalQuotaMb={storage?.org_units_quota_mb}
+          totalQuotaMb={dashboardScope === "global" ? storage?.org_units_quota_mb : storage?.quota_mb}
         />
       )}
     </div>

@@ -141,5 +141,18 @@ class DocumentAssistantSearchPreviewAPIView(APIView):
     def get(self, request):
         serializer = SearchPreviewSerializer(data={"q": request.query_params.get("q", "")})
         serializer.is_valid(raise_exception=True)
-        matches = search_accessible_documents(request.user, serializer.validated_data["q"])
+        query = serializer.validated_data["q"]
+        matches = search_accessible_documents(request.user, query)
+        if query and query.strip():
+            log_audit(
+                request.user,
+                "SEARCH_DOCUMENTS",
+                f"Assistant search preview: {query.strip()[:120]}",
+                target_type="Document",
+                target_name="search_preview",
+                target_org_unit=(
+                    request.user.org_unit.name if getattr(request.user, "org_unit", None) else None
+                ),
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
         return Response({"matches": [serialize_match(match) for match in matches]}, status=status.HTTP_200_OK)

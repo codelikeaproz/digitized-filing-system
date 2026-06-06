@@ -577,11 +577,13 @@ Show upload trend by month
 
 ## Access Rules
 
-The assistant only answers using documents and folders the logged-in user can access.
+The assistant only answers using documents and folders the logged-in user can access. Scope uses the same rules as the Documents API (`documents.permissions.get_accessible_org_unit_ids`).
 
 - Admin can search all active documents.
-- Department Head can search their OrgUnit and child OrgUnits.
+- Department Head can search their OrgUnit and **all descendant** OrgUnits (subtree scope via `documents.permissions.get_accessible_org_unit_ids`).
 - Staff can search their own OrgUnit scope.
+
+Document list and assistant search-preview actions are audited as `SEARCH_DOCUMENTS`; document detail GET is audited as `VIEW_DOCUMENT`.
 
 The assistant should not reveal inaccessible documents, credentials, tokens, API keys, environment values, or private account data.
 

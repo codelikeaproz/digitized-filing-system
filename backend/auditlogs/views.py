@@ -26,6 +26,7 @@ from rest_framework import viewsets
 
 from config.pagination import StandardResultsSetPagination
 from config.timezone_utils import format_local_datetime
+from documents.permissions import org_unit_scope_ids
 from orgunits.models import OrgUnit
 from .models import AuditLog, log_audit
 from .serializers import AuditLogSerializer
@@ -48,9 +49,10 @@ class AuditLogViewSet(viewsets.ModelViewSet):
             org_unit = getattr(user, "org_unit", None)
             if not org_unit:
                 return queryset.none()
-            scoped_org_units = [org_unit, *org_unit.get_all_children()]
-            scoped_ids = [unit.id for unit in scoped_org_units]
-            scoped_names = [unit.name for unit in scoped_org_units]
+            scoped_ids = org_unit_scope_ids(user)
+            if not scoped_ids:
+                return queryset.none()
+            scoped_names = OrgUnit.objects.filter(id__in=scoped_ids).values_list("name", flat=True)
             return queryset.filter(Q(user__org_unit_id__in=scoped_ids) | Q(target_org_unit__in=scoped_names))
         raise PermissionDenied("You do not have access to audit logs.")
 

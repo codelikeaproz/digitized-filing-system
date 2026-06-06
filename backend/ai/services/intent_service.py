@@ -13,9 +13,10 @@ from django.db.models import Q
 from django.utils import timezone
 
 from documents.models import Category, Folder
+from documents.permissions import org_unit_scope_ids
 from orgunits.models import OrgUnit
 from .chatbot_limits import BROWSE_FULL_LIST_HINT, chatbot_list_limit
-from .search_service import DocumentMatch, accessible_documents_for_user, is_list_request, org_unit_scope_ids
+from .search_service import DocumentMatch, accessible_documents_for_user, is_list_request
 
 
 COUNT_TERMS = {"how many", "count", "total number", "number of"}

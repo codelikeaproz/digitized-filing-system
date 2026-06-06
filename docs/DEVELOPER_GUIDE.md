@@ -81,12 +81,15 @@ Permissions are enforced **inline in views** (not a centralized DRF permission m
 ### OrgUnit scoping
 
 ```python
-# backend/documents/views.py — org_unit_scope_ids(user)
+# backend/documents/permissions.py — get_accessible_org_unit_ids(user)
 admin      → no filter (global)
-dept_head  → own org_unit + all child org_units
+dept_head  → own org_unit + all descendant org_units
 staff      → own org_unit only
 no org_unit → empty queryset (non-admin)
 ```
+
+Document list rejects out-of-scope `orgUnitId` / `folderId` with **403**.
+OrgUnit list API (`GET /api/org-units/`) returns only accessible units for non-admins.
 
 ### Role capabilities (summary)
 
@@ -99,7 +102,7 @@ no org_unit → empty queryset (non-admin)
 | Delete empty folder | ✓ | ✓ | ✓ |
 | Recycle bin | ✓ global | ✓ scoped | ✗ |
 | Audit logs | ✓ global | ✓ scoped | ✗ |
-| User management | ✓ all | ✓ staff in org | ✗ |
+| User management | ✓ all | ✓ staff in org subtree | ✗ |
 | OrgUnit / OrgType admin | ✓ (UI) | ✗ | ✗ |
 | Backup downloads | ✓ | ✗ | ✗ |
 
@@ -109,7 +112,7 @@ no org_unit → empty queryset (non-admin)
 |---------|------|
 | Folder/document write access | `documents/permissions.py` → `assert_folder_write_access`, `assert_document_write_access` |
 | Recycle bin access | `documents/permissions.py` → `assert_recycle_bin_access` |
-| User management | `accounts/views.py` → `UserViewSet._enforce_manage_permission` |
+| User management | `accounts/views.py` → `UserViewSet._can_dept_head_manage` (subtree via `get_accessible_org_unit_ids`) |
 | Audit log scope | `auditlogs/views.py` → `_scope_queryset` |
 | Backup downloads | `backups/permissions.py` → `assert_backup_access` |
 | OrgType admin-only | `orgunits/views.py` → `OrgTypeViewSet._require_admin` |

@@ -6,7 +6,7 @@ Purpose:
 
 Role rules (UserViewSet):
     - Admin: manage all users; cannot remove last active admin
-    - Dept Head: create/update Staff only within assigned OrgUnit
+    - Dept Head: create/update Staff within assigned OrgUnit subtree
     - Staff: no user management
 
 Used by frontend:
@@ -35,6 +35,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from auditlogs.models import log_audit
 from config.pagination import StandardResultsSetPagination
+from documents.permissions import assert_org_unit_in_scope, get_accessible_org_unit_ids
 
 from .models import User
 from .serializers import (
@@ -347,16 +348,28 @@ class UserViewSet(viewsets.ModelViewSet):
     def _target_org_name(self, user):
         return user.org_unit.name if user.org_unit else "Global Access"
 
+    def _dept_head_scope_ids(self, actor):
+        if getattr(actor, "role", None) != "dept_head":
+            return []
+        return get_accessible_org_unit_ids(actor)
+
+    def _can_dept_head_access_user(self, actor, user):
+        return (
+            actor.role == "dept_head"
+            and actor.org_unit_id is not None
+            and user.org_unit_id in self._dept_head_scope_ids(actor)
+        )
+
     def _can_dept_head_manage(self, actor, target):
         return (
             actor.role == "dept_head"
             and actor.org_unit_id is not None
             and target.role == "staff"
-            and target.org_unit_id == actor.org_unit_id
+            and target.org_unit_id in self._dept_head_scope_ids(actor)
         )
 
     def _enforce_manage_permission(self, target):
-        """Admin manages all; Dept Head manages Staff in same OrgUnit only."""
+        """Admin manages all; Dept Head manages Staff in accessible OrgUnit subtree."""
         actor = self.request.user
         if actor.role == "admin":
             return None
@@ -374,7 +387,8 @@ class UserViewSet(viewsets.ModelViewSet):
         if not actor.org_unit_id:
             return normalized
         normalized["role"] = "staff"
-        normalized["orgUnitId"] = str(actor.org_unit_id)
+        if not normalized.get("orgUnitId") and not normalized.get("org_unit"):
+            normalized["orgUnitId"] = str(actor.org_unit_id)
         normalized.pop("org_unit", None)
         return normalized
 
@@ -384,11 +398,10 @@ class UserViewSet(viewsets.ModelViewSet):
         if actor.role != "dept_head":
             return normalized
         normalized["role"] = "staff"
-        normalized["orgUnitId"] = str(actor.org_unit_id)
         normalized.pop("org_unit", None)
         return normalized
 
-    def _validate_dept_head_update_payload(self, data):
+    def _validate_dept_head_payload(self, data):
         actor = self.request.user
         if actor.role != "dept_head":
             return None
@@ -397,10 +410,20 @@ class UserViewSet(viewsets.ModelViewSet):
         if requested_role is not None and requested_role != "staff":
             return self._forbidden("Department Heads cannot assign Admin or Dept Head roles.")
 
+        scope = self._dept_head_scope_ids(actor)
         requested_org_unit = data.get("orgUnitId", data.get("org_unit"))
-        if requested_org_unit not in (None, "", str(actor.org_unit_id), actor.org_unit_id):
-            return self._forbidden("You cannot move users outside your organization.")
+        if requested_org_unit in (None, ""):
+            return None
+        try:
+            normalized_id = int(requested_org_unit)
+        except (TypeError, ValueError):
+            return self._forbidden("Invalid Office Unit.")
+        if normalized_id not in scope:
+            return self._forbidden("You cannot assign users outside your organization.")
         return None
+
+    def _validate_dept_head_update_payload(self, data):
+        return self._validate_dept_head_payload(data)
 
     def _serializer_error_response(self, errors):
         message = errors
@@ -433,7 +456,8 @@ class UserViewSet(viewsets.ModelViewSet):
         if actor.role == "admin":
             pass
         elif actor.role == "dept_head" and actor.org_unit_id:
-            queryset = queryset.filter(org_unit_id=actor.org_unit_id)
+            scope_ids = self._dept_head_scope_ids(actor)
+            queryset = queryset.filter(org_unit_id__in=scope_ids)
         else:
             return User.objects.none()
 
@@ -449,13 +473,16 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         if role:
             if role == "staff" and actor.role == "dept_head" and actor.org_unit_id:
+                scope_ids = self._dept_head_scope_ids(actor)
                 queryset = queryset.filter(
                     models.Q(role="staff")
-                    | models.Q(role="dept_head", org_unit_id=actor.org_unit_id)
+                    | models.Q(role="dept_head", org_unit_id__in=scope_ids)
                 )
             else:
                 queryset = queryset.filter(role=role)
         if org_unit_id:
+            if actor.role == "dept_head":
+                assert_org_unit_in_scope(actor, org_unit_id)
             queryset = queryset.filter(org_unit_id=org_unit_id)
         return queryset
 
@@ -470,7 +497,7 @@ class UserViewSet(viewsets.ModelViewSet):
         actor = self.request.user
         if actor.role == "admin":
             return user
-        if actor.role == "dept_head" and actor.org_unit_id and user.org_unit_id == actor.org_unit_id:
+        if actor.role == "dept_head" and self._can_dept_head_access_user(actor, user):
             return user
         raise PermissionDenied("You can only access users within your organization.")
 
@@ -526,6 +553,9 @@ class UserViewSet(viewsets.ModelViewSet):
             return self._forbidden("Department Head account has no assigned organization unit.")
 
         data = self._normalize_dept_head_create_data(request.data)
+        payload_response = self._validate_dept_head_payload(data)
+        if payload_response is not None:
+            return payload_response
         serializer = self.get_serializer(data=data)
         if not serializer.is_valid():
             return self._serializer_error_response(serializer.errors)

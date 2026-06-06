@@ -10,6 +10,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 
 from accounts.models import User
 from documents.models import Document
+from documents.permissions import get_accessible_org_unit_ids, org_unit_scope_ids
 from orgunits.models import OrgUnit
 from orgunits.storage import DEFAULT_STORAGE_QUOTA_MB, bytes_to_mb
 
@@ -70,13 +71,17 @@ class DashboardService:
         }
 
     @classmethod
-    def get_storage_usage_by_office_unit(cls, usage_map=None):
+    def get_storage_usage_by_office_unit(cls, usage_map=None, org_unit_ids=None):
         """Bar chart data: used vs quota per Office Unit."""
         if usage_map is None:
             usage_map = cls._usage_bytes_by_org_unit()
 
+        queryset = OrgUnit.objects.filter(is_deleted=False).order_by("name")
+        if org_unit_ids is not None:
+            queryset = queryset.filter(id__in=org_unit_ids)
+
         results = []
-        for org_unit in OrgUnit.objects.filter(is_deleted=False).order_by("name"):
+        for org_unit in queryset:
             used_bytes = usage_map.get(org_unit.id, 0)
             summary = cls.get_storage_summary(org_unit, used_bytes=used_bytes)
             results.append(
@@ -154,6 +159,49 @@ class DashboardService:
         }
 
     @classmethod
+    def get_subtree_dashboard_stats(cls, root_org_unit, scope_ids):
+        """Aggregated dashboard for a dept_head's assigned unit and descendants."""
+        usage_map = cls._usage_bytes_by_org_unit()
+        docs = cls._active_documents(scope_ids)
+        deleted = cls._deleted_documents(scope_ids)
+
+        total_used_bytes = sum(usage_map.get(unit_id, 0) for unit_id in scope_ids)
+        total_quota_mb = sum(
+            (OrgUnit.objects.filter(pk=unit_id).values_list("storage_quota_mb", flat=True).first()
+             or DEFAULT_STORAGE_QUOTA_MB)
+            for unit_id in scope_ids
+        )
+        used_mb = float(bytes_to_mb(total_used_bytes))
+        remaining_mb = round(max(0.0, total_quota_mb - used_mb), 2)
+        usage_percentage = round((used_mb / total_quota_mb) * 100, 1) if total_quota_mb else 0.0
+
+        descendant_count = max(0, len(scope_ids) - 1)
+        has_children = descendant_count > 0
+
+        return {
+            "scope": "office_unit",
+            "office_unit_id": str(root_org_unit.id),
+            "office_unit_name": root_org_unit.name,
+            "office_unit_filter": str(root_org_unit.id),
+            "can_filter_office_units": has_children,
+            "total_documents": docs.count(),
+            "uploaded_files": docs.count(),
+            "total_org_units": len(scope_ids),
+            "total_users": User.objects.filter(org_unit_id__in=scope_ids).count(),
+            "deleted_files": deleted.count(),
+            "storage": {
+                "org_unit_id": str(root_org_unit.id),
+                "org_unit_name": root_org_unit.name,
+                "quota_mb": int(total_quota_mb),
+                "used_mb": round(used_mb, 2),
+                "remaining_mb": remaining_mb,
+                "usage_percentage": usage_percentage,
+                "percent_used": usage_percentage,
+            },
+            "storage_by_office_unit": cls.get_storage_usage_by_office_unit(usage_map, scope_ids),
+        }
+
+    @classmethod
     def resolve_office_unit_for_user(cls, user, office_unit_param=None):
         """Enforce role-based dashboard scope on the backend."""
         role = getattr(user, "role", None)
@@ -170,9 +218,24 @@ class DashboardService:
         if not org_unit or org_unit.is_deleted:
             raise PermissionDenied("Your account must be assigned to an Office Unit to view the dashboard.")
 
-        if role in {"dept_head", "staff"}:
+        if role == "staff":
             if office_unit_param and str(office_unit_param) not in {"", "all", str(org_unit.id)}:
                 raise PermissionDenied("You can only view dashboard data for your assigned Office Unit.")
+            return org_unit
+
+        if role == "dept_head":
+            scope_ids = get_accessible_org_unit_ids(user)
+            if office_unit_param and str(office_unit_param).lower() not in {"", "all"}:
+                try:
+                    requested_id = int(office_unit_param)
+                except (TypeError, ValueError) as exc:
+                    raise PermissionDenied("Invalid Office Unit filter.") from exc
+                if requested_id not in scope_ids:
+                    raise PermissionDenied("You do not have access to this Office Unit.")
+                requested = OrgUnit.objects.filter(pk=requested_id, is_deleted=False).first()
+                if not requested:
+                    raise NotFound("Office Unit not found.")
+                return requested
             return org_unit
 
         raise PermissionDenied("You do not have access to the dashboard.")
@@ -186,6 +249,23 @@ class DashboardService:
         if org_unit is None:
             payload = cls.get_global_dashboard_stats()
             payload["can_filter_office_units"] = is_admin
+            return payload
+
+        if role == "dept_head":
+            scope_ids = org_unit_scope_ids(user)
+            root = getattr(user, "org_unit", org_unit)
+            if len(scope_ids) > 1 and str(org_unit.id) == str(root.id):
+                payload = cls.get_subtree_dashboard_stats(root, scope_ids)
+            else:
+                payload = cls.get_office_unit_dashboard_stats(org_unit)
+                if len(scope_ids) > 1:
+                    usage_map = cls._usage_bytes_by_org_unit()
+                    payload["storage_by_office_unit"] = cls.get_storage_usage_by_office_unit(
+                        usage_map, scope_ids
+                    )
+                    payload["can_filter_office_units"] = True
+                else:
+                    payload["can_filter_office_units"] = False
             return payload
 
         payload = cls.get_office_unit_dashboard_stats(org_unit)

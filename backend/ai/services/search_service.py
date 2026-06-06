@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db.models import Q
 
 from documents.models import Document
+from documents.permissions import org_unit_scope_ids
 
 from .chatbot_limits import chatbot_list_limit
 
@@ -40,15 +41,6 @@ class DocumentMatch:
     score: int
     reasons: list[str]
     excerpt: str = ""
-
-
-def org_unit_scope_ids(user):
-    org_unit = getattr(user, "org_unit", None)
-    if not org_unit:
-        return []
-    if getattr(user, "role", None) == "dept_head":
-        return [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
-    return [org_unit.id]
 
 
 def accessible_documents_for_user(user):

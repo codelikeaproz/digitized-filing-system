@@ -12,7 +12,7 @@ const ROLE_ITEMS = [
     role: "Head",
     icon: ShieldCheck,
     color: "text-blue-700",
-    description: "Manages Staff within assigned Office Unit, recycle bin access, and document deletion.",
+    description: "Manages Staff within assigned Office Unit subtree, recycle bin access, and document deletion.",
   },
   {
     role: "Staff",

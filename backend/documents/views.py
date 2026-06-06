@@ -71,8 +71,11 @@ from .permissions import (
     assert_category_delete_access,
     assert_document_edit_access,
     assert_document_write_access,
+    assert_folder_in_scope,
     assert_folder_write_access,
+    assert_org_unit_in_scope,
     assert_recycle_bin_access,
+    get_accessible_org_unit_ids,
     org_unit_scope_ids,
     scoped_categories_queryset,
 )
@@ -439,12 +442,52 @@ class FolderViewSet(viewsets.ModelViewSet):
         }
         user = request.user
         folders = list(self.get_queryset())
+        role = getattr(user, "role", None)
 
-        if getattr(user, "role", None) == "admin":
+        if role == "admin":
             org_units = OrgUnit.objects.filter(is_deleted=False).order_by("name")
             return Response([all_files, *self._org_unit_tree(org_units, folders)])
 
-        return Response([all_files, *self._folder_tree(folders)])
+        org_unit = getattr(user, "org_unit", None)
+        if not org_unit:
+            return Response([all_files])
+
+        scope_ids = set(get_accessible_org_unit_ids(user))
+        scoped_org_units = list(
+            OrgUnit.objects.filter(id__in=scope_ids, is_deleted=False).order_by("name")
+        )
+        org_units_by_id = {unit.id: unit for unit in scoped_org_units}
+        folders_by_org_unit = {}
+        for folder in folders:
+            folders_by_org_unit.setdefault(folder.org_unit_id, []).append(folder)
+
+        if role == "dept_head":
+            root_unit = org_units_by_id.get(org_unit.id, org_unit)
+            return Response(
+                [
+                    all_files,
+                    self._org_unit_node(root_unit, self._scoped_org_units_by_parent(scoped_org_units), folders_by_org_unit),
+                ]
+            )
+
+        # staff — single assigned Office Unit node
+        staff_unit = org_units_by_id.get(org_unit.id)
+        if not staff_unit:
+            return Response([all_files, *self._folder_tree(folders)])
+        return Response(
+            [
+                all_files,
+                self._org_unit_node(staff_unit, {org_unit.id: []}, folders_by_org_unit),
+            ]
+        )
+
+    def _scoped_org_units_by_parent(self, org_units):
+        org_units_by_parent = {}
+        scoped_ids = {unit.id for unit in org_units}
+        for unit in org_units:
+            parent_id = unit.parent_id if unit.parent_id in scoped_ids else None
+            org_units_by_parent.setdefault(parent_id, []).append(unit)
+        return org_units_by_parent
 
 
 # ---------------------------------------------------------------------------
@@ -490,11 +533,18 @@ class DocumentViewSet(viewsets.ModelViewSet):
         start_date = self.request.query_params.get("start_date")
         end_date = self.request.query_params.get("end_date")
         search = self.request.query_params.get("search")
+        if org_unit_id and getattr(user, "role", None) != "admin":
+            assert_org_unit_in_scope(user, org_unit_id)
+        if folder_id and getattr(user, "role", None) != "admin":
+            folder = Folder.objects.filter(pk=folder_id, is_deleted=False).select_related("org_unit").first()
+            if not folder:
+                raise ValidationError({"folderId": "Folder not found."})
+            assert_folder_in_scope(user, folder)
         if org_unit_id:
             include_children = self.request.query_params.get("includeChildOrgUnits", "true").lower() != "false"
             org_unit = OrgUnit.objects.filter(pk=org_unit_id, is_deleted=False).first()
             if include_children and org_unit:
-                org_unit_ids = [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
+                org_unit_ids = [org_unit.id, *org_unit.get_descendant_ids()]
                 queryset = queryset.filter(folder__org_unit_id__in=org_unit_ids)
             else:
                 queryset = queryset.filter(folder__org_unit_id=org_unit_id)
@@ -519,6 +569,41 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 | Q(keywords__icontains=search)
             ).distinct()
         return queryset.order_by("-created_at")
+
+    def list(self, request, *args, **kwargs):
+        search = request.query_params.get("search")
+        response = super().list(request, *args, **kwargs)
+        if search and search.strip():
+            log_audit(
+                request.user,
+                "SEARCH_DOCUMENTS",
+                f"Searched documents: {search.strip()[:120]}",
+                target_type="Document",
+                target_name="search",
+                target_org_unit=(
+                    request.user.org_unit.name if getattr(request.user, "org_unit", None) else None
+                ),
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
+        return response
+
+    def retrieve(self, request, *args, **kwargs):
+        document = self.get_object()
+        if getattr(request.user, "role", None) != "admin":
+            assert_document_write_access(request.user, document)
+        org_unit_name = (
+            document.folder.org_unit.name if document.folder and document.folder.org_unit else None
+        )
+        log_audit(
+            request.user,
+            "VIEW_DOCUMENT",
+            f"Viewed document: {document.title or document.code or document.pk}",
+            target_type="Document",
+            target_name=document.title or document.code or str(document.pk),
+            target_org_unit=org_unit_name,
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return super().retrieve(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         # Soft delete — item moves to Recycle Bin for Admin / Dept Head restore.
@@ -925,7 +1010,7 @@ class RecycleBinAPIView(APIView):
             org_unit = getattr(user, "org_unit", None)
             if not org_unit:
                 return queryset.none()
-            org_unit_ids = [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
+            org_unit_ids = org_unit_scope_ids(user)
             return queryset.filter(folder__org_unit_id__in=org_unit_ids)
         raise PermissionDenied("Staff do not have Recycle Bin access.")
 

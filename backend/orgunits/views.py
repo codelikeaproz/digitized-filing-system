@@ -18,6 +18,7 @@ from accounts.models import User
 from auditlogs.models import log_audit
 from config.pagination import StandardResultsSetPagination
 from documents.models import Document, Folder
+from documents.permissions import get_scoped_org_units_queryset
 from .models import OrgType, OrgUnit
 from .serializers import OrgTypeSerializer, OrgUnitSerializer
 
@@ -108,7 +109,9 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        queryset = OrgUnit.objects.select_related("org_type", "parent").filter(is_deleted=False).order_by("name")
+        queryset = get_scoped_org_units_queryset(self.request.user).select_related(
+            "org_type", "parent"
+        ).order_by("name")
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(

@@ -22,12 +22,54 @@ def org_unit_scope_ids(user):
     Admin callers should not rely on this helper — admin views skip filtering.
     Dept Head receives own unit plus all descendant units.
     """
+    return get_accessible_org_unit_ids(user)
+
+
+def get_accessible_org_unit_ids(user):
+    """Alias for org_unit_scope_ids — IDs the user may read documents from."""
     org_unit = getattr(user, "org_unit", None)
     if not org_unit:
         return []
     if getattr(user, "role", None) == "dept_head":
-        return [org_unit.id, *[child.id for child in org_unit.get_all_children()]]
+        return [org_unit.id, *org_unit.get_descendant_ids()]
     return [org_unit.id]
+
+
+def get_scoped_org_units_queryset(user):
+    """OrgUnit queryset limited to the user's accessible hierarchy."""
+    from orgunits.models import OrgUnit
+
+    queryset = OrgUnit.objects.filter(is_deleted=False)
+    role = getattr(user, "role", None)
+    if role == "admin":
+        return queryset
+    scope_ids = get_accessible_org_unit_ids(user)
+    if not scope_ids:
+        return queryset.none()
+    return queryset.filter(id__in=scope_ids)
+
+
+def assert_org_unit_in_scope(user, org_unit_id):
+    """Raise PermissionDenied when the Office Unit is outside the user's scope."""
+    if getattr(user, "role", None) == "admin":
+        return
+    if org_unit_id is None:
+        raise PermissionDenied("Office Unit is required.")
+    try:
+        normalized_id = int(org_unit_id)
+    except (TypeError, ValueError) as exc:
+        raise PermissionDenied("Invalid Office Unit.") from exc
+    if normalized_id not in get_accessible_org_unit_ids(user):
+        raise PermissionDenied("You do not have access to this Office Unit.")
+
+
+def assert_folder_in_scope(user, folder):
+    """Raise PermissionDenied when the folder's Office Unit is outside scope."""
+    if getattr(user, "role", None) == "admin":
+        return
+    if not folder or not folder.org_unit_id:
+        raise PermissionDenied("You do not have access to this folder.")
+    assert_org_unit_in_scope(user, folder.org_unit_id)
 
 
 def scoped_categories_queryset(user):

@@ -311,12 +311,12 @@ For file uploads, omit `Content-Type` so the browser sets the multipart boundary
 - Recycle Bin: global view of deleted items
 - Audit logs: full view and export
 - Can delete documents and any folder (including non-empty)
-- Dashboard stats: **global counts** (not filtered by role in current backend)
+- Dashboard stats: **global** for admin; **subtree aggregated** for parent dept_head; **own unit** for staff and child-only dept_head
 
 ### Department Head (`dept_head`)
 
 - Document/folder access: own OrgUnit **and child OrgUnits**
-- User management: **Staff only**, within assigned OrgUnit
+- User management: **Staff only**, within assigned OrgUnit **subtree** (child dept_heads read-only)
 - Cannot assign Admin or Dept Head roles
 - Cannot move users outside their OrgUnit
 - Recycle Bin: scoped to OrgUnit + children
@@ -334,11 +334,16 @@ For file uploads, omit `Content-Type` so the browser sets the multipart boundary
 
 ### OrgUnit scoping helper
 
+Centralized in `backend/documents/permissions.py`:
+
 ```python
-# dept_head scope = [org_unit.id] + all child org unit ids
+# get_accessible_org_unit_ids(user) / org_unit_scope_ids(user)
+# dept_head scope = [org_unit.id] + all descendant org unit ids
 # staff scope = [org_unit.id]
-# admin = no filter
+# admin = no filter (callers skip queryset filters)
 ```
+
+Out-of-scope `orgUnitId` or `folderId` query parameters on document list return **403** (defense in depth).
 
 Users without an assigned OrgUnit see empty querysets for scoped resources (except Admin).
 
@@ -465,11 +470,13 @@ Or custom:
 
 | Parameter | Values | Access |
 |-----------|--------|--------|
-| `office_unit` | `all` (default for admin), Office Unit ID | Admin only |
+| `office_unit` | `all` (default for admin), Office Unit ID | Admin: any unit. Dept Head: own unit or descendant IDs only. Staff: ignored (own unit only). |
 
 **Role behavior:**
 - **Admin** — `office_unit=all` returns global stats + storage comparison chart data; specific ID returns scoped Office Unit stats
-- **Head / Staff** — always scoped to assigned Office Unit; filter param ignored (enforced on backend)
+- **Dept Head (parent unit)** — default view aggregates own unit + all descendants; `storage_by_office_unit` lists each accessible child; `can_filter_office_units` is true when descendants exist
+- **Dept Head (child-only or filtered to child)** — scoped to selected unit; comparison chart still lists accessible subtree units when applicable
+- **Staff** — always scoped to assigned Office Unit; filter param ignored
 
 **Success `200` (global):**
 
@@ -891,11 +898,13 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 | **Path** | `/api/folders/tree` |
 | **Auth** | Bearer JWT |
 
-**Admin response:** Virtual `All Files` node + OrgUnit hierarchy with nested folders.
+**Admin response:** Virtual `All Files` node + full OrgUnit hierarchy with nested folders.
 
-**Non-admin response:** Virtual `All Files` node + flat folder tree for accessible OrgUnits.
+**Dept Head response:** Virtual `All Files` node + OrgUnit subtree rooted at the assigned unit (includes descendant units and their folders).
 
-**Example node:**
+**Staff response:** Virtual `All Files` node + single assigned OrgUnit node with folders (or flat folder list when unassigned).
+
+**Example org-unit node:**
 
 ```json
 {
@@ -1837,7 +1846,7 @@ curl -X POST http://localhost:8000/api/ai/chat/ \
 
 | Item | Details |
 |------|---------|
-| Dashboard stats | No role-based scoping — all users see global counts |
+| Dashboard stats | Role-scoped: admin global; dept_head subtree or selected child; staff own unit |
 | OrgUnit CRUD permissions | No Admin-only guard in backend; relies on frontend |
 | Category/Folder create permissions | No explicit role checks beyond OrgUnit scope |
 | AuditLog ViewSet | Full ModelViewSet — verify UPDATE/DELETE exposure |

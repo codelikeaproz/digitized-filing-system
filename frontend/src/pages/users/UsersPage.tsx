@@ -1,7 +1,7 @@
 /**
  * UsersPage — user account management (Admin and Dept Head).
  *
- * Admin: manage all users. Dept Head: Staff only within assigned OrgUnit.
+ * Admin: manage all users. Dept Head: Staff only within assigned OrgUnit subtree.
  * APIs: GET/POST /api/users, PUT/PATCH/DELETE /api/users/{id},
  *       activate/deactivate, resend-activation.
  */
@@ -134,10 +134,20 @@ export default function UsersPage() {
     return options;
   }, [formData.suffix]);
 
+  const accessibleOrgUnitIds = React.useMemo(
+    () => new Set(orgUnits.map((ou) => String(ou.id))),
+    [orgUnits],
+  );
+  const hasSubtreeFilter = isDeptHead && orgUnits.length > 1;
+
   const canManageUser = (target: User) => {
     if (typeof target.canManage === 'boolean') return target.canManage;
     if (isAdmin) return true;
-    return isDeptHead && target.role === 'staff' && String(target.orgUnitId || '') === currentUserOrgUnitId;
+    return (
+      isDeptHead
+      && target.role === 'staff'
+      && accessibleOrgUnitIds.has(String(target.orgUnitId || ''))
+    );
   };
 
   const isReadOnlyHeadRow = (target: User) => isDeptHead && target.role === 'dept_head' && !canManageUser(target);
@@ -161,7 +171,7 @@ export default function UsersPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (isDeptHead) {
         params.role = 'staff';
-        if (currentUserOrgUnitId) params.orgUnitId = currentUserOrgUnitId;
+        if (orgUnitFilter !== 'all') params.orgUnitId = orgUnitFilter;
       } else {
         if (roleFilter !== 'all') params.role = roleFilter;
         if (orgUnitFilter !== 'all') params.orgUnitId = orgUnitFilter;
@@ -179,10 +189,6 @@ export default function UsersPage() {
 
   const fetchOrgUnits = async () => {
     try {
-      if (isDeptHead && currentUserOrgUnitId) {
-        setOrgUnits([{ id: currentUserOrgUnitId, name: currentUser?.orgUnitName || 'Assigned Office Unit' }]);
-        return;
-      }
       const data = await api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 });
       setOrgUnits(data.results);
     } catch (error) {
@@ -281,7 +287,7 @@ export default function UsersPage() {
       suffix: user.suffix || '',
       email: user.email,
       role: isDeptHead ? 'staff' : user.role,
-      orgUnitId: isDeptHead ? currentUserOrgUnitId : user.orgUnitId || '',
+      orgUnitId: isDeptHead ? (user.orgUnitId || currentUserOrgUnitId) : user.orgUnitId || '',
       password: '',
       isActive: user.isActive
     });
@@ -317,7 +323,9 @@ export default function UsersPage() {
         suffix: formData.suffix,
         email: formData.email,
         role: isDeptHead ? 'staff' : formData.role,
-        orgUnitId: isDeptHead ? currentUserOrgUnitId : formData.role === 'admin' ? null : formData.orgUnitId,
+        orgUnitId: isDeptHead
+          ? (formData.orgUnitId || currentUserOrgUnitId)
+          : formData.role === 'admin' ? null : formData.orgUnitId,
       };
 
       const newUser = await api.post<User>('/api/users', payload);
@@ -354,7 +362,9 @@ export default function UsersPage() {
       const payload = {
         ...formData,
         role: isDeptHead ? 'staff' : formData.role,
-        orgUnitId: isDeptHead ? currentUserOrgUnitId : formData.role === 'admin' ? null : formData.orgUnitId,
+        orgUnitId: isDeptHead
+          ? (formData.orgUnitId || currentUserOrgUnitId)
+          : formData.role === 'admin' ? null : formData.orgUnitId,
       } as any;
       if (!payload.password) delete payload.password;
       
@@ -503,6 +513,18 @@ export default function UsersPage() {
                   ))}
                 </select>
               </>
+            ) : hasSubtreeFilter ? (
+              <select
+                title="Filter by office unit"
+                value={orgUnitFilter}
+                onChange={(e) => handleOrgUnitFilterChange(e.target.value)}
+                className="h-10 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none max-w-[220px]"
+              >
+                <option value="all">All Accessible Units</option>
+                {orgUnits.map(ou => (
+                  <option key={ou.id} value={ou.id}>{ou.name}</option>
+                ))}
+              </select>
             ) : (
               <div className="h-10 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
                 Office Unit: <span className="font-semibold text-gray-800">{currentUser?.orgUnitName || 'Assigned Office Unit'}</span>
@@ -787,7 +809,7 @@ export default function UsersPage() {
                 </select>
                 {isDeptHead && (
                   <p className="text-xs text-gray-500">
-                    Heads can create and edit Staff accounts only.
+                    Heads can create and edit Staff accounts within your Office Unit subtree.
                   </p>
                 )}
                 {isEditModalOpen && isSelectedLastActiveAdmin && (
@@ -810,7 +832,7 @@ export default function UsersPage() {
                     value={formData.orgUnitId}
                     onChange={handleInputChange}
                     required
-                    disabled={isDeptHead}
+                    disabled={isDeptHead ? orgUnits.length <= 1 : false}
                     className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">Select Office Unit</option>
@@ -821,7 +843,9 @@ export default function UsersPage() {
                 )}
                 {isDeptHead && (
                   <p className="text-xs text-gray-500">
-                    Office Unit is locked to your assigned scope.
+                    {orgUnits.length > 1
+                      ? 'Select the Office Unit for this Staff account within your accessible subtree.'
+                      : 'Office Unit is locked to your assigned scope.'}
                   </p>
                 )}
               </div>

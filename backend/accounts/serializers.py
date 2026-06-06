@@ -11,6 +11,7 @@ from django.utils.encoding import DjangoUnicodeDecodeError, force_str
 from django.utils.http import urlsafe_base64_decode
 
 from config.timezone_utils import format_local_datetime
+from documents.permissions import get_accessible_org_unit_ids
 from orgunits.models import OrgUnit
 from .models import User
 
@@ -135,10 +136,11 @@ class UserSerializer(serializers.ModelSerializer):
         if actor.role == "admin":
             return True
         if actor.role == "dept_head":
+            scope = get_accessible_org_unit_ids(actor)
             return (
                 actor.org_unit_id is not None
                 and obj.role == "staff"
-                and obj.org_unit_id == actor.org_unit_id
+                and obj.org_unit_id in scope
             )
         return False
 
