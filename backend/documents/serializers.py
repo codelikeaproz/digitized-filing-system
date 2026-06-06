@@ -108,7 +108,7 @@ class CategorySerializer(serializers.ModelSerializer):
     def _ensure_unique_category_code(self, code, org_unit_id, *, exclude_pk=None):
         if category_code_is_taken(code, org_unit_id, exclude_pk=exclude_pk):
             raise serializers.ValidationError(
-                {"code": "A category with this code already exists in this Org Unit."}
+                {"code": "A category with this code already exists in this Office Unit."}
             )
 
     def _assign_category_org_unit(self, attrs):
@@ -179,7 +179,7 @@ class CategorySerializer(serializers.ModelSerializer):
         if duplicate_queryset.exists():
             if org_unit_id:
                 raise serializers.ValidationError(
-                    {"name": "A category with this name already exists in this Org Unit."}
+                    {"name": "A category with this name already exists in this Office Unit."}
                 )
             raise serializers.ValidationError(
                 {

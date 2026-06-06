@@ -1093,7 +1093,7 @@ Same storage allocation validation as create. When updating quota, the unit's pr
 
 ```json
 {
-  "message": "Org Unit deleted successfully"
+  "message": "Office Unit deleted successfully"
 }
 ```
 

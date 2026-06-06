@@ -174,15 +174,15 @@ class UserSerializer(serializers.ModelSerializer):
         if org_unit_id is serializers.empty:
             if self.instance and self.instance.org_unit_id:
                 return attrs
-            raise serializers.ValidationError({"message": "Organization unit is required for Dept Head and Staff."})
+            raise serializers.ValidationError({"message": "Office Unit is required for Dept Head and Staff."})
 
         if org_unit_id in ("", None):
-            raise serializers.ValidationError({"message": "Organization unit is required for Dept Head and Staff."})
+            raise serializers.ValidationError({"message": "Office Unit is required for Dept Head and Staff."})
 
         try:
             org_unit = OrgUnit.objects.get(pk=org_unit_id, is_deleted=False)
         except (OrgUnit.DoesNotExist, TypeError, ValueError):
-            raise serializers.ValidationError({"message": "Invalid organization unit."})
+            raise serializers.ValidationError({"message": "Invalid Office Unit."})
 
         attrs["org_unit_id"] = org_unit.pk
         return attrs

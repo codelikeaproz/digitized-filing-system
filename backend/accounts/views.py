@@ -550,7 +550,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if request.user.role == "staff":
             return self._forbidden("Staff users cannot create user accounts.")
         if request.user.role == "dept_head" and not request.user.org_unit_id:
-            return self._forbidden("Department Head account has no assigned organization unit.")
+            return self._forbidden("Department Head account has no assigned Office Unit.")
 
         data = self._normalize_dept_head_create_data(request.data)
         payload_response = self._validate_dept_head_payload(data)

@@ -200,7 +200,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             serializer.save()
         except IntegrityError:
             raise ValidationError(
-                {"name": "A category with this name already exists in this Org Unit."}
+                {"name": "A category with this name already exists in this Office Unit."}
             ) from None
         log_audit(self.request.user, "CREATE_CATEGORY", f"Created category: {serializer.instance.name}")
 
@@ -224,7 +224,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             raise
         except IntegrityError:
             raise ValidationError(
-                {"name": "A category with this name or code already exists in this Org Unit."}
+                {"name": "A category with this name or code already exists in this Office Unit."}
             ) from None
 
         name_changed = old_name != category.name
@@ -314,7 +314,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         if not org_unit:
             org_unit = getattr(self.request.user, "org_unit", None)
         if not org_unit:
-            raise ValidationError({"orgUnitId": "Target OrgUnit is required."})
+            raise ValidationError({"orgUnitId": "Target Office Unit is required."})
         serializer.save(created_by=self.request.user, org_unit=org_unit)
 
     def perform_destroy(self, instance):
@@ -707,7 +707,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not category:
             raise ValidationError({"categoryId": "Valid category is required."})
         if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
-            raise ValidationError({"categoryId": "Category must belong to the selected folder's Org Unit."})
+            raise ValidationError({"categoryId": "Category must belong to the selected folder's Office Unit."})
         if not (category.code or "").strip():
             raise ValidationError({"categoryId": "Category must have a code before it can be assigned."})
 

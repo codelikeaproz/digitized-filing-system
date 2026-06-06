@@ -96,7 +96,7 @@ export default function OrgUnitsPage() {
       setOrgUnits(data.results);
       setOrgUnitCount(data.count);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch org units');
+      toast.error(error.message || 'Failed to fetch Office Units');
     } finally {
       setIsLoading(false);
     }
@@ -266,7 +266,7 @@ export default function OrgUnitsPage() {
       toast.success('Office Unit deleted successfully');
       setOuToDelete(null);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to delete org unit');
+      toast.error(error.message || 'Failed to delete Office Unit');
     } finally {
       setIsDeleting(false);
     }
@@ -327,7 +327,7 @@ export default function OrgUnitsPage() {
       if (fieldError) {
         setStorageQuotaError(String(fieldError));
       }
-      toast.error(error.message || 'Failed to save org unit');
+      toast.error(error.message || 'Failed to save Office Unit');
     }
   };
 
@@ -784,7 +784,7 @@ export default function OrgUnitsPage() {
             <AlertDialogTitle>Delete Office Unit</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete the Office Unit <strong>{ouToDelete?.name}</strong>?
-              This action cannot be undone. You can only delete org units that have no users, folders, documents, or sub-units.
+              This action cannot be undone. You can only delete Office Units that have no users, folders, documents, or sub-units.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

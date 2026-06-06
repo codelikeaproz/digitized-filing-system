@@ -213,7 +213,7 @@ export function CategorySelect({
   const getCategoryLabel = (c: Category) => {
     const codeSuffix = c.code ? ` (${c.code})` : "";
     if ((isAdmin || isDeptHead) && !orgUnitId && hasSubtreeOrgUnits) {
-      return `${c.name}${codeSuffix} — ${orgUnits.find(ou => ou.id === c.orgUnitId)?.name || (c.orgUnitId ? 'OrgUnit ' + c.orgUnitId.slice(-4) : 'Global')}`;
+      return `${c.name}${codeSuffix} — ${orgUnits.find(ou => ou.id === c.orgUnitId)?.name || (c.orgUnitId ? 'Office Unit ' + c.orgUnitId.slice(-4) : 'Global')}`;
     }
     return `${c.name}${codeSuffix}`;
   };

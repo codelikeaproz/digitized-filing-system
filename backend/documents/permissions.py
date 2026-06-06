@@ -191,12 +191,12 @@ def resolve_category_org_unit_for_create(user, requested_org_unit_id=None):
     role = getattr(user, "role", None)
     if role == "admin":
         if not requested_org_unit_id:
-            raise PermissionDenied("Org Unit is required when creating a category.")
+            raise PermissionDenied("Office Unit is required when creating a category.")
         return int(requested_org_unit_id)
 
     org_unit = getattr(user, "org_unit", None)
     if not org_unit:
-        raise PermissionDenied("Your account must be assigned to an Org Unit to create categories.")
+        raise PermissionDenied("Your account must be assigned to an Office Unit to create categories.")
 
     if not requested_org_unit_id:
         return org_unit.id
@@ -204,13 +204,13 @@ def resolve_category_org_unit_for_create(user, requested_org_unit_id=None):
     try:
         requested_id = int(requested_org_unit_id)
     except (TypeError, ValueError) as exc:
-        raise PermissionDenied("Invalid Org Unit.") from exc
+        raise PermissionDenied("Invalid Office Unit.") from exc
 
     if role == "staff" and requested_id != org_unit.id:
-        raise PermissionDenied("Staff can only create categories for their own Org Unit.")
+        raise PermissionDenied("Staff can only create categories for their own Office Unit.")
 
     if role == "dept_head" and requested_id not in org_unit_scope_ids(user):
-        raise PermissionDenied("Department Head can only create categories within their Org Unit scope.")
+        raise PermissionDenied("Department Head can only create categories within their Office Unit scope.")
 
     return requested_id
 

@@ -82,7 +82,7 @@ class OrgTypeViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if instance.org_units.exists():
             return Response(
-                {"message": "Cannot delete Org Type while it is used by Org Units. Disable it instead."},
+                {"message": "Cannot delete Org Type while it is used by Office Units. Disable it instead."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -197,16 +197,16 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
     def _validate_hierarchy(self, *, instance=None, name=None, parent=None):
         org_unit_name = (name or "").strip()
         if not org_unit_name:
-            raise ValidationError({"name": "Org Unit name cannot be empty."})
+            raise ValidationError({"name": "Office Unit name cannot be empty."})
 
         if instance and parent:
             if parent.pk == instance.pk:
-                raise ValidationError({"parentId": "Org Unit cannot be its own parent."})
+                raise ValidationError({"parentId": "Office Unit cannot be its own parent."})
 
             ancestor = parent
             while ancestor:
                 if ancestor.pk == instance.pk:
-                    raise ValidationError({"parentId": "Circular Org Unit parent relationship is not allowed."})
+                    raise ValidationError({"parentId": "Circular Office Unit parent relationship is not allowed."})
                 ancestor = ancestor.parent
 
         duplicate_queryset = OrgUnit.objects.filter(
@@ -217,7 +217,7 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
         if instance:
             duplicate_queryset = duplicate_queryset.exclude(pk=instance.pk)
         if duplicate_queryset.exists():
-            raise ValidationError({"name": "An Org Unit with this name already exists under the same parent."})
+            raise ValidationError({"name": "An Office Unit with this name already exists under the same parent."})
 
     def _resolve_parent(self, serializer, instance=None):
         fallback_parent_id = instance.parent_id if instance else None
@@ -227,7 +227,7 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
 
         parent = OrgUnit.objects.filter(pk=parent_id, is_deleted=False).first()
         if not parent:
-            raise ValidationError({"parentId": "Parent Org Unit does not exist."})
+            raise ValidationError({"parentId": "Parent Office Unit does not exist."})
         return parent
 
     def perform_create(self, serializer):
@@ -293,7 +293,7 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
 
         if has_dependencies:
             return Response(
-                {"message": "Cannot delete OrgUnit. It still contains users, folders, documents, or sub-units."},
+                {"message": "Cannot delete Office Unit. It still contains users, folders, documents, or sub-units."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -309,4 +309,4 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
                 target_org_unit=instance.name,
             )
 
-        return Response({"message": "Org Unit deleted successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "Office Unit deleted successfully"}, status=status.HTTP_200_OK)
