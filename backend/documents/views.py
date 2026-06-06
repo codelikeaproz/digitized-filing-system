@@ -840,6 +840,15 @@ class DocumentUploadView(APIView):
         if keywords_error:
             return Response({"error": keywords_error}, status=status.HTTP_400_BAD_REQUEST)
 
+        description = (request.data.get("description") or "").strip()
+        if not description:
+            return Response({"error": "Description is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(description) > 50:
+            return Response(
+                {"error": "Description must be 50 characters or fewer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             raw_requisitioners = parse_requisitioners(request.data.get("requisitioners", "[]"))
             validated_requisitioners = validate_requisitioners_list(raw_requisitioners)
@@ -911,7 +920,7 @@ class DocumentUploadView(APIView):
                     uploader=request.user if request.user.is_authenticated else None,
                     code=code,
                     requestor=format_requisitioners_display(validated_requisitioners) or None,
-                    description=request.data.get("description") or None,
+                    description=description,
                     keywords=keywords,
                     filing_year=timezone.now().year,
                     status="Received",

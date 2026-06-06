@@ -355,7 +355,7 @@ class DocumentEditSerializer(serializers.Serializer):
     folderId = serializers.CharField()
     categoryId = serializers.CharField()
     requisitioners = serializers.ListField(child=serializers.DictField(), allow_empty=False)
-    description = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50)
+    description = serializers.CharField(required=True, allow_blank=False, max_length=50)
     keywords = serializers.ListField(child=serializers.CharField(), allow_empty=False)
     file_name = serializers.CharField(required=False, allow_blank=True)
 
@@ -366,7 +366,10 @@ class DocumentEditSerializer(serializers.Serializer):
         return cleaned
 
     def validate_description(self, value):
-        return (value or "").strip()[:50]
+        cleaned = (value or "").strip()
+        if not cleaned:
+            raise serializers.ValidationError("Description is required.")
+        return cleaned[:50]
 
     def validate_requisitioners(self, value):
         return validate_requisitioners_list(value)

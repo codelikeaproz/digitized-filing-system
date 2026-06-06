@@ -6,7 +6,7 @@
  * Document code is auto-generated server-side from the selected category.
  */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import {
   Dialog,
   DialogContent,
@@ -210,8 +210,39 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
     [storageQuotaExceeded, uploadLimitBytes, uploadLimitMb]
   );
 
+  const onDropRejected = useCallback(
+    (rejections: FileRejection[]) => {
+      if (storageQuotaExceeded) {
+        toast.error("Storage quota exceeded. Please contact your system administrator.");
+        return;
+      }
+
+      const rejection = rejections[0];
+      if (!rejection) return;
+
+      if (rejection.errors.some((error) => error.code === "file-too-large")) {
+        toast.error(formatUploadSizeError(uploadLimitMb));
+        return;
+      }
+
+      if (rejection.errors.some((error) => error.code === "file-invalid-type")) {
+        toast.error("Invalid file type. Only PDF files are allowed.");
+        return;
+      }
+
+      if (rejection.errors.some((error) => error.code === "too-many-files")) {
+        toast.error("Please upload one PDF file at a time.");
+        return;
+      }
+
+      toast.error(rejection.errors[0]?.message || "File could not be uploaded.");
+    },
+    [storageQuotaExceeded, uploadLimitMb]
+  );
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: { "application/pdf": [".pdf"] },
     maxFiles: 1,
     multiple: false,
@@ -259,6 +290,10 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
       toast.error("Add at least one keyword before saving.");
       return;
     }
+    if (!description.trim()) {
+      toast.error("Short description is required.");
+      return;
+    }
     if (!user) {
       toast.error("Auth session expired.");
       return;
@@ -295,7 +330,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
       formData.append("uploaderId", user.id);
       formData.append("filePath", physicalLocation);
       formData.append("source", "Uploaded");
-      formData.append("description", description);
+      formData.append("description", description.trim());
       formData.append("keywords", JSON.stringify(keywords));
 
       await api.upload("/api/documents/upload", formData);
@@ -485,7 +520,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
                 <div className="flex justify-between items-center">
                   <Label htmlFor="desc" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
                     <MessageSquare className="h-3.5 w-3.5" />
-                    Short Description
+                    Short Description <span className="text-destructive">*</span>
                   </Label>
                   <span
                     className={cn(
@@ -502,7 +537,11 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
                   value={description}
                   onChange={(event) => setDescription(event.target.value.slice(0, 50))}
                   className="resize-none h-20 min-h-[80px]"
+                  required
                 />
+                {!description.trim() && (
+                  <p className="text-[10px] text-amber-700 italic">Enter a short description (required).</p>
+                )}
               </div>
 
               <div className="space-y-3">

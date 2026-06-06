@@ -62,7 +62,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| PDF upload with folder, category (with code), auto document code preview, and ≥1 keyword | All | [ ] |
+| PDF upload with folder, category (with code), description, auto document code preview, and ≥1 keyword | All | [ ] |
 | Document code read-only on edit unless category changes; prefix swaps when category reassigned | All | [ ] |
 | Category abbreviation change in Manage Categories recodes existing document prefixes | All | [ ] |
 | Category code auto-generated from name on create/rename or editable manually in Manage Categories | All | [ ] |

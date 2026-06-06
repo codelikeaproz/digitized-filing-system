@@ -644,7 +644,7 @@ Or custom:
 | `title` | No | Defaults to uploaded filename |
 | `requisitioners` | Yes | JSON array string, e.g. `[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; digits-only employee numbers; no duplicates per document) |
 | `requestor` | No | Legacy derived display string (synced server-side from `requisitioners`; do not send on manual upload) |
-| `description` | No | Max 50 characters |
+| `description` | Yes | Required; max 50 characters |
 | `keywords` | No | JSON array string, e.g. `["keyword1","keyword2"]` |
 | `filePath` | No | Display path; defaults to folder full path |
 | `source` | No | `Uploaded` (default; legacy rows may show `Scanned`) |

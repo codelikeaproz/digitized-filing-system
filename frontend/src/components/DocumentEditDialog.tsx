@@ -138,6 +138,10 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       toast.error("Add at least one keyword before saving.");
       return;
     }
+    if (!description.trim()) {
+      toast.error("Short description is required.");
+      return;
+    }
 
     const validation = validateRequisitioners(requisitioners);
     setRequisitionerErrors(validation.rowErrors);
@@ -154,7 +158,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
         folderId: targetFolderId,
         categoryId,
         requisitioners: serializeRequisitionersForApi(requisitioners),
-        description,
+        description: description.trim(),
         keywords,
         file_name: customFileName.trim(),
       });
@@ -261,7 +265,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               <div className="flex justify-between items-center">
                 <Label htmlFor="edit-description" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
                   <MessageSquare className="h-3.5 w-3.5" />
-                  Short Description
+                  Short Description <span className="text-destructive">*</span>
                 </Label>
                 <span className={cn("text-[10px] font-bold", description.length >= 50 ? "text-destructive" : "text-muted-foreground")}>
                   {description.length}/50
@@ -272,7 +276,12 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
                 value={description}
                 onChange={(event) => setDescription(event.target.value.slice(0, 50))}
                 className="resize-none h-20 min-h-[80px]"
+                required
+                disabled={isSaving}
               />
+              {!description.trim() && (
+                <p className="text-[10px] text-amber-700 italic">Enter a short description (required).</p>
+              )}
             </div>
 
             <div className="space-y-2">
