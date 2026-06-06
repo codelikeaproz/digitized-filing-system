@@ -97,6 +97,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | Create, rename, delete (blocked if in use); scoped to Org Unit; manual code abbreviation edit in Manage Categories | All | [ ] |
+| Parent Dept Head can manage categories in child Office Units via Manage Categories | Dept Head | [ ] |
 
 ---
 

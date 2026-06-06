@@ -69,6 +69,7 @@ from .serializers import (
 )
 from .permissions import (
     assert_category_delete_access,
+    assert_category_write_access,
     assert_document_edit_access,
     assert_document_write_access,
     assert_folder_in_scope,
@@ -188,6 +189,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         org_unit_id = self.request.query_params.get("orgUnitId")
         if org_unit_id:
+            user = self.request.user
+            if getattr(user, "role", None) != "admin":
+                assert_org_unit_in_scope(user, org_unit_id)
             queryset = queryset.filter(org_unit_id=org_unit_id)
         return queryset
 
@@ -201,6 +205,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         log_audit(self.request.user, "CREATE_CATEGORY", f"Created category: {serializer.instance.name}")
 
     def perform_update(self, serializer):
+        assert_category_write_access(self.request.user, serializer.instance)
         old_name = serializer.instance.name
         old_code = serializer.instance.code
         recoded_count = 0

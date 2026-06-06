@@ -2,7 +2,7 @@
  * CategorySelect — category picker with inline create (uses CategoryContext).
  * APIs: GET/POST /api/categories via CategoryContext.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   X, 
   Plus,
@@ -82,6 +82,25 @@ export function CategorySelect({
   const [pendingRecodeOldCode, setPendingRecodeOldCode] = useState("");
   const [pendingRecodeNewCode, setPendingRecodeNewCode] = useState("");
 
+  const isAdmin = user?.role === "admin";
+  const isDeptHead = user?.role === "dept_head";
+  const hasSubtreeOrgUnits = (isAdmin || isDeptHead) && orgUnits.length > 1;
+
+  const accessibleOrgUnitIds = useMemo(() => {
+    if (orgUnits.length > 0) {
+      return new Set(orgUnits.map((ou) => String(ou.id)));
+    }
+    if (user?.orgUnitId) {
+      return new Set([String(user.orgUnitId)]);
+    }
+    return new Set<string>();
+  }, [orgUnits, user?.orgUnitId]);
+
+  const canManageCategory = (category: Category) => {
+    if (isAdmin) return true;
+    return accessibleOrgUnitIds.has(String(category.orgUnitId ?? ""));
+  };
+
   const getPayloadOrgUnit = () => {
     if (orgUnitId) return orgUnitId;
     if (targetOrgUnit) return targetOrgUnit;
@@ -130,14 +149,12 @@ export function CategorySelect({
   }, [orgUnitId]);
 
   useEffect(() => {
-    // If admin and no orgUnit is forced, fetch org units to populate the selection and labels
-    // Do it once so we have names
-    if (user?.role === 'admin' && !orgUnitId) {
+    if (isAdmin || isDeptHead) {
       api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 })
         .then(res => setOrgUnits(res.results))
         .catch(console.error);
     }
-  }, [user?.role, orgUnitId]);
+  }, [isAdmin, isDeptHead]);
 
   // Staff / Dept Head never see global (unassigned) categories.
   const filteredCategories = orgUnitId
@@ -165,7 +182,7 @@ export function CategorySelect({
     }
 
     const payloadOrgUnit = getPayloadOrgUnit();
-    if (user?.role === "admin" && !payloadOrgUnit) {
+    if ((isAdmin || (isDeptHead && hasSubtreeOrgUnits)) && !orgUnitId && !payloadOrgUnit) {
       return;
     }
 
@@ -195,7 +212,7 @@ export function CategorySelect({
 
   const getCategoryLabel = (c: Category) => {
     const codeSuffix = c.code ? ` (${c.code})` : "";
-    if (user?.role === 'admin' && !orgUnitId) {
+    if ((isAdmin || isDeptHead) && !orgUnitId && hasSubtreeOrgUnits) {
       return `${c.name}${codeSuffix} — ${orgUnits.find(ou => ou.id === c.orgUnitId)?.name || (c.orgUnitId ? 'OrgUnit ' + c.orgUnitId.slice(-4) : 'Global')}`;
     }
     return `${c.name}${codeSuffix}`;
@@ -407,7 +424,7 @@ export function CategorySelect({
             <DialogTitle>Add New Category</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            {user?.role === 'admin' && !orgUnitId && (
+            {(isAdmin || (isDeptHead && hasSubtreeOrgUnits)) && !orgUnitId && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Select target Office Unit</label>
                 <Select value={targetOrgUnit} onValueChange={(val) => val !== null && setTargetOrgUnit(val)}>
@@ -465,8 +482,8 @@ export function CategorySelect({
               disabled={
                 !newCategoryName.trim() ||
                 isSubmitting ||
-                (user?.role === "admin" && !orgUnitId && !targetOrgUnit) ||
-                (user?.role !== "admin" && !getPayloadOrgUnit())
+                ((isAdmin || (isDeptHead && hasSubtreeOrgUnits)) && !orgUnitId && !targetOrgUnit) ||
+                (!isAdmin && !getPayloadOrgUnit())
               }
             >
               {isSubmitting ? "Creating..." : "Create Category"}
@@ -488,9 +505,7 @@ export function CategorySelect({
               </div>
             ) : (
               filteredCategories.map(c => {
-                const canDelete =
-                  user?.role === "admin" ||
-                  String(c.orgUnitId ?? "") === String(user?.orgUnitId ?? "");
+                const canManage = canManageCategory(c);
                 const documentCount = getCategoryDocumentCount(c);
                 const inUse = documentCount > 0;
                 const documentLabel = `${documentCount} ${documentCount === 1 ? "document" : "documents"}`;
@@ -560,9 +575,9 @@ export function CategorySelect({
                       <span className="text-xs text-muted-foreground mt-1">
                         {documentLabel}
                       </span>
-                      {user?.role === 'admin' && !orgUnitId && (
+                      {((isAdmin || isDeptHead) && !orgUnitId && hasSubtreeOrgUnits) && (
                         <span className="text-xs text-muted-foreground mt-0.5">
-                          {orgUnits.find(ou => ou.id === c.orgUnitId)?.name || 'Global'}
+                          {orgUnits.find(ou => ou.id === c.orgUnitId)?.name || 'Unknown Office Unit'}
                         </span>
                       )}
                     </div>
@@ -588,7 +603,7 @@ export function CategorySelect({
                           variant="ghost"
                           size="icon"
                           onClick={() => handleStartRenameCategory(c)}
-                          disabled={!canDelete}
+                          disabled={!canManage}
                           className="text-muted-foreground hover:text-[#0A4D27]"
                         >
                           <Pencil className="h-4 w-4" />
@@ -619,8 +634,8 @@ export function CategorySelect({
                         <Button
                           variant="ghost" 
                           size="icon"
-                          disabled={!canDelete}
-                          className={canDelete ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}
+                          disabled={!canManage}
+                          className={canManage ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}
                           onClick={() => handleRequestDeleteCategory(c)}
                         >
                           <Trash2 className="h-4 w-4" />

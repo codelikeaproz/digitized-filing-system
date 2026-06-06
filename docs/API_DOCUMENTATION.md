@@ -931,13 +931,13 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 | **Method** | `GET` |
 | **Path** | `/api/categories` |
 | **Auth** | Bearer JWT |
-| **Scope** | OrgUnit-scoped for non-admin |
+| **Scope** | OrgUnit-scoped for non-admin. Dept Head: own unit + descendant units (subtree). Staff: own unit only. |
 
 **Query parameters:**
 
 | Parameter | Description |
 |-----------|-------------|
-| `orgUnitId` | Filter by OrgUnit |
+| `orgUnitId` | Filter by OrgUnit (must be within caller's scope for non-admin; 403 if tampered) |
 
 **Response fields include:** `code`, `documentCount`, `inUse` (true if active documents exist).
 
@@ -961,6 +961,8 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 
 - `code` — auto-generated from the category name when omitted (first 3 alphanumeric characters, deduped per Office Unit). Optional on create: send `"code": "AUD"` to set manually.
 - Unique `(name, org_unit)` per category name; unique `(code, org_unit)` when code is non-empty
+- **Dept Head** may create categories for any accessible Office Unit in their subtree (`orgUnitId` in scope)
+- **Staff** may create categories for their assigned Office Unit only
 
 ---
 
@@ -976,6 +978,7 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 - When `code` is sent, it is normalized (uppercase A–Z, 0–9, max 10) and saved as a **manual abbreviation override**.
 - When `code` is omitted and the name changes, the server regenerates `code` from the new name (deduped within the Office Unit).
 - When the category abbreviation changes, active documents in that category with auto-generated codes (`PREFIX-YEAR-SEQ`) have their prefix updated; sequence numbers are preserved (e.g. `MEM-2026-000001` → `TES-2026-000001`).
+- **Dept Head** may update categories in their accessible subtree; **Staff** own unit only.
 
 ---
 
@@ -989,6 +992,7 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 **Blocked when:**
 
 - Active documents reference the category
+- Caller lacks scope to the category's Office Unit (non-admin)
 
 **Success `200`:**
 

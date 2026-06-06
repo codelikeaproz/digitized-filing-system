@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from auditlogs.models import AuditLog
-from documents.models import Document, Folder
+from documents.models import Category, Document, Folder
 from orgunits.models import OrgType, OrgUnit
 
 
@@ -69,10 +69,20 @@ class OrgUnitHierarchyAuthTests(TestCase):
             file_size=4096,
         )
 
+        self.cisc_category = Category.objects.create(name="CISC Reports", code="CRP", org_unit=self.cisc)
+        self.sdd_category = Category.objects.create(name="SDD Records", code="SDR", org_unit=self.sdd)
+        self.other_category = Category.objects.create(name="Other Files", code="OTH", org_unit=self.other)
+
     def _document_titles(self, response):
         if isinstance(response.data, dict) and "results" in response.data:
             return {row["title"] for row in response.data["results"]}
         return {row["title"] for row in response.data}
+
+    def _category_names(self, response):
+        data = response.data
+        if isinstance(data, list):
+            return {row["name"] for row in data}
+        return {row["name"] for row in data["results"]}
 
     def test_cisc_head_sees_descendant_documents(self):
         self.client.force_authenticate(user=self.cisc_head)
@@ -183,3 +193,49 @@ class OrgUnitHierarchyAuthTests(TestCase):
         self.assertTrue(
             AuditLog.objects.filter(action="SEARCH_DOCUMENTS", user=self.sdd_head).exists()
         )
+
+    def test_cisc_head_lists_subtree_categories(self):
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.get("/api/categories/")
+        self.assertEqual(response.status_code, 200)
+        names = self._category_names(response)
+        self.assertIn("CISC Reports", names)
+        self.assertIn("SDD Records", names)
+        self.assertNotIn("Other Files", names)
+
+    def test_cisc_head_updates_child_category(self):
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.put(
+            f"/api/categories/{self.sdd_category.id}/",
+            {"name": "SDD Updated", "code": "SDU"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.sdd_category.refresh_from_db()
+        self.assertEqual(self.sdd_category.name, "SDD Updated")
+
+    def test_cisc_head_deletes_unused_child_category(self):
+        unused = Category.objects.create(name="SDD Temp", code="TMP", org_unit=self.sdd)
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.delete(f"/api/categories/{unused.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Category.objects.filter(pk=unused.id).exists())
+
+    def test_cisc_head_cannot_delete_out_of_scope_category(self):
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.delete(f"/api/categories/{self.other_category.id}/")
+        self.assertIn(response.status_code, [403, 404])
+
+    def test_sdd_head_cannot_update_parent_category(self):
+        self.client.force_authenticate(user=self.sdd_head)
+        response = self.client.put(
+            f"/api/categories/{self.cisc_category.id}/",
+            {"name": "Blocked", "code": "BLK"},
+            format="json",
+        )
+        self.assertIn(response.status_code, [403, 404])
+
+    def test_tampered_category_org_unit_filter_returns_403(self):
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.get("/api/categories/", {"orgUnitId": self.other.id})
+        self.assertEqual(response.status_code, 403)

@@ -153,6 +153,11 @@ def assert_document_write_access(user, document):
     raise PermissionDenied("You do not have access to this document.")
 
 
+def assert_category_write_access(user, category):
+    """Category update must stay within the user's OrgUnit scope."""
+    assert_category_delete_access(user, category)
+
+
 def assert_category_delete_access(user, category):
     """Category delete must stay within the user's OrgUnit scope."""
     role = getattr(user, "role", None)
