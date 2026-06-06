@@ -10,6 +10,7 @@ Django REST + React/Vite application for OrgUnit-scoped PDF document management.
 | [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | Full REST API reference |
 | [docs/FRONTEND_ROUTES.md](docs/FRONTEND_ROUTES.md) | React route map and role guards |
 | [DOCKER_SETUP.md](DOCKER_SETUP.md) | Local / Docker setup |
+| [docs/VESTA_DEPLOYMENT.md](docs/VESTA_DEPLOYMENT.md) | Production deploy on Vesta CP + nginx |
 | [CHATBOT_CAPABILITIES.md](CHATBOT_CAPABILITIES.md) | Document Assistant features |
 | Live API docs | `http://localhost:8000/api/docs/` (Swagger, after backend start) |
 
