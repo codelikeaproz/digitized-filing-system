@@ -15,16 +15,44 @@ from orgunits.models import OrgUnit
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
+    code = models.CharField(max_length=10, blank=True, default="")
     org_unit = models.ForeignKey(OrgUnit, on_delete=models.CASCADE, null=True, blank=True, related_name="categories")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
         unique_together = ("name", "org_unit")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["code", "org_unit"],
+                name="unique_category_code_per_org_unit",
+                condition=models.Q(code__gt=""),
+            ),
+        ]
         verbose_name_plural = "Categories"
 
     def __str__(self):
         return self.name
+
+
+class DocumentSequence(models.Model):
+    category_code = models.CharField(max_length=10, db_index=True)
+    current_year = models.PositiveIntegerField()
+    current_number = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["category_code", "current_year"],
+                name="unique_document_sequence_per_code_year",
+            ),
+        ]
+        ordering = ["category_code", "-current_year"]
+
+    def __str__(self):
+        return f"{self.category_code}-{self.current_year} ({self.current_number})"
 
 
 class Folder(models.Model):

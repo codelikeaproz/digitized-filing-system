@@ -12,6 +12,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet,
     DashboardStatsAPIView,
+    DocumentNextCodeAPIView,
     DocumentUploadView,
     DocumentViewSet,
     FolderViewSet,
@@ -29,6 +30,7 @@ urlpatterns = [
     path("dashboard/", DashboardStatsAPIView.as_view(), name="dashboard"),
     path("dashboard/stats", DashboardStatsAPIView.as_view(), name="dashboard-stats"),
     path("documents/upload", DocumentUploadView.as_view(), name="document-upload"),
+    path("documents/next-code", DocumentNextCodeAPIView.as_view(), name="document-next-code"),
     path(
         "documents/<int:pk>/download/",
         DocumentViewSet.as_view({"get": "download"}),

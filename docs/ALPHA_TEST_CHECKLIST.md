@@ -38,6 +38,8 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 |-----------|------|------|
 | Stats load; counts update after upload | All | [ ] |
 | Admin-only cards (Org Units, Users) visible to Admin only | Admin | [ ] |
+| Global view shows System Storage Limit vs Total Office Unit Quotas in Storage Utilization | Admin | [ ] |
+| Office Unit Storage Comparison footer shows total used and total quota across all units | Admin | [ ] |
 
 ---
 
@@ -56,8 +58,24 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| PDF upload with folder, category, code, and ≥1 keyword | All | [ ] |
+| PDF upload with folder, category (with code), auto document code preview, and ≥1 keyword | All | [ ] |
+| Document code read-only on edit; category code auto-generated from name on create | All | [ ] |
 | Non-PDF, missing fields, duplicate name, and out-of-scope folder rejected | All | [ ] |
+| File over configured upload limit (default 15 MB) rejected | All | [ ] |
+| Upload blocked when global or Office Unit storage quota exceeded | All | [ ] |
+
+### Notifications & storage alerts
+
+| Test case | Role | Done |
+|-----------|------|------|
+| Notification bell visible in header | All | [ ] |
+| Storage warning/alert notifications appear at 80/90/95/100% thresholds | All | [ ] |
+| Admin sees additional 90% administration notice | Admin | [ ] |
+| Threshold notifications do not duplicate on refresh | All | [ ] |
+| Admin can configure upload limit and system storage quota (Settings → System) | Admin | [ ] |
+| System storage quota preset dropdown (5/15/100/500 GB, 1 TB, Custom) saves correct MB value | Admin | [ ] |
+| Non-preset system quota (e.g. 400 MB) loads as Custom with MB input | Admin | [ ] |
+| Upload button disabled when global quota exceeded | All | [ ] |
 
 ### Table & filters
 

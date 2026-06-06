@@ -2,7 +2,8 @@
  * UploadDialog — PDF upload modal.
  *
  * Supports manual PDF upload via POST /api/documents/upload (multipart).
- * Validates document code, category, folder, requisitioners, and metadata before submit.
+ * Validates category, folder, requisitioners, and metadata before submit.
+ * Document code is auto-generated server-side from the selected category.
  */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
@@ -48,22 +49,21 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useCategories } from "@/contexts/CategoryContext";
 import { toast } from "sonner";
-import { logAudit } from "@/lib/audit";
 import { api } from "@/lib/api";
+import { fetchSystemSettings, formatUploadSizeError } from "@/lib/system-settings";
 import { Folder } from "@/types";
-
-const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9-]+$/;
 
 interface UploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedFolderId?: string;
   selectedFolderPath?: string;
+  storageQuotaExceeded?: boolean;
 }
 
 type WorkflowState = "manual-upload" | "category-entry" | "success";
 
-export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDialogProps) {
+export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuotaExceeded = false }: UploadDialogProps) {
   const { user } = useAuth();
   const { categories } = useCategories();
 
@@ -72,6 +72,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
   const [customFileName, setCustomFileName] = useState("");
   const [docCode, setDocCode] = useState("");
   const [docCodeError, setDocCodeError] = useState("");
+  const [isLoadingDocCode, setIsLoadingDocCode] = useState(false);
   const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>([]);
   const [requisitionerErrors, setRequisitionerErrors] = useState<RequisitionerRowErrors[]>([]);
   const [requisitionerListError, setRequisitionerListError] = useState("");
@@ -82,11 +83,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
   const [targetFolderId, setTargetFolderId] = useState("");
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadLimitMb, setUploadLimitMb] = useState(15);
 
-  const trimmedDocCode = docCode.trim();
-  const isDocumentCodeValid = !trimmedDocCode || DOCUMENT_CODE_PATTERN.test(trimmedDocCode);
-  const documentCodeInlineError =
-    docCodeError || (!isDocumentCodeValid ? "Document Code can contain letters, numbers, and hyphens only." : "");
+  const uploadLimitBytes = uploadLimitMb * 1024 * 1024;
 
   const reset = () => {
     setState("manual-upload");
@@ -94,6 +93,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
     setCustomFileName("");
     setDocCode("");
     setDocCodeError("");
+    setIsLoadingDocCode(false);
     setRequisitioners([]);
     setRequisitionerErrors([]);
     setRequisitionerListError("");
@@ -111,8 +111,49 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
     } else {
       setTargetFolderId(selectedFolderId || "");
       fetchFolders();
+      fetchSystemSettings()
+        .then((settings) => setUploadLimitMb(settings.uploadLimitMb))
+        .catch(() => setUploadLimitMb(15));
+      if (storageQuotaExceeded) {
+        toast.error("Storage quota exceeded. Please contact your system administrator.");
+      }
     }
-  }, [open, selectedFolderId]);
+  }, [open, selectedFolderId, storageQuotaExceeded]);
+
+  useEffect(() => {
+    if (!categoryId) {
+      setDocCode("");
+      setDocCodeError("");
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingDocCode(true);
+    setDocCodeError("");
+
+    api
+      .get<{ code: string }>("/api/documents/next-code", { categoryId })
+      .then((response) => {
+        if (!cancelled) {
+          setDocCode(response.code);
+        }
+      })
+      .catch((error: any) => {
+        if (!cancelled) {
+          setDocCode("");
+          setDocCodeError(error.message || "Unable to preview document code.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingDocCode(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [categoryId]);
 
   const fetchFolders = async () => {
     try {
@@ -143,25 +184,38 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
       .sort((a, b) => compareByNaturalName(a.path, b.path));
   }, [folders]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      const selectedFile = acceptedFiles[0];
-      if (selectedFile.type !== "application/pdf") {
-        toast.error("Invalid file type. Only PDF files are allowed.");
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      if (storageQuotaExceeded) {
+        toast.error("Storage quota exceeded. Please contact your system administrator.");
         return;
       }
-      const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
-      setFile(selectedFile);
-      setCustomFileName(baseName);
-      setState("category-entry");
-    }
-  }, []);
+      if (acceptedFiles.length > 0) {
+        const selectedFile = acceptedFiles[0];
+        if (selectedFile.type !== "application/pdf") {
+          toast.error("Invalid file type. Only PDF files are allowed.");
+          return;
+        }
+        if (selectedFile.size > uploadLimitBytes) {
+          toast.error(formatUploadSizeError(uploadLimitMb));
+          return;
+        }
+        const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
+        setFile(selectedFile);
+        setCustomFileName(baseName);
+        setState("category-entry");
+      }
+    },
+    [storageQuotaExceeded, uploadLimitBytes, uploadLimitMb]
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "application/pdf": [".pdf"] },
     maxFiles: 1,
     multiple: false,
+    maxSize: uploadLimitBytes,
+    disabled: storageQuotaExceeded,
   } as any);
 
   const addKeyword = () => {
@@ -176,20 +230,24 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
   };
 
   const handleSave = async () => {
+    if (storageQuotaExceeded) {
+      toast.error("Storage quota exceeded. Please contact your system administrator.");
+      return;
+    }
     if (!file) {
       toast.error("File is missing.");
       return;
     }
-    if (!trimmedDocCode) {
-      setDocCodeError("Document Code is required.");
-      return;
-    }
-    if (!DOCUMENT_CODE_PATTERN.test(trimmedDocCode)) {
-      setDocCodeError("Document Code can contain letters, numbers, and hyphens only.");
+    if (file.size > uploadLimitBytes) {
+      toast.error(formatUploadSizeError(uploadLimitMb));
       return;
     }
     if (!categoryId) {
       toast.error("Category is required.");
+      return;
+    }
+    if (!docCode.trim()) {
+      setDocCodeError("Select a category with a valid code to generate a document code.");
       return;
     }
     if (!targetFolderId) {
@@ -236,12 +294,10 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
       formData.append("uploaderId", user.id);
       formData.append("filePath", physicalLocation);
       formData.append("source", "Uploaded");
-      formData.append("code", trimmedDocCode);
       formData.append("description", description);
       formData.append("keywords", JSON.stringify(keywords));
 
       await api.upload("/api/documents/upload", formData);
-      await logAudit("UPLOAD", `Uploaded: ${finalName} to ${physicalLocation} [Code: ${docCode}]`);
 
       setState("success");
       toast.success("Document uploaded successfully");
@@ -310,7 +366,14 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
                 <p className="font-semibold text-xl">
                   {isDragActive ? "Drop your PDF here" : "Click or drag PDF here"}
                 </p>
-                <p className="text-sm text-muted-foreground">Only PDF files are accepted — maximum 50 MB</p>
+                <p className="text-sm text-muted-foreground">
+                  Only PDF files are accepted — maximum {uploadLimitMb} MB
+                </p>
+                {storageQuotaExceeded ? (
+                  <p className="text-sm font-medium text-destructive">
+                    Storage quota exceeded. Please contact your system administrator.
+                  </p>
+                ) : null}
               </div>
             </div>
           )}
@@ -354,44 +417,55 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
                 </Select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fileName" className="text-xs font-semibold uppercase text-muted-foreground">
-                    File Name (Editable)
-                  </Label>
-                  <div className="flex items-center">
-                    <Input
-                      id="fileName"
-                      value={customFileName}
-                      onChange={(event) => setCustomFileName(event.target.value)}
-                      className="rounded-r-none h-10"
-                    />
-                    <div className="bg-muted px-3 h-10 flex items-center border border-l-0 rounded-r-md text-sm font-medium text-muted-foreground">
-                      .pdf
-                    </div>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                  Classification Category <span className="text-destructive">*</span>
+                </Label>
+                <CategorySelect
+                  value={categoryId}
+                  onValueChange={setCategoryId}
+                  className="w-full"
+                  orgUnitId={folders.find((folder) => folder.id === targetFolderId)?.orgUnitId ?? undefined}
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="docCode" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-                    <Hash className="h-3.5 w-3.5" />
-                    Document Code <span className="text-destructive">*</span>
-                  </Label>
+              <div className="space-y-2">
+                <Label htmlFor="docCode" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <Hash className="h-3.5 w-3.5" />
+                  Document Code
+                </Label>
+                <Input
+                  id="docCode"
+                  value={isLoadingDocCode ? "Generating..." : docCode}
+                  readOnly
+                  disabled
+                  placeholder="Select a category to preview"
+                  className={cn("h-10 font-mono bg-muted", docCodeError && "border-destructive focus-visible:ring-destructive")}
+                  aria-invalid={Boolean(docCodeError)}
+                />
+                {docCodeError ? (
+                  <p className="text-[11px] text-destructive font-medium">{docCodeError}</p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Auto-generated from category. Final code is assigned when you save.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fileName" className="text-xs font-semibold uppercase text-muted-foreground">
+                  File Name (Editable)
+                </Label>
+                <div className="flex w-full items-center">
                   <Input
-                    id="docCode"
-                    placeholder="e.g. LGL2023001"
-                    value={docCode}
-                    onChange={(event) => {
-                      setDocCode(event.target.value.toUpperCase());
-                      setDocCodeError("");
-                    }}
-                    className={cn("h-10", documentCodeInlineError && "border-destructive focus-visible:ring-destructive")}
-                    aria-invalid={Boolean(documentCodeInlineError)}
-                    required
+                    id="fileName"
+                    value={customFileName}
+                    onChange={(event) => setCustomFileName(event.target.value)}
+                    className="min-w-0 flex-1 rounded-r-none h-10"
                   />
-                  {documentCodeInlineError && (
-                    <p className="text-[11px] text-destructive font-medium">{documentCodeInlineError}</p>
-                  )}
+                  <div className="shrink-0 bg-muted px-3 h-10 flex items-center border border-l-0 rounded-r-md text-sm font-medium text-muted-foreground">
+                    .pdf
+                  </div>
                 </div>
               </div>
 
@@ -427,16 +501,6 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
                   value={description}
                   onChange={(event) => setDescription(event.target.value.slice(0, 50))}
                   className="resize-none h-20 min-h-[80px]"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold uppercase text-muted-foreground">Classification Category</Label>
-                <CategorySelect
-                  value={categoryId}
-                  onValueChange={setCategoryId}
-                  className="w-full"
-                  orgUnitId={folders.find((folder) => folder.id === targetFolderId)?.orgUnitId ?? undefined}
                 />
               </div>
 
@@ -507,8 +571,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId }: UploadDia
                 disabled={
                   !categoryId ||
                   !targetFolderId ||
-                  !trimmedDocCode ||
-                  !isDocumentCodeValid ||
+                  !docCode.trim() ||
+                  isLoadingDocCode ||
+                  Boolean(docCodeError) ||
                   keywords.length === 0
                 }
                 className="bg-[#0A4D27] hover:bg-[#083E1D] text-white min-w-32 h-10 rounded-lg"

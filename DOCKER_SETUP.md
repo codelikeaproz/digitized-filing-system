@@ -99,6 +99,14 @@ docker compose up --build
 
 This deletes Docker volumes, including the MySQL database. Do not run it if you need to keep data.
 
+On first startup, the backend runs migrations only. Create your own superuser after the stack is up:
+
+```powershell
+docker compose exec backend python manage.py createsuperuser
+```
+
+Use your preferred email (for example `admin@dfs.local`) and password when prompted.
+
 ## 4. Wait-For-MySQL Logic
 
 The backend uses `nc` to wait until the MySQL port is reachable:

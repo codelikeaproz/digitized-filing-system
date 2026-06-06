@@ -94,14 +94,17 @@ class DashboardService:
     @classmethod
     def get_global_dashboard_stats(cls):
         """Admin view: all Office Units combined."""
+        from system.services import get_storage_quota_mb
+
         org_units = list(OrgUnit.objects.filter(is_deleted=False))
         usage_map = cls._usage_bytes_by_org_unit()
 
-        total_quota_mb = sum(unit.storage_quota_mb or DEFAULT_STORAGE_QUOTA_MB for unit in org_units)
+        system_quota_mb = get_storage_quota_mb()
+        org_units_quota_mb = sum(unit.storage_quota_mb or DEFAULT_STORAGE_QUOTA_MB for unit in org_units)
         total_used_bytes = sum(usage_map.values())
         total_used_mb = float(bytes_to_mb(total_used_bytes))
-        remaining_mb = round(max(0.0, total_quota_mb - total_used_mb), 2)
-        usage_percentage = round((total_used_mb / total_quota_mb) * 100, 1) if total_quota_mb else 0.0
+        remaining_mb = round(max(0.0, system_quota_mb - total_used_mb), 2)
+        usage_percentage = round((total_used_mb / system_quota_mb) * 100, 1) if system_quota_mb else 0.0
 
         docs = cls._active_documents()
         return {
@@ -118,7 +121,8 @@ class DashboardService:
             "storage": {
                 "org_unit_id": None,
                 "org_unit_name": "All Office Units",
-                "quota_mb": int(total_quota_mb),
+                "quota_mb": int(system_quota_mb),
+                "org_units_quota_mb": int(org_units_quota_mb),
                 "used_mb": round(total_used_mb, 2),
                 "remaining_mb": remaining_mb,
                 "usage_percentage": usage_percentage,

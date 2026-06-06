@@ -74,6 +74,7 @@ export interface Folder {
 export interface Category {
   id: string;
   name: string;
+  code?: string;
   org_unit?: number | string | null;
   orgUnitId?: string | null;
   createdAt?: string;
@@ -116,5 +117,25 @@ export interface AuditLog {
   action: string;
   details: string;
   ipAddress: string;
+  createdAt: string;
+}
+
+export interface SystemSettings {
+  uploadLimitMb: number;
+  storageQuotaMb: number;
+  storageQuotaExceeded?: boolean;
+  storageUsedMb?: number;
+  storageRemainingMb?: number;
+  storageUsagePercentage?: number;
+  updatedAt?: string;
+}
+
+export interface AppNotification {
+  id: number;
+  title: string;
+  message: string;
+  level: 'warning' | 'alert' | 'critical' | 'exceeded';
+  thresholdPercent: number | null;
+  audience: 'all' | 'admin';
   createdAt: string;
 }

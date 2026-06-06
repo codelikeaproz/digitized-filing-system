@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import { deleteDocument } from "@/lib/document-actions";
 import { useAuth } from "@/lib/auth-context";
 import { api, PaginatedResponse } from "@/lib/api";
+import { fetchSystemSettings } from "@/lib/system-settings";
 import { Loader2 } from "lucide-react";
 import { PaginationControls } from "@/components/PaginationControls";
 import { DocumentAssistant } from "@/components/assistant/documents/DocumentAssistant";
@@ -140,6 +141,13 @@ export default function DocumentsPage() {
   const [documentCount, setDocumentCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [storageQuotaExceeded, setStorageQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    fetchSystemSettings()
+      .then((settings) => setStorageQuotaExceeded(Boolean(settings.storageQuotaExceeded)))
+      .catch(() => setStorageQuotaExceeded(false));
+  }, []);
 
   // Debounce search query
   useEffect(() => {
@@ -390,7 +398,14 @@ export default function DocumentsPage() {
             <Button 
               size="sm" 
               className="gap-2 bg-brand-green hover:bg-brand-green/90 h-9"
-              onClick={() => setIsUploadOpen(true)}
+              disabled={storageQuotaExceeded}
+              onClick={() => {
+                if (storageQuotaExceeded) {
+                  toast.error("Storage quota exceeded. Please contact your system administrator.");
+                  return;
+                }
+                setIsUploadOpen(true);
+              }}
             >
               <FileUp className="h-4 w-4" />
               Upload
@@ -467,6 +482,7 @@ export default function DocumentsPage() {
         onOpenChange={setIsUploadOpen} 
         selectedFolderId={isVirtualFolder || isOrgUnitNode ? undefined : selectedFolder?.id} 
         selectedFolderPath={isVirtualFolder ? 'All Files' : isOrgUnitNode ? selectedFolder?.name : folderPath.map(f => f.name).join(' > ') || 'All Files'}
+        storageQuotaExceeded={storageQuotaExceeded}
       />
       <DocumentEditDialog
         open={!!docToEdit}
@@ -491,6 +507,12 @@ export default function DocumentsPage() {
               <p>
                 Viewing: <span className="font-semibold text-foreground">{previewDoc?.title}</span> ({previewDoc?.category})
               </p>
+              {previewDoc?.code && (
+                <p className="text-sm text-muted-foreground">
+                  Document Code:{" "}
+                  <span className="font-mono font-medium text-foreground">{previewDoc.code}</span>
+                </p>
+              )}
               {previewDoc && formatRequisitionersDisplay(previewDoc.requisitioners || []) && (
                 <p className="text-sm text-muted-foreground">
                   Requisitioners:{" "}

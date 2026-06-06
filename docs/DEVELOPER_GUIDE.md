@@ -176,15 +176,29 @@ log_audit(
 ### PDF upload pipeline
 
 1. `POST /api/documents/upload` → `DocumentUploadView`
-2. `validate_pdf_upload()` — extension, size (50MB), `%PDF` header
-3. `Document.objects.create(...)` — metadata + file to `media/documents/YYYY/MM/DD/`
-4. `index_document_text(document)` — extract text for AI search
+2. `validate_pdf_upload()` — extension, size (configurable via `SystemSettings.upload_limit_mb`, default 15 MB), `%PDF` header
+3. `validate_global_storage_quota()` — blocks when system storage is full
+4. `validate_storage_quota(org_unit)` — per–Office Unit cap
+5. `generate_document_code(category)` — `{CategoryCode}-{Year}-{Sequence}` via `DocumentSequence` (locked per `category_code` + year)
+6. `Document.objects.create(...)` — metadata + file to `media/documents/YYYY/MM/DD/`
+7. `add_storage_usage()` + `check_storage_thresholds()` — updates usage and may create bell notifications
+8. `index_document_text(document)` — extract text for AI search
+
+**Document codes:** Preview with `GET /api/documents/next-code?categoryId=`. Assigned once at upload; immutable on edit. Category codes are auto-generated from the category name on create. Sequence counters are shared globally per category code and year.
 
 ### Soft delete / recycle bin
 
 - **Soft delete:** sets `is_deleted=True` on folder tree + documents
 - **Restore:** `documents/services.py` → `restore_folder()`
 - **Permanent delete:** removes DB rows + media files
+
+### Storage quota notifications
+
+- **Global cap:** `SystemSettings.storage_quota_mb` (default 500 MB) — drives notification thresholds and upload blocking at 100%
+- **Per–Office Unit cap:** `OrgUnit.storage_quota_mb` — unchanged; both checks must pass on upload
+- **Service:** `notifications/storage_alerts.py` — `check_storage_thresholds()`, `validate_global_storage_quota()`
+- **Hooks:** After upload, permanent delete, and when admin increases system quota
+- **UI:** Notification bell in `AppShell`; admin configures limits under Settings → System
 
 ---
 

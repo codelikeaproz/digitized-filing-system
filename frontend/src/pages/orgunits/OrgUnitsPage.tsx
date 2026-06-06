@@ -3,7 +3,7 @@
  *
  * APIs: /api/org-units/, /api/org-types/ (CRUD, soft delete OrgUnit).
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Network, Plus, Trash2, Edit, Loader2, FolderTree } from 'lucide-react';
@@ -14,6 +14,15 @@ import { PaginationControls } from '@/components/PaginationControls';
 import { PaginatedResponse } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import type { OrgType, OrgUnit } from '@/types';
+import {
+  getPresetForQuotaMb,
+  getQuotaMbForPreset,
+  formatStorageQuotaMb,
+  orgUnitQuotaExceedsSystemLimit,
+  ORG_UNIT_STORAGE_QUOTA_PRESETS,
+  type OrgUnitStorageQuotaPreset,
+} from '@/lib/storage-quota-presets';
+import { fetchSystemSettings } from '@/lib/system-settings';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,29 +42,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-const STORAGE_QUOTA_PRESETS = [
-  { value: '500', label: '500 MB', mb: 500 },
-  { value: '1024', label: '1 GB', mb: 1024 },
-  { value: '5120', label: '5 GB', mb: 5120 },
-  { value: '15360', label: '15 GB', mb: 15360 },
-  { value: '30720', label: '30 GB', mb: 30720 },
-  { value: '51200', label: '50 GB', mb: 51200 },
-  { value: '102400', label: '100 GB', mb: 102400 },
-  { value: '512000', label: '500 GB', mb: 512000 },
-  { value: '1048576', label: '1 TB', mb: 1048576 },
-  { value: 'custom', label: 'Custom', mb: null },
-] as const;
+const STORAGE_QUOTA_PRESETS = ORG_UNIT_STORAGE_QUOTA_PRESETS;
 
-type StorageQuotaPreset = (typeof STORAGE_QUOTA_PRESETS)[number]['value'];
+type StorageQuotaPreset = OrgUnitStorageQuotaPreset;
 
-const getPresetForQuotaMb = (quotaMb: number | string | undefined): StorageQuotaPreset => {
-  const numericQuota = Number(quotaMb);
-  if (!Number.isFinite(numericQuota) || numericQuota <= 0) {
-    return '1024';
-  }
-  const matchedPreset = STORAGE_QUOTA_PRESETS.find((preset) => preset.mb === numericQuota);
-  return matchedPreset ? matchedPreset.value : 'custom';
-};
+const resolvePresetForQuotaMb = (quotaMb: number | string | undefined): StorageQuotaPreset =>
+  getPresetForQuotaMb(quotaMb, STORAGE_QUOTA_PRESETS, '1024');
 
 export default function OrgUnitsPage() {
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
@@ -84,6 +76,7 @@ export default function OrgUnitsPage() {
   const [typeToDelete, setTypeToDelete] = useState<OrgType | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingType, setIsSavingType] = useState(false);
+  const [systemStorageQuotaMb, setSystemStorageQuotaMb] = useState<number | null>(null);
 
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
@@ -133,7 +126,27 @@ export default function OrgUnitsPage() {
   useEffect(() => {
     fetchAllOrgUnits();
     fetchOrgTypes();
+    fetchSystemSettings()
+      .then((settings) => setSystemStorageQuotaMb(settings.storageQuotaMb))
+      .catch(() => setSystemStorageQuotaMb(null));
   }, []);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    fetchSystemSettings()
+      .then((settings) => setSystemStorageQuotaMb(settings.storageQuotaMb))
+      .catch(() => setSystemStorageQuotaMb(null));
+  }, [isModalOpen]);
+
+  const selectedOrgUnitQuotaMb = Number(formData.storageQuotaMb);
+  const quotaExceedsSystemLimit = useMemo(() => {
+    if (systemStorageQuotaMb == null) return false;
+    if (!Number.isFinite(selectedOrgUnitQuotaMb) || selectedOrgUnitQuotaMb < 1) return false;
+    return orgUnitQuotaExceedsSystemLimit(selectedOrgUnitQuotaMb, systemStorageQuotaMb);
+  }, [formData.storageQuotaMb, selectedOrgUnitQuotaMb, systemStorageQuotaMb]);
+
+  const systemQuotaLabel =
+    systemStorageQuotaMb != null ? formatStorageQuotaMb(systemStorageQuotaMb) : null;
 
   useEffect(() => {
     const firstActiveType = orgTypes.find(type => type.is_active);
@@ -154,13 +167,11 @@ export default function OrgUnitsPage() {
 
   const handleQuotaPresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const preset = e.target.value as StorageQuotaPreset;
-    const matchedPreset = STORAGE_QUOTA_PRESETS.find((option) => option.value === preset);
 
     setFormData((prev) => ({
       ...prev,
       storageQuotaPreset: preset,
-      storageQuotaMb:
-        matchedPreset?.mb != null ? String(matchedPreset.mb) : prev.storageQuotaMb,
+      storageQuotaMb: getQuotaMbForPreset(preset, STORAGE_QUOTA_PRESETS, prev.storageQuotaMb),
     }));
   };
 
@@ -189,7 +200,7 @@ export default function OrgUnitsPage() {
       parentId: ou.parentId || '',
       orgTypeId: getOrgTypeId(ou),
       storageQuotaMb: quotaMb,
-      storageQuotaPreset: getPresetForQuotaMb(quotaMb),
+      storageQuotaPreset: resolvePresetForQuotaMb(quotaMb),
     });
     setIsEditMode(true);
     setEditId(ou.id);
@@ -229,6 +240,14 @@ export default function OrgUnitsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (quotaExceedsSystemLimit) {
+      toast.error(
+        systemQuotaLabel
+          ? `Office Unit quota cannot exceed the system-wide limit (${systemQuotaLabel}).`
+          : 'Office Unit quota cannot exceed the system-wide storage limit.'
+      );
+      return;
+    }
     try {
       if (isEditMode && editId) {
         await api.put<OrgUnit>(`/api/org-units/${editId}/`, {
@@ -504,10 +523,20 @@ export default function OrgUnitsPage() {
                 )}
                 <p className="text-xs text-muted-foreground">
                   Admin-only setting. Uploads are blocked when this Office Unit exceeds its quota.
+                  System-wide storage limits are configured under Settings → System.
+                  {systemQuotaLabel ? (
+                    <> Current system limit: <span className="font-medium">{systemQuotaLabel}</span>.</>
+                  ) : null}
                   {formData.storageQuotaPreset !== 'custom' && (
                     <> Selected: <span className="font-medium">{formData.storageQuotaMb} MB</span>.</>
                   )}
                 </p>
+                {quotaExceedsSystemLimit && systemQuotaLabel ? (
+                  <p className="text-xs font-medium text-destructive">
+                    Office Unit quota cannot exceed the system-wide limit ({systemQuotaLabel}). Lower the
+                    quota or increase the system limit under Settings → System.
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -537,7 +566,7 @@ export default function OrgUnitsPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!formData.orgTypeId || isTypeLoading}
+                  disabled={!formData.orgTypeId || isTypeLoading || quotaExceedsSystemLimit}
                   className="h-11 rounded-xl px-6 bg-[#0A4D27] hover:bg-[#083E1D] text-white"
                 >
                   {isEditMode ? 'Save Changes' : 'Create'}

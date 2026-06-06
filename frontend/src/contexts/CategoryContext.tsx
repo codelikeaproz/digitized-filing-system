@@ -21,6 +21,7 @@ function normalizeCategory(category: Category): Category {
   return {
     ...category,
     id: String(category.id),
+    code: category.code || "",
     orgUnitId: rawOrgUnitId === undefined || rawOrgUnitId === null ? null : String(rawOrgUnitId),
   };
 }
@@ -59,9 +60,9 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       if (orgUnitId) {
         payload.orgUnitId = orgUnitId;
       }
-      
+
       const newCategory = normalizeCategory(await api.post<Category>("/api/categories", payload));
-      setCategories(prev => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)));
+      setCategories((prev) => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)));
       toast.success(`Category "${newCategory.name}" added.`);
       return { id: newCategory.id, duplicate: false };
     } catch (error: any) {
@@ -78,8 +79,12 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     if (!trimmedName) return { ok: false, duplicate: false };
 
     try {
-      const updatedCategory = normalizeCategory(await api.put<Category>(`/api/categories/${id}`, { name: trimmedName }));
-      setCategories(prev => prev.map(c => c.id === id ? updatedCategory : c).sort((a, b) => a.name.localeCompare(b.name)));
+      const updatedCategory = normalizeCategory(
+        await api.put<Category>(`/api/categories/${id}`, { name: trimmedName })
+      );
+      setCategories((prev) =>
+        prev.map((c) => (c.id === id ? updatedCategory : c)).sort((a, b) => a.name.localeCompare(b.name))
+      );
 
       toast.success(`Category renamed to "${updatedCategory.name}".`);
       return { ok: true, duplicate: false };
@@ -90,12 +95,12 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       toast.error(message);
       return { ok: false, duplicate };
     }
-  }, [categories]);
+  }, []);
 
   const deleteCategory = useCallback(async (id: string) => {
     try {
       await api.delete(`/api/categories/${id}`);
-      setCategories(prev => prev.filter(c => c.id !== id));
+      setCategories((prev) => prev.filter((c) => c.id !== id));
 
       toast.success(`Category deleted successfully.`);
       return true;
@@ -104,10 +109,19 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       toast.error(error.message || "Failed to delete category");
       return false;
     }
-  }, [categories]);
+  }, []);
 
   return (
-    <CategoryContext.Provider value={{ categories, loading, addCategory, updateCategory, deleteCategory, refreshCategories: fetchCategories }}>
+    <CategoryContext.Provider
+      value={{
+        categories,
+        loading,
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        refreshCategories: fetchCategories,
+      }}
+    >
       {children}
     </CategoryContext.Provider>
   );

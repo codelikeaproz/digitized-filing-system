@@ -9,6 +9,7 @@ export type StorageStats = {
   org_unit_name?: string;
   used_mb: number;
   quota_mb: number;
+  org_units_quota_mb?: number | null;
   remaining_mb: number;
   percent_used: number;
 };
@@ -89,14 +90,28 @@ export function StorageUtilizationChart({ storage, isGlobal = false }: StorageUt
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium text-gray-700">
-                {isGlobal ? "Total Allocated Storage" : "Quota"}
+                {isGlobal ? "System Storage Limit" : "Quota"}
               </span>
               <span className="font-semibold text-gray-900 text-right">{formatStorageMbWithGb(storage.quota_mb)}</span>
             </div>
+            {isGlobal && storage.org_units_quota_mb != null ? (
+              <div className="flex items-center justify-between gap-4">
+                <span className="font-medium text-gray-700">Total Office Unit Quotas</span>
+                <span className="font-semibold text-gray-900 text-right">
+                  {formatStorageMbWithGb(storage.org_units_quota_mb)}
+                </span>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium text-gray-700">Percentage Used</span>
               <span className="font-semibold text-gray-900">{storage.percent_used.toFixed(1)}%</span>
             </div>
+            {isGlobal ? (
+              <p className="text-xs text-muted-foreground pt-1">
+                System limit applies to all units combined. Office Unit quotas are configured per unit under
+                Office Units.
+              </p>
+            ) : null}
           </div>
         </div>
       </CardContent>

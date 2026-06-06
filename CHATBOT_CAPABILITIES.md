@@ -2,6 +2,8 @@
 
 This document describes the current capabilities and limitations of the Digitized Filing System Document Assistant.
 
+**Document codes:** New uploads receive auto-generated codes in the format `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Category codes are assigned automatically from the category name. Legacy manual codes remain searchable.
+
 ## Current Capabilities
 
 ### 1. Greetings And Help
@@ -29,7 +31,7 @@ Try asking:
 - "How many files do I have?"
 - "List all documents"
 - "Show documents in Test folder"
-- "What is inside code 01-12551?"
+- "What is inside code RPT-2026-000001?"
 ```
 
 ### 2. Count Accessible Documents
@@ -103,16 +105,16 @@ Example answer (few documents):
 
 ```text
 Here are the first 2 accessible documents I found:
-- april_accomplishment.pdf (Code: 04-98391, Category: Reports, Folder: SDD)
-- organized_demo_presentation_data.pdf (Code: 01-12551, Category: test, Folder: Test)
+- april_accomplishment.pdf (Code: RPT-2026-000002, Category: Reports, Folder: SDD)
+- organized_demo_presentation_data.pdf (Code: RPT-2026-000001, Category: test, Folder: Test)
 ```
 
 Example answer (many documents):
 
 ```text
 Here are the first 5 accessible documents I found:
-- file1.pdf (Code: 01-10001, Category: Reports, Folder: SDD)
-- file2.pdf (Code: 01-10002, Category: Reports, Folder: SDD)
+- file1.pdf (Code: RPT-2026-000001, Category: Reports, Folder: SDD)
+- file2.pdf (Code: RPT-2026-000002, Category: Reports, Folder: SDD)
 ...
 Showing 5 of 847.
 Use the Documents page to browse the full list.
@@ -134,7 +136,7 @@ Example answer (single document):
 
 ```text
 Here are documents I found in Test:
-- organized_demo_presentation_data.pdf (Code: 01-12551, Category: test, Folder: Test)
+- organized_demo_presentation_data.pdf (Code: RPT-2026-000001, Category: test, Folder: Test)
 ```
 
 Example answer (many documents):
@@ -142,7 +144,7 @@ Example answer (many documents):
 ```text
 Reports has 847 accessible documents.
 Showing 5 of 847:
-- Audit Reports.pdf (Code: 09-151, Category: Audit Reports, Folder: Reports)
+- Audit Reports.pdf (Code: AUD-2026-000001, Category: Audit Reports, Folder: Reports)
 ...
 Use the Documents page to browse the full list.
 ```
@@ -154,9 +156,9 @@ The assistant can find documents by document code, even when the code appears in
 Example prompts:
 
 ```text
-Find code 01-12551
-What is inside code 01-12551?
-What is the document 04-98391 about?
+Find code RPT-2026-000001
+What is inside code RPT-2026-000001?
+What is the document RPT-2026-000002 about?
 ```
 
 ### 8. PDF Content Questions
@@ -166,8 +168,8 @@ If the PDF has extractable text, the assistant can answer questions about the PD
 Example prompts:
 
 ```text
-What is inside code 01-12551?
-Summarize document 04-98391.
+What is inside code RPT-2026-000001?
+Summarize document RPT-2026-000002.
 What is organized_demo_presentation_data.pdf about?
 ```
 
@@ -514,9 +516,9 @@ Open the assistant while a **folder** is selected and/or a **category filter** i
 
 | Query | Expected |
 |-------|----------|
-| `Find code 09-151` | Yes |
-| `What is inside code 01-12551?` | Yes — may use LLM if PDF text exists |
-| `What is the document 04-98391 about?` | Yes — LLM + grounded context |
+| `Find code AUD-2026-000001` | Yes |
+| `What is inside code RPT-2026-000001?` | Yes — may use LLM if PDF text exists |
+| `What is the document RPT-2026-000002 about?` | Yes — LLM + grounded context |
 
 ### Keyword / Title Search (search + LLM, max 5 matches)
 
@@ -548,8 +550,8 @@ Open the assistant while a **folder** is selected and/or a **category filter** i
 | Query sequence | Expected |
 |----------------|----------|
 | `120-12` then `What is about?` | Yes — rewritten to code question |
-| `Find code 09-151` then `Summarize it` | Yes |
-| `Find code 09-151` then `Tell me about it` | Yes |
+| `Find code AUD-2026-000001` then `Summarize it` | Yes |
+| `Find code AUD-2026-000001` then `Tell me about it` | Yes |
 | List 5 docs then `Summarize the second one` | **No** — ordinal not supported yet |
 
 ### Public DFS Assistant (not logged in)

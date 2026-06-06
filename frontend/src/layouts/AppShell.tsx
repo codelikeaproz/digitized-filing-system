@@ -6,6 +6,7 @@
 import { Outlet } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useAuth } from "@/lib/auth-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -25,18 +26,8 @@ export default function AppShell() {
               </div>
             </div>
             <div className="flex items-center gap-6">
-              {/*
-                TODO: Re-enable when notification data is available.
-                This bell was static and is hidden for now to avoid implying
-                that real notifications are already implemented.
-              <div className="flex items-center gap-2">
-                 <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-                   <Bell className="h-5 w-5" />
-                 </Button>
-              </div>
-              
+              <NotificationBell />
               <div className="h-8 w-[1px] bg-border mx-2"></div>
-              */}
               
               <div className="flex items-center gap-3">
                 <div className="flex flex-col items-end">

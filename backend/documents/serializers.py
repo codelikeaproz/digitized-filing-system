@@ -4,6 +4,7 @@ from django.utils import timezone
 import re
 
 from config.timezone_utils import format_local_datetime
+from .document_code import derive_category_code
 from .models import Category, Document, DocumentRequisitioner, Folder
 from .requisitioners import build_requisitioner_full_name, validate_requisitioners_list
 from .permissions import resolve_category_org_unit_for_create
@@ -32,6 +33,7 @@ def ensure_unique_document_code(code, *, document_id=None):
 
 class CategorySerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
+    code = serializers.CharField(max_length=10, read_only=True)
     org_unit = serializers.IntegerField(source="org_unit_id", read_only=True, allow_null=True)
     orgUnitId = serializers.CharField(source="org_unit_id", required=False, allow_null=True)
     createdAt = serializers.SerializerMethodField()
@@ -41,7 +43,17 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["id", "name", "org_unit", "orgUnitId", "createdAt", "document_count", "documentCount", "inUse"]
+        fields = [
+            "id",
+            "name",
+            "code",
+            "org_unit",
+            "orgUnitId",
+            "createdAt",
+            "document_count",
+            "documentCount",
+            "inUse",
+        ]
 
     def get_document_count(self, obj):
         return self.get_documentCount(obj)
@@ -93,8 +105,10 @@ class CategorySerializer(serializers.ModelSerializer):
         if not self.instance:
             attrs = self._assign_category_org_unit(attrs)
             org_unit_id = attrs.get("org_unit_id")
+            attrs["code"] = derive_category_code(name.strip(), org_unit_id)
         else:
             attrs.pop("org_unit_id", None)
+            attrs.pop("code", None)
             org_unit_id = self.instance.org_unit_id
 
         if not name:
@@ -287,17 +301,10 @@ def normalize_requestor_name(value):
 class DocumentEditSerializer(serializers.Serializer):
     folderId = serializers.CharField()
     categoryId = serializers.CharField()
-    code = serializers.CharField()
     requisitioners = serializers.ListField(child=serializers.DictField(), allow_empty=False)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50)
     keywords = serializers.ListField(child=serializers.CharField(), allow_empty=False)
     file_name = serializers.CharField(required=False, allow_blank=True)
-
-    def validate_code(self, value):
-        document = self.context.get("document")
-        code = normalize_document_code(value)
-        ensure_unique_document_code(code, document_id=getattr(document, "pk", None))
-        return code
 
     def validate_keywords(self, value):
         cleaned = [str(item).strip() for item in (value or []) if str(item).strip()]
@@ -316,6 +323,7 @@ class DashboardStorageSerializer(serializers.Serializer):
     org_unit_id = serializers.CharField(allow_null=True, required=False)
     org_unit_name = serializers.CharField(allow_null=True, required=False)
     quota_mb = serializers.IntegerField()
+    org_units_quota_mb = serializers.IntegerField(required=False, allow_null=True)
     used_mb = serializers.FloatField()
     remaining_mb = serializers.FloatField()
     usage_percentage = serializers.FloatField()

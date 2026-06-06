@@ -486,11 +486,12 @@ Or custom:
   "deleted_files": null,
   "storage": {
     "org_unit_name": "All Office Units",
-    "quota_mb": 10240,
+    "quota_mb": 15360,
+    "org_units_quota_mb": 7168,
     "used_mb": 3200.5,
-    "remaining_mb": 7039.5,
-    "usage_percentage": 31.3,
-    "percent_used": 31.3
+    "remaining_mb": 12159.5,
+    "usage_percentage": 20.8,
+    "percent_used": 20.8
   },
   "storage_by_office_unit": [
     {
@@ -530,7 +531,13 @@ Or custom:
 }
 ```
 
-**Storage calculations:** `used_mb`, `remaining_mb`, and `usage_percentage` are computed dynamically from `Document.file_size` and `OrgUnit.storage_quota_mb` (not stored as dashboard fields).
+**Storage calculations (global admin view):**
+
+- `storage.quota_mb` — system-wide cap from Settings → System (`SystemSettings.storage_quota_mb`); drives utilization percentage, notifications, and upload blocking
+- `storage.org_units_quota_mb` — sum of all Office Unit `storage_quota_mb` values (total allocated across units)
+- `storage.used_mb`, `storage.remaining_mb`, `storage.usage_percentage` — computed from `Document.file_size` vs system `quota_mb`
+
+**Storage calculations (Office Unit scope):** `used_mb`, `remaining_mb`, and `usage_percentage` use that unit's `OrgUnit.storage_quota_mb`.
 
 ---
 
@@ -626,8 +633,7 @@ Or custom:
 |-------|----------|-------------|
 | `file` | Yes | PDF file |
 | `folderId` | Yes | Target folder ID |
-| `categoryId` | Yes | Category ID (must match folder OrgUnit if category is scoped) |
-| `code` | Yes | Unique document code (letters, numbers, hyphens) |
+| `categoryId` | Yes | Category ID (must match folder OrgUnit if category is scoped; category must have a `code`) |
 | `title` | No | Defaults to uploaded filename |
 | `requisitioners` | Yes | JSON array string, e.g. `[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; digits-only employee numbers; no duplicates per document) |
 | `requestor` | No | Legacy derived display string (synced server-side from `requisitioners`; do not send on manual upload) |
@@ -643,7 +649,8 @@ Or custom:
 | Status | Example |
 |--------|---------|
 | `400` | `{"error": "Only PDF files are supported."}` |
-| `400` | `{"error": "PDF file exceeds the 50MB limit."}` |
+| `400` | `{"file": "File exceeds the maximum allowed size of 15 MB. Please compress the file and try again."}` |
+| `400` | `{"file": "Storage quota exceeded. Please contact your system administrator."}` |
 | `400` | `{"message": "Document Code is already used."}` |
 | `409` | `{"message": "Document Code is already used."}` |
 
@@ -651,10 +658,34 @@ Or custom:
 
 - Extension must be `.pdf`
 - File header must start with `%PDF`
-- Max size: **50 MB**
+- Max size: **Configurable** via System Settings (`upload_limit_mb`, default **15 MB**)
 - File must not be empty
 
-**Notes:** After upload, PDF text is indexed via `index_document_text()` for AI search.
+**Notes:** Document `code` is auto-generated server-side as `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Do not send `code` in the upload form. After upload, PDF text is indexed via `index_document_text()` for AI search.
+
+---
+
+#### Preview next document code
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/api/documents/next-code` |
+| **Auth** | Bearer JWT |
+
+**Query parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `categoryId` | Yes | Category ID with a configured `code` |
+
+**Success `200`:**
+
+```json
+{ "code": "RPT-2026-000155" }
+```
+
+Preview only — the final code is assigned atomically when upload completes.
 
 ---
 
@@ -667,7 +698,7 @@ Or custom:
 | **Auth** | Bearer JWT |
 | **Scope** | Must be in accessible OrgUnit |
 
-Uses `DocumentSerializer` — code uniqueness validated on update.
+Uses `DocumentSerializer` — document `code` is read-only after creation.
 
 ---
 
@@ -686,7 +717,6 @@ Uses `DocumentSerializer` — code uniqueness validated on update.
 {
   "folderId": "3",
   "categoryId": "1",
-  "code": "01-12551",
   "requisitioners": [
     { "employeeNumber": "202400123", "firstName": "Jane", "lastName": "Doe", "suffix": "" },
     { "employeeNumber": "202400456", "firstName": "Maria", "lastName": "Santos", "suffix": "" }
@@ -698,6 +728,7 @@ Uses `DocumentSerializer` — code uniqueness validated on update.
 ```
 
 - Replaces the full requisitioner list (add/update/remove sync)
+- Document `code` cannot be changed via this endpoint
 - `requestor` in responses is derived as `"emp - name, emp - name"` for backward compatibility
 - At least one requisitioner required; employee numbers must be digits only and unique per document
 
@@ -899,7 +930,7 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 |-----------|-------------|
 | `orgUnitId` | Filter by OrgUnit |
 
-**Response fields include:** `documentCount`, `inUse` (true if active documents exist).
+**Response fields include:** `code`, `documentCount`, `inUse` (true if active documents exist).
 
 ---
 
@@ -919,7 +950,8 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 }
 ```
 
-Unique per `(name, org_unit)`.
+- `code` — auto-generated from the category name (first 3 alphanumeric characters, deduped per Office Unit); read-only in responses; do not send on create
+- Unique `(name, org_unit)` per category name
 
 ---
 
@@ -1467,6 +1499,95 @@ Archives all files under `MEDIA_ROOT` (uploaded PDFs, profile pictures, etc.).
 
 ---
 
+### 7.14 System Settings API
+
+Singleton configuration for upload limits and **system-wide total storage quota** (all Office Units combined).
+
+`storage_quota_mb` is compared against the sum of all document file sizes across the entire deployment. It drives notification thresholds and global upload blocking at 100%. Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) remain separate sub-limits configured under Office Units.
+
+**Admin UI presets:** 5 GB, 15 GB, 100 GB, 500 GB, 1 TB, or Custom (any value from 1 MB up to 1 TB / 1048576 MB).
+
+| | |
+|---|---|
+| **Method** | `GET` / `PATCH` |
+| **Path** | `/api/system/settings/` |
+| **Auth** | Bearer JWT |
+
+**GET (all roles):** Returns public fields including live storage status:
+
+```json
+{
+  "upload_limit_mb": 15,
+  "storage_quota_mb": 5120,
+  "storage_quota_exceeded": false,
+  "storage_used_mb": 120.5,
+  "storage_remaining_mb": 4999.5,
+  "storage_usage_percentage": 2.4
+}
+```
+
+**GET (admin):** Also includes `updated_at`.
+
+**PATCH (admin only):**
+
+```json
+{
+  "upload_limit_mb": 15,
+  "storage_quota_mb": 5120
+}
+```
+
+`storage_quota_mb` must be between 1 and 1048576 (1 TB).
+
+Increasing `storage_quota_mb` resets storage threshold notification flags for thresholds no longer crossed.
+
+**Audit action:** `UPDATE_SYSTEM_SETTINGS`
+
+---
+
+### 7.15 Notifications API
+
+System-wide storage alerts surfaced in the notification bell.
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/api/notifications/` |
+| **Auth** | Bearer JWT |
+
+Returns notifications where `audience=all`, plus `audience=admin` for admin users.
+
+**Success `200`:**
+
+```json
+[
+  {
+    "id": 1,
+    "title": "Storage Warning",
+    "message": "System storage has reached 80% capacity.\n\nUsed Storage: 400 MB\nRemaining Storage: 100 MB",
+    "level": "warning",
+    "threshold_percent": 80,
+    "audience": "all",
+    "created_at": "2026-06-05T10:00:00Z"
+  }
+]
+```
+
+#### Unread count (badge)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/api/notifications/unread-count/` |
+
+**Success `200`:** `{ "count": 3 }`
+
+**Threshold notifications:** Generated automatically at 80%, 90%, 95%, and 100% of global system storage (`SystemSettings.storage_quota_mb`). Each threshold fires once until quota is increased.
+
+**Audit actions:** `STORAGE_WARNING_GENERATED`, `STORAGE_ALERT_GENERATED`, `STORAGE_CRITICAL_ALERT_GENERATED`, `STORAGE_QUOTA_EXCEEDED`, `UPLOAD_BLOCKED_STORAGE_QUOTA`
+
+---
+
 ## 8. Query Parameters (Summary)
 
 | Parameter | Used in |
@@ -1516,10 +1637,11 @@ No global `ordering` query parameter is implemented on list endpoints.
 | Rule | Value |
 |------|-------|
 | Allowed type | PDF only (`.pdf`, `%PDF` header) |
-| Max size | 50 MB |
+| Max size | Configurable (default **15 MB** via `SystemSettings.upload_limit_mb`) |
+| Global storage block | When system used storage ≥ `SystemSettings.storage_quota_mb` |
 | Upload endpoints | `POST /api/documents/upload` |
 | Storage path | `media/documents/YYYY/MM/DD/<filename>` |
-| Required metadata | `folderId`, `categoryId`, `code` |
+| Required metadata | `folderId`, `categoryId` (with category `code`) |
 | Document code | Unique, pattern `^[A-Za-z0-9-]+$`, stored uppercase |
 | Description max length | 50 characters |
 | Keywords | JSON array of strings |

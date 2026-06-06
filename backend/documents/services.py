@@ -12,6 +12,7 @@ Used by:
 from django.db import transaction
 from django.utils import timezone
 
+from notifications.storage_alerts import check_storage_thresholds
 from orgunits.storage import recalculate_org_unit_storage, subtract_storage_usage
 
 from .models import Document, Folder
@@ -93,4 +94,5 @@ def permanently_delete_folder(folder, user=None):
         else:
             recalculate_org_unit_storage(org_unit)
 
+    check_storage_thresholds(user)
     return document_count

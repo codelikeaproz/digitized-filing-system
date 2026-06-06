@@ -20,6 +20,7 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("name", models.CharField(max_length=100)),
+                ("code", models.CharField(blank=True, default="", max_length=10)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 (
                     "org_unit",
@@ -36,6 +37,20 @@ class Migration(migrations.Migration):
                 "verbose_name_plural": "Categories",
                 "ordering": ["name"],
                 "unique_together": {("name", "org_unit")},
+            },
+        ),
+        migrations.CreateModel(
+            name="DocumentSequence",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("category_code", models.CharField(db_index=True, max_length=10)),
+                ("current_year", models.PositiveIntegerField()),
+                ("current_number", models.PositiveIntegerField(default=0)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+            ],
+            options={
+                "ordering": ["category_code", "-current_year"],
             },
         ),
         migrations.CreateModel(
@@ -190,6 +205,21 @@ class Migration(migrations.Migration):
             constraint=models.UniqueConstraint(
                 fields=("document", "employee_number"),
                 name="unique_requisitioner_per_document",
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="category",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("code__gt", "")),
+                fields=("code", "org_unit"),
+                name="unique_category_code_per_org_unit",
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="documentsequence",
+            constraint=models.UniqueConstraint(
+                fields=("category_code", "current_year"),
+                name="unique_document_sequence_per_code_year",
             ),
         ),
     ]

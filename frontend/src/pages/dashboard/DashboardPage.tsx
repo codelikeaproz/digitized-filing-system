@@ -240,7 +240,11 @@ export default function DashboardPage() {
       {storage && <StorageUtilizationChart storage={storage} isGlobal={dashboardScope === "global"} />}
 
       {dashboardScope === "global" && storageComparison.length > 0 && (
-        <OfficeUnitStorageComparisonChart data={storageComparison} />
+        <OfficeUnitStorageComparisonChart
+          data={storageComparison}
+          totalUsedMb={storage?.used_mb}
+          totalQuotaMb={storage?.org_units_quota_mb}
+        />
       )}
     </div>
   );

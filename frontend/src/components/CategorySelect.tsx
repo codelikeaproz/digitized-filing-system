@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Category } from "@/types";
+import { previewCategoryCode } from "@/lib/category-code";
 
 interface CategorySelectProps {
   value: string;
@@ -124,9 +125,17 @@ export function CategorySelect({
 
   const selectedCategory = categories.find(c => c.id === value);
 
+  const previewCode = previewCategoryCode(
+    newCategoryName,
+    categories
+      .filter((c) => String(c.orgUnitId ?? "") === String(getPayloadOrgUnit() ?? ""))
+      .map((c) => c.code || "")
+      .filter(Boolean)
+  );
+
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
-    
+
     if (user?.role !== "admin" && !getPayloadOrgUnit()) {
       toast.error("Your account must be assigned to an Office Unit to create categories.");
       return;
@@ -162,12 +171,11 @@ export function CategorySelect({
   };
 
   const getCategoryLabel = (c: Category) => {
+    const codeSuffix = c.code ? ` (${c.code})` : "";
     if (user?.role === 'admin' && !orgUnitId) {
-      // Find the org unit name if we fetched them, else just show ID or fallback
-      // Since we don't always fetch org units unless adding, we can try to find from existing
-      return `${c.name} — ${orgUnits.find(ou => ou.id === c.orgUnitId)?.name || (c.orgUnitId ? 'OrgUnit ' + c.orgUnitId.slice(-4) : 'Global')}`;
+      return `${c.name}${codeSuffix} — ${orgUnits.find(ou => ou.id === c.orgUnitId)?.name || (c.orgUnitId ? 'OrgUnit ' + c.orgUnitId.slice(-4) : 'Global')}`;
     }
-    return c.name;
+    return `${c.name}${codeSuffix}`;
   };
 
   const handleDeleteCategory = async () => {
@@ -334,6 +342,19 @@ export function CategorySelect({
                 <p className="text-sm text-destructive">{duplicateCategoryMessage}</p>
               )}
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Category Code (auto)</label>
+              <Input
+                value={newCategoryName.trim() ? previewCode : ""}
+                readOnly
+                disabled
+                placeholder="Generated from category name"
+                className="font-mono bg-muted"
+              />
+              <p className="text-xs text-muted-foreground">
+                Assigned automatically from the category name (e.g. Legal → LEG).
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
@@ -400,7 +421,12 @@ export function CategorySelect({
                           )}
                         </>
                       ) : (
-                        <span className="font-medium text-sm truncate">{c.name}</span>
+                        <>
+                          <span className="font-medium text-sm truncate">{c.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono mt-0.5">
+                            {c.code ? `Code: ${c.code}` : "No category code"}
+                          </span>
+                        </>
                       )}
                       <span className="text-xs text-muted-foreground mt-1">
                         {documentLabel}

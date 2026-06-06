@@ -33,8 +33,6 @@ import {
 import { cn, compareByNaturalName } from "@/lib/utils";
 import { Document, Folder } from "@/types";
 
-const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9-]+$/;
-
 type DocumentEditDialogProps = {
   open: boolean;
   document: Document | null;
@@ -46,8 +44,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
   const [folders, setFolders] = useState<Folder[]>([]);
   const [targetFolderId, setTargetFolderId] = useState("");
   const [customFileName, setCustomFileName] = useState("");
-  const [docCode, setDocCode] = useState("");
-  const [docCodeError, setDocCodeError] = useState("");
   const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>([]);
   const [requisitionerErrors, setRequisitionerErrors] = useState<RequisitionerRowErrors[]>([]);
   const [requisitionerListError, setRequisitionerListError] = useState("");
@@ -56,11 +52,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  const trimmedDocCode = docCode.trim();
-  const isDocumentCodeValid = !trimmedDocCode || DOCUMENT_CODE_PATTERN.test(trimmedDocCode);
-  const documentCodeInlineError =
-    docCodeError || (!isDocumentCodeValid ? "Document Code can contain letters, numbers, and hyphens only." : "");
 
   const folderPaths = useMemo(() => {
     const getPath = (folderId: string): string => {
@@ -95,8 +86,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
     const currentName = document.title || document.file_name || "";
     setTargetFolderId(String(document.folderId || ""));
     setCustomFileName(currentName.replace(/\.pdf$/i, ""));
-    setDocCode(document.code || "");
-    setDocCodeError("");
     setRequisitioners(seedRequisitionersFromDocument(document));
     setRequisitionerErrors([]);
     setRequisitionerListError("");
@@ -120,14 +109,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
 
   const handleSave = async () => {
     if (!document) return;
-    if (!trimmedDocCode) {
-      setDocCodeError("Document Code is required.");
-      return;
-    }
-    if (!DOCUMENT_CODE_PATTERN.test(trimmedDocCode)) {
-      setDocCodeError("Document Code can contain letters, numbers, and hyphens only.");
-      return;
-    }
     if (!targetFolderId) {
       toast.error("Target folder is required.");
       return;
@@ -159,7 +140,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       await api.patch(`/api/documents/${document.id}/edit`, {
         folderId: targetFolderId,
         categoryId,
-        code: trimmedDocCode,
         requisitioners: serializeRequisitionersForApi(requisitioners),
         description,
         keywords,
@@ -169,12 +149,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       onSaved?.();
       onOpenChange(false);
     } catch (error: any) {
-      const message = error.message || "Update failed.";
-      if (message.toLowerCase().includes("document code")) {
-        setDocCodeError(message);
-      } else {
-        toast.error(message);
-      }
+      toast.error(error.message || "Update failed.");
     } finally {
       setIsSaving(false);
     }
@@ -245,20 +220,16 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               <div className="space-y-2">
                 <Label htmlFor="edit-doc-code" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
                   <Hash className="h-3.5 w-3.5" />
-                  Document Code <span className="text-destructive">*</span>
+                  Document Code
                 </Label>
                 <Input
                   id="edit-doc-code"
-                  value={docCode}
-                  onChange={(event) => {
-                    setDocCode(event.target.value.toUpperCase());
-                    setDocCodeError("");
-                  }}
-                  className={cn("h-10", documentCodeInlineError && "border-destructive focus-visible:ring-destructive")}
+                  value={document.code || "—"}
+                  readOnly
+                  disabled
+                  className="h-10 font-mono bg-muted"
                 />
-                {documentCodeInlineError && (
-                  <p className="text-[11px] text-destructive font-medium">{documentCodeInlineError}</p>
-                )}
+                <p className="text-[11px] text-muted-foreground">Permanent after creation.</p>
               </div>
             </div>
 
@@ -354,8 +325,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               isSaving ||
               !targetFolderId ||
               !categoryId ||
-              !trimmedDocCode ||
-              !isDocumentCodeValid ||
               keywords.length === 0
             }
             className="bg-[#0A4D27] hover:bg-[#083E1D] text-white min-w-32"

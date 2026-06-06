@@ -97,6 +97,8 @@ INSTALLED_APPS = [
     "documents",
     "auditlogs",
     "backups",
+    "system",
+    "notifications",
     "ai",
     "drf_spectacular",
 ]

@@ -46,6 +46,7 @@ from rest_framework.views import APIView
 from auditlogs.models import log_audit
 from ai.services.extraction_service import index_document_text
 
+from .document_code import generate_document_code, preview_next_document_code
 from .models import Category, Document, Folder
 from .requisitioners import (
     format_requisitioners_display,
@@ -58,9 +59,7 @@ from .serializers import (
     CategorySerializer,
     DocumentEditSerializer,
     DocumentSerializer,
-    ensure_unique_document_code,
     FolderSerializer,
-    normalize_document_code,
     RESERVED_FOLDER_NAMES,
 )
 from .permissions import (
@@ -77,6 +76,8 @@ from config.pagination import StandardResultsSetPagination
 from config.timezone_utils import format_local_datetime, local_datetime
 from orgunits.models import OrgUnit
 from orgunits.storage import add_storage_usage, validate_storage_quota
+from notifications.storage_alerts import check_storage_thresholds, validate_global_storage_quota
+from system.services import get_upload_limit_bytes
 from .dashboard_service import DashboardService
 from .pdf_compression import compress_pdf_upload
 from .serializers import DashboardStatsSerializer
@@ -87,7 +88,6 @@ def ensure_default_folder(user=None):
 
 
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
-MAX_PDF_UPLOAD_SIZE = 50 * 1024 * 1024
 
 
 def normalize_pdf_filename(value):
@@ -135,8 +135,17 @@ def validate_pdf_upload(upload):
         raise ValidationError({"file": "Only PDF files are supported."})
     if getattr(upload, "size", 0) <= 0:
         raise ValidationError({"file": "PDF file is empty."})
-    if upload.size > MAX_PDF_UPLOAD_SIZE:
-        raise ValidationError({"file": "PDF file exceeds the 50MB limit."})
+    max_bytes = get_upload_limit_bytes()
+    if upload.size > max_bytes:
+        limit_mb = max_bytes // (1024 * 1024)
+        raise ValidationError(
+            {
+                "file": (
+                    f"File exceeds the maximum allowed size of {limit_mb} MB. "
+                    "Please compress the file and try again."
+                )
+            }
+        )
 
     position = upload.tell() if hasattr(upload, "tell") else None
     header = upload.read(4)
@@ -144,18 +153,6 @@ def validate_pdf_upload(upload):
         upload.seek(position or 0)
     if header != b"%PDF":
         raise ValidationError({"file": "Uploaded file is not a valid PDF."})
-
-
-def validate_new_document_code(value):
-    try:
-        code = normalize_document_code(value)
-        ensure_unique_document_code(code)
-    except ValidationError as exc:
-        detail = exc.detail
-        if isinstance(detail, list) and detail:
-            return None, str(detail[0])
-        return None, str(detail)
-    return code, None
 
 
 def normalize_folder_name(value):
@@ -635,10 +632,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 changes.append(f"category: {old_category} → {category.name}")
                 document.category = category
 
-            if (document.code or "") != data["code"]:
-                changes.append(f"code: {document.code or 'None'} → {data['code']}")
-                document.code = data["code"]
-
             new_requisitioners = data["requisitioners"]
             old_display = document.requestor or ""
             new_display = format_requisitioners_display(new_requisitioners) or ""
@@ -661,7 +654,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     "folder",
                     "file_path",
                     "category",
-                    "code",
                     "description",
                     "keywords",
                     "updated_at",
@@ -727,11 +719,37 @@ class DocumentUploadView(APIView):
 
         source = "Uploaded"
         upload = compress_pdf_upload(upload)
-        validate_storage_quota(folder.org_unit, upload.size)
+        try:
+            validate_global_storage_quota(upload.size)
+        except ValidationError as exc:
+            log_audit(
+                request.user,
+                "UPLOAD_BLOCKED_STORAGE_QUOTA",
+                "Upload blocked: global storage quota exceeded.",
+                target_type="system_storage",
+                target_name="Upload",
+            )
+            detail = exc.detail
+            message = detail.get("file", detail) if isinstance(detail, dict) else str(detail)
+            if isinstance(message, list):
+                message = message[0]
+            return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
 
-        code, code_error = validate_new_document_code(request.data.get("code"))
-        if code_error:
-            return Response({"message": code_error}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_storage_quota(folder.org_unit, upload.size)
+        except ValidationError as exc:
+            log_audit(
+                request.user,
+                "UPLOAD_BLOCKED_STORAGE_QUOTA",
+                f"Upload blocked: Office Unit storage quota exceeded ({folder.org_unit.name}).",
+                target_type="org_unit",
+                target_name=folder.org_unit.name if folder.org_unit else None,
+            )
+            detail = exc.detail
+            message = detail.get("file", detail) if isinstance(detail, dict) else str(detail)
+            if isinstance(message, list):
+                message = message[0]
+            return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             title = normalize_pdf_filename(request.data.get("title") or upload.name)
@@ -747,43 +765,69 @@ class DocumentUploadView(APIView):
         upload.name = title
 
         try:
-            document = Document.objects.create(
-                title=title,
-                file=upload,
-                file_path=request.data.get("filePath", folder.get_full_path()),
-                folder=folder,
-                category=category,
-                uploader=request.user if request.user.is_authenticated else None,
-                code=code,
-                requestor=format_requisitioners_display(validated_requisitioners) or None,
-                description=request.data.get("description") or None,
-                keywords=keywords,
-                filing_year=timezone.now().year,
-                status="Received",
-                source=source,
-                mime_type=getattr(upload, "content_type", "") or "application/octet-stream",
-                file_size=upload.size,
-            )
-            sync_document_requisitioners(document, validated_requisitioners)
+            with transaction.atomic():
+                code = generate_document_code(category)
+                document = Document.objects.create(
+                    title=title,
+                    file=upload,
+                    file_path=request.data.get("filePath", folder.get_full_path()),
+                    folder=folder,
+                    category=category,
+                    uploader=request.user if request.user.is_authenticated else None,
+                    code=code,
+                    requestor=format_requisitioners_display(validated_requisitioners) or None,
+                    description=request.data.get("description") or None,
+                    keywords=keywords,
+                    filing_year=timezone.now().year,
+                    status="Received",
+                    source=source,
+                    mime_type=getattr(upload, "content_type", "") or "application/octet-stream",
+                    file_size=upload.size,
+                )
+                sync_document_requisitioners(document, validated_requisitioners)
+        except ValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, list) and detail:
+                message = str(detail[0])
+            elif isinstance(detail, dict):
+                message = str(next(iter(detail.values())))
+            else:
+                message = str(detail)
+            return Response({"message": message, "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
         except IntegrityError:
             return Response({"message": "Document Code is already used."}, status=status.HTTP_409_CONFLICT)
-        except ValidationError as exc:
-            document.file.delete(save=False)
-            document.delete()
-            detail = exc.detail
-            message = detail[0] if isinstance(detail, list) else str(detail)
-            return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
         index_document_text(document)
         add_storage_usage(folder.org_unit, upload.size)
+        check_storage_thresholds(request.user)
         log_audit(
             request.user,
             "UPLOAD",
-            f"Uploaded document: {document.title} to {document.file_path}",
+            f"Uploaded document: {document.title} [Code: {document.code}] to {document.file_path}",
             target_type="document",
             target_name=document.title,
             target_org_unit=folder.org_unit.name if folder.org_unit else None,
         )
         return Response(DocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class DocumentNextCodeAPIView(APIView):
+    def get(self, request):
+        category_id = request.query_params.get("categoryId")
+        if not category_id:
+            return Response({"error": "categoryId is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        category = Category.objects.filter(pk=category_id).first()
+        if not category:
+            return Response({"error": "Valid category is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            code = preview_next_document_code(category)
+        except ValidationError as exc:
+            detail = exc.detail
+            message = detail[0] if isinstance(detail, list) else str(detail)
+            return Response({"message": str(message)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"code": code})
 
 
 # ---------------------------------------------------------------------------
@@ -961,6 +1005,7 @@ class RecycleBinDeleteAPIView(APIView):
                 from orgunits.storage import subtract_storage_usage
 
                 subtract_storage_usage(org_unit, file_size)
+            check_storage_thresholds(request.user)
             log_audit(
                 request.user,
                 "PERMANENT_DELETE_DOCUMENT",
