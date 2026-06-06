@@ -1,8 +1,8 @@
 /**
  * AuditLogsPage — system audit trail (Admin only route).
  *
- * Features: search/filter, pagination, CSV/XLSX export.
- * APIs: GET /api/audit-logs/, export-csv, export-xlsx.
+ * Features: search/filter, pagination, Excel export.
+ * APIs: GET /api/audit-logs/, export-xlsx.
  */
 import React, { useState, useEffect } from "react";
 import { 
@@ -42,8 +42,10 @@ const ACTION_OPTIONS = [
   { value: "LOGIN", label: "Login" },
   { value: "UPLOAD", label: "Upload" },
   { value: "DOWNLOAD_DOCUMENT", label: "Download" },
-  { value: "EXPORT_AUDIT_CSV", label: "Export CSV" },
   { value: "EXPORT_AUDIT_XLSX", label: "Export Excel" },
+  { value: "BACKUP_DATABASE_DOWNLOADED", label: "Database Backup" },
+  { value: "BACKUP_MEDIA_DOWNLOADED", label: "Media Backup" },
+  { value: "BACKUP_ACCESS_DENIED", label: "Backup Access Denied" },
   { value: "CREATE_USER", label: "Create User" },
   { value: "SEND_ACTIVATION_EMAIL", label: "Send Activation Email" },
   { value: "ACTIVATE_ACCOUNT", label: "Activate Account" },
@@ -243,6 +245,7 @@ export default function AuditLogsPage() {
   };
 
   const formatActionStr = (action: string) => {
+    if (action === 'EXPORT_AUDIT_CSV') return 'Export Excel';
     const actionOption = ACTION_OPTIONS.find(option => option.value === action);
     if (actionOption) return actionOption.label;
     if (!action) return 'Unknown';
@@ -265,6 +268,9 @@ export default function AuditLogsPage() {
       case 'DOWNLOAD_DOCUMENT': return <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">{formattedAction}</Badge>;
       case 'EXPORT_AUDIT_CSV':
       case 'EXPORT_AUDIT_XLSX': return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{formattedAction}</Badge>;
+      case 'BACKUP_DATABASE_DOWNLOADED':
+      case 'BACKUP_MEDIA_DOWNLOADED': return <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">{formattedAction}</Badge>;
+      case 'BACKUP_ACCESS_DENIED': return <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">{formattedAction}</Badge>;
       default: return <Badge variant="outline">{formattedAction}</Badge>;
     }
   };

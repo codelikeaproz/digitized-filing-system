@@ -2,7 +2,7 @@
  * AppSidebar — role-based primary navigation.
  *
  * Menu visibility must stay aligned with RoleRoute guards in App.tsx:
- *   admin     → all items including Org Units + Audit Logs
+ *   admin     → all items + Administration (Backup Management)
  *   dept_head → Users + Recycle Bin (scoped on backend)
  *   staff     → Dashboard, Documents, Settings only
  */
@@ -26,7 +26,8 @@ import {
   LogOut,
   Settings,
   Building2,
-  Users
+  Users,
+  HardDriveDownload,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
@@ -55,6 +56,10 @@ const deptHeadMenuItems = [
   ...defaultMenuItems.slice(2),
 ];
 
+const adminBackupItems = [
+  { title: "Backup Management", icon: HardDriveDownload, url: "/backup" },
+];
+
 export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -71,6 +76,7 @@ export function AppSidebar() {
     : user?.role?.toLowerCase() === "dept_head"
       ? deptHeadMenuItems
       : defaultMenuItems;
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
   return (
     <Sidebar>
@@ -105,6 +111,28 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {isAdmin && (
+          <SidebarGroup className="pt-[10px] pb-[20px] pr-1 border-t border-white/10">
+            <SidebarGroupLabel className="px-4 pt-0 mb-[5px] h-auto">Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {adminBackupItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      className="h-9 px-4 text-sm font-medium"
+                      isActive={location.pathname === item.url}
+                      tooltip={item.title}
+                      render={<Link to={item.url} />}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="p-4 mt-auto border-t border-white/20">
         <SidebarMenu>

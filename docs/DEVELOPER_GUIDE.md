@@ -35,6 +35,7 @@ project_dfs/
 │   ├── documents/           # Folders, categories, documents, recycle bin
 │   ├── orgunits/            # OrgUnit + OrgType hierarchy
 │   ├── auditlogs/           # Audit trail + exports
+│   ├── backups/             # Admin database/media backup downloads
 │   └── ai/                    # Document assistant chatbot
 ├── frontend/                # React SPA
 │   └── src/
@@ -57,7 +58,8 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 | `accounts` | Custom `User` model, JWT login, password reset/activation, user CRUD |
 | `documents` | Folders, categories, PDF documents, upload, recycle bin, dashboard stats |
 | `orgunits` | OrgUnit tree, OrgType lookup |
-| `auditlogs` | Immutable audit records, CSV/XLSX export |
+| `auditlogs` | Immutable audit records, Excel export |
+| `backups` | Admin-only database (`mysqldump`) and media ZIP downloads |
 | `ai` | Document assistant (intent parsing + OpenRouter) |
 
 **Recycle bin** and **dashboard** live inside `documents` because they operate on folder/document querysets — splitting them would duplicate scoping logic.
@@ -91,6 +93,7 @@ no org_unit → empty queryset (non-admin)
 | Audit logs | ✓ global | ✓ scoped | ✗ |
 | User management | ✓ all | ✓ staff in org | ✗ |
 | OrgUnit / OrgType admin | ✓ (UI) | ✗ | ✗ |
+| Backup downloads | ✓ | ✗ | ✗ |
 
 ### Where rules live
 
@@ -100,6 +103,7 @@ no org_unit → empty queryset (non-admin)
 | Recycle bin access | `documents/permissions.py` → `assert_recycle_bin_access` |
 | User management | `accounts/views.py` → `UserViewSet._enforce_manage_permission` |
 | Audit log scope | `auditlogs/views.py` → `_scope_queryset` |
+| Backup downloads | `backups/permissions.py` → `assert_backup_access` |
 | OrgType admin-only | `orgunits/views.py` → `OrgTypeViewSet._require_admin` |
 
 ---
@@ -133,6 +137,16 @@ Requires `drf-spectacular` in `backend/requirements.txt`.
 3. `documents/views.py` — largest API surface (upload, folders, recycle bin)
 4. `accounts/views.py` — auth + users
 5. `auditlogs/models.py` — `log_audit()` helper
+6. `backups/services.py` — mysqldump + media ZIP generation
+
+### Backup downloads (admin only)
+
+- **UI:** `/backup` → Administration → Backup Management
+- **API:** `GET /api/backups/database`, `GET /api/backups/media`
+- **MySQL:** Backend Docker image includes `default-mysql-client` for `mysqldump`
+- **SQLite dev:** Uses SQLite `.dump` when `DB_ENGINE=sqlite`
+- **Temp files:** Written to `BACKUP_TEMP_DIR` (default `backend/tmp/backups`), deleted after download
+- **Restore:** Manual / out of scope — import SQL into MySQL or replace `MEDIA_ROOT` contents yourself
 
 ### Adding a new API endpoint
 

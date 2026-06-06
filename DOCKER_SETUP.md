@@ -86,6 +86,8 @@ Backend:  http://localhost:8000
 MySQL:    localhost:3307
 ```
 
+**Backup Management (admin only):** The backend image includes `default-mysql-client` so database backups can run `mysqldump` against the MySQL container. Use **Administration → Backup Management** in the UI or `GET /api/backups/database` and `GET /api/backups/media` with a JWT.
+
 ## 3. Clean First Run
 
 If you want a fresh MySQL database volume:

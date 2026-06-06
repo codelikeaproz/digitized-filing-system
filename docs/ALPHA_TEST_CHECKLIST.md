@@ -15,7 +15,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Public | Login page + public assistant |
 | Staff | Dashboard, Documents, Settings |
 | Dept Head | + Users (Staff in org), Recycle Bin |
-| Admin | + Org Units, Audit Logs, full Recycle Bin |
+| Admin | + Org Units, Audit Logs, Backup Management, full Recycle Bin |
 
 **Sign-off:** Tester __________ · Date __________ · Pass / Fail __________
 
@@ -158,6 +158,19 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | No cross–Org Unit document access | Staff, Dept Head | [ ] |
 | Unauthenticated API returns 401 | All | [ ] |
 | Empty states and upload errors handled cleanly | All | [ ] |
+
+---
+
+## 12. Backup Management (`/backup`)
+
+| Test case | Role | Done |
+|-----------|------|------|
+| Admin sees Backup Management under Administration sidebar | Admin | [ ] |
+| Download Database Backup → `.sql` file saves locally | Admin | [ ] |
+| Download Media Backup → `.zip` file saves locally | Admin | [ ] |
+| Audit Logs show `BACKUP_DATABASE_DOWNLOADED` / `BACKUP_MEDIA_DOWNLOADED` | Admin | [ ] |
+| Dept Head / Staff: route blocked (403 / Access Denied) | Dept Head, Staff | [ ] |
+| Unauthorized API call returns 403 | Dept Head, Staff | [ ] |
 
 ---
 

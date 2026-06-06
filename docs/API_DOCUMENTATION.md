@@ -1247,20 +1247,6 @@ Used by frontend for client-initiated events. Server-side actions use `log_audit
 
 ---
 
-#### Export audit logs CSV
-
-| | |
-|---|---|
-| **Method** | `GET` |
-| **Path** | `/api/audit-logs/export-csv/` |
-| **Response** | `text/csv` attachment |
-
-Filename: `audit_logs_YYYY-MM-DD.csv`
-
-Columns: Timestamp, Name, Role, Org Unit, Action, Details
-
----
-
 #### Export audit logs Excel
 
 | | |
@@ -1423,6 +1409,61 @@ Answers are scoped to the user's accessible documents. See `CHATBOT_CAPABILITIES
 | **Query** | `q=<search text>` |
 
 Returns `{ "matches": [...] }` without LLM answer.
+
+---
+
+### 7.13 Backup Management API
+
+**Status: Implemented — admin role only.**
+
+Provides on-demand database and media file downloads for disaster recovery and migration. Restore is not included in this phase.
+
+#### Download database backup
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/api/backups/database` |
+| **Auth** | Bearer JWT |
+| **Role** | `admin` only |
+
+**Success `200`:** SQL file download  
+**Filename:** `DFS_DATABASE_YYYYMMDD_HHMMSS.sql`  
+**Content-Type:** `application/sql`
+
+**MySQL:** Uses `mysqldump` (requires MySQL client in backend container).  
+**SQLite (dev):** SQLite `.dump` output.
+
+**Audit action:** `BACKUP_DATABASE_DOWNLOADED`
+
+**Errors:**
+
+| Code | When |
+|------|------|
+| `401` | Missing or invalid JWT |
+| `403` | Non-admin user (`BACKUP_ACCESS_DENIED` logged) |
+| `500` | Backup command failed |
+
+---
+
+#### Download media backup
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/api/backups/media` |
+| **Auth** | Bearer JWT |
+| **Role** | `admin` only |
+
+**Success `200`:** ZIP file download  
+**Filename:** `DFS_MEDIA_YYYYMMDD_HHMMSS.zip`  
+**Content-Type:** `application/zip`
+
+Archives all files under `MEDIA_ROOT` (uploaded PDFs, profile pictures, etc.).
+
+**Audit action:** `BACKUP_MEDIA_DOWNLOADED`
+
+**Errors:** Same as database backup.
 
 ---
 
@@ -1608,12 +1649,12 @@ curl -X POST http://localhost:8000/api/folders \
   -d '{"name":"Test Folder","orgUnitId":"2"}'
 ```
 
-### Export audit logs CSV
+### Export audit logs Excel
 
 ```bash
-curl "http://localhost:8000/api/audit-logs/export-csv/?start_date=2026-05-01&end_date=2026-05-31" \
+curl "http://localhost:8000/api/audit-logs/export-xlsx/?start_date=2026-05-01&end_date=2026-05-31" \
   -H "Authorization: Bearer <TOKEN>" \
-  -o audit_logs.csv
+  -o audit_logs.xlsx
 ```
 
 ### Refresh JWT
@@ -1703,11 +1744,12 @@ Use JWT **Authorize** in Swagger with: `Bearer <access_token>` from login.
 | Organization Units | 4 |
 | Org Types | 4 |
 | Users | 9 |
-| Audit Logs | 4 |
+| Audit Logs | 3 |
 | Recycle Bin | 3 |
 | Account Settings | 3 (via auth/users) |
 | AI Assistant | 2 |
-| **Total** | **~58 route handlers** |
+| Backup Management | 2 |
+| **Total** | **~59 route handlers** |
 
 ### Marked Needs Review
 

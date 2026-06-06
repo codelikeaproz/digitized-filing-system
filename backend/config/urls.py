@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/", include("accounts.urls")),
     path("api/", include("orgunits.urls")),
     path("api/", include("auditlogs.urls")),
+    path("api/", include("backups.urls")),
     path("api/", include("documents.urls")),
     path("api/ai/", include("ai.urls")),
     path('api/token/', TokenObtainPairView.as_view(), name="get_token"),

@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN apt-get update && apt-get install -y netcat-openbsd poppler-utils tesseract-ocr \
+RUN apt-get update && apt-get install -y netcat-openbsd poppler-utils tesseract-ocr default-mysql-client \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

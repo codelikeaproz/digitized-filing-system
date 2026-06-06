@@ -37,6 +37,12 @@ const STORAGE_QUOTA_PRESETS = [
   { value: '500', label: '500 MB', mb: 500 },
   { value: '1024', label: '1 GB', mb: 1024 },
   { value: '5120', label: '5 GB', mb: 5120 },
+  { value: '15360', label: '15 GB', mb: 15360 },
+  { value: '30720', label: '30 GB', mb: 30720 },
+  { value: '51200', label: '50 GB', mb: 51200 },
+  { value: '102400', label: '100 GB', mb: 102400 },
+  { value: '512000', label: '500 GB', mb: 512000 },
+  { value: '1048576', label: '1 TB', mb: 1048576 },
   { value: 'custom', label: 'Custom', mb: null },
 ] as const;
 

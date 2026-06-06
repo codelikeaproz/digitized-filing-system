@@ -96,6 +96,7 @@ INSTALLED_APPS = [
     "orgunits",
     "documents",
     "auditlogs",
+    "backups",
     "ai",
     "drf_spectacular",
 ]
@@ -201,6 +202,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+BACKUP_TEMP_DIR = Path(os.getenv("BACKUP_TEMP_DIR", BASE_DIR / "tmp" / "backups"))
 PROFILE_PICTURE_MAX_SIZE_BYTES = int(os.getenv("PROFILE_PICTURE_MAX_SIZE_BYTES", str(2 * 1024 * 1024)))
 PROFILE_PICTURE_ALLOWED_TYPES = {
     "image/jpeg",

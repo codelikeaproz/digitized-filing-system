@@ -7,7 +7,7 @@
  * Protected shell: AppShell with sidebar (requires JWT)
  *
  * Role-restricted routes (must match AppSidebar menu):
- *   - /audit-logs, /org-units     → admin only
+ *   - /audit-logs, /org-units, /backup  → admin only
  *   - /users, /recycle-bin        → admin, dept_head
  *
  * Global providers: AuthProvider, CategoryProvider (inside shell), AutoLogout
@@ -33,6 +33,7 @@ const SettingsPage = lazy(() => import("./pages/settings/SettingsPage"));
 const UsersPage = lazy(() => import("./pages/users/UsersPage"));
 const RecycleBinPage = lazy(() => import("./pages/recyclebin/RecycleBinPage"));
 const OrgUnitsPage = lazy(() => import("./pages/orgunits/OrgUnitsPage"));
+const BackupManagementPage = lazy(() => import("./pages/backup/BackupManagementPage"));
 const Error429Page = lazy(() => import("./pages/errors/Error429Page"));
 const Error500Page = lazy(() => import("./pages/errors/Error500Page"));
 
@@ -79,6 +80,11 @@ export default function App() {
               <Route path="org-units" element={
                 <RoleRoute allowedRoles={['admin']}>
                   <OrgUnitsPage />
+                </RoleRoute>
+              } />
+              <Route path="backup" element={
+                <RoleRoute allowedRoles={['admin']}>
+                  <BackupManagementPage />
                 </RoleRoute>
               } />
               <Route path="recycle-bin" element={

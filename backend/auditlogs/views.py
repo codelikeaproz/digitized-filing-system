@@ -7,10 +7,8 @@ Scope:
     Staff — denied
 
 Exports:
-    GET .../export-csv/
     GET .../export-xlsx/
 """
-import csv
 import io
 import zipfile
 from datetime import datetime, time
@@ -281,46 +279,6 @@ class AuditLogViewSet(viewsets.ModelViewSet):
                 "edits_by_org_unit": aggregate_by_org_unit(edit_actions),
             }
         )
-
-    @action(detail=False, methods=["get"], url_path="export-csv")
-    def export_csv(self, request):
-        queryset = self._apply_filters(
-            AuditLog.objects.select_related("user", "user__org_unit").order_by("-created_at")
-        )
-        rows = list(queryset)
-        filter_details = self._export_filter_details()
-
-        audit_details = "Exported audit logs CSV"
-        if filter_details:
-            audit_details = f"{audit_details} with filters: {filter_details}"
-        log_audit(
-            request.user,
-            "EXPORT_AUDIT_CSV",
-            audit_details,
-            target_type="AuditLog",
-            target_name="audit_logs.csv",
-            target_org_unit=request.user.org_unit.name if getattr(request.user, "org_unit", None) else None,
-            ip_address=request.META.get("REMOTE_ADDR"),
-        )
-
-        today = timezone.localdate().isoformat()
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = f'attachment; filename="audit_logs_{today}.csv"'
-
-        writer = csv.writer(response)
-        writer.writerow(["Timestamp", "Name", "Role", "Org Unit", "Action", "Details"])
-
-        for log in rows:
-            user = log.user
-            name = user.get_full_name() or user.email if user else "System"
-            role = getattr(user, "role", None) or "System"
-            org_unit = log.target_org_unit or (user.org_unit.name if user and user.org_unit else "Global Access")
-            # Excel may render date/time cells as ####### when the column is narrow.
-            # Wrapping the formatted timestamp in ="..." keeps it readable as text.
-            timestamp = f'="{format_local_datetime(log.created_at)}"'
-            writer.writerow([timestamp, name, role, org_unit, log.action, log.details])
-
-        return response
 
     @action(detail=False, methods=["get"], url_path="export-xlsx")
     def export_xlsx(self, request):
