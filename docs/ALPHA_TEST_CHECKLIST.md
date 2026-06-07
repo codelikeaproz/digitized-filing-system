@@ -37,11 +37,16 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | Stats load; counts update after upload | All | [ ] |
+| Dashboard refetches when returning to tab / window focus | All | [ ] |
 | Admin-only cards (Org Units, Users) visible to Admin only | Admin | [ ] |
-| Global view shows System Storage Limit vs Total Office Unit Quotas in Storage Utilization | Admin | [ ] |
-| Office Unit Storage Comparison footer shows total used and total quota across all units | Admin | [ ] |
+| Global view shows System Storage Limit, Top-Level Allocated, and System Allocation Remaining | Admin | [ ] |
+| Low file usage shows `< 0.1%` and visible donut slice (not stuck at 0.0%) | Admin | [ ] |
+| Admin filtering to parent Office Unit includes child documents and subtree usage | Admin | [ ] |
+| Admin filtering to parent shows comparison chart with child units | Admin | [ ] |
+| Office Unit Storage Comparison footer shows total used and total quota | Admin | [ ] |
 | Parent Dept Head sees subtree folder tree (assigned unit + descendants) | Dept Head | [ ] |
-| Parent Dept Head dashboard aggregates docs across subtree; comparison chart lists child units | Dept Head | [ ] |
+| Parent Dept Head dashboard: 15 GB envelope (not parent + child quota sum); aggregates docs across subtree | Dept Head | [ ] |
+| Parent Dept Head comparison chart lists child units; subtitle notes child inclusion when applicable | Dept Head | [ ] |
 | Child Dept Head / Staff see only assigned unit in tree, org-unit list, and documents | Dept Head, Staff | [ ] |
 | Tampered `orgUnitId` on document list returns 403 for out-of-scope unit | Dept Head | [ ] |
 
@@ -74,9 +79,11 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| Notification bell visible in header | All | [ ] |
-| Storage warning/alert notifications appear at 80/90/95/100% thresholds | All | [ ] |
+| Notification bell visible in header; badge count readable (white text on red) | All | [ ] |
+| Storage warning/alert notifications appear at 80/90/95/100% physical usage thresholds | All | [ ] |
+| Admin sees allocation alerts at 90/100% of top-level allocated quotas | Admin | [ ] |
 | Admin sees additional 90% administration notice | Admin | [ ] |
+| **Clear** removes notifications and resets badge count | All | [ ] |
 | Threshold notifications do not duplicate on refresh | All | [ ] |
 | Admin can configure upload limit and system storage quota (Settings → System) | Admin | [ ] |
 | System storage quota preset dropdown (5/15/100/500 GB, 1 TB, Custom) saves correct MB value | Admin | [ ] |
@@ -148,8 +155,13 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | CRUD org units and org types | Admin | [ ] |
-| Add Office Unit disabled when 0 MB allocation headroom remains; Create/Save disabled when quota exceeds headroom or system cap | Admin | [ ] |
-| Modal shows Available System Storage (allocation headroom remaining) | Admin | [ ] |
+| Table shows Envelope, To Children, Pool Available, Used (files), File Space Left | Admin | [ ] |
+| Parent row: e.g. CISC 15 GB envelope, 5 GB to children, 10 GB pool available | Admin | [ ] |
+| Child row: quota shows "from {parent}"; To Children / Pool columns show — | Admin | [ ] |
+| Parent Used shows subtree total with "includes child units" when files are in child | Admin | [ ] |
+| Child unit has parent set (not top-level) when hierarchical model intended | Admin | [ ] |
+| Add Office Unit disabled when 0 MB top-level allocation headroom remains | Admin | [ ] |
+| Modal shows parent/system allocation headroom; child note about parent envelope | Admin | [ ] |
 | Create/update blocked with clear error when quota exceeds remaining allocation | Admin | [ ] |
 | Audit log records allocation validation failure and quota updates | Admin | [ ] |
 | Allocation threshold bell alerts at 90% and 100% of allocated quotas | Admin | [ ] |
@@ -218,4 +230,4 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 ---
 
-*May 2026*
+*June 2026*

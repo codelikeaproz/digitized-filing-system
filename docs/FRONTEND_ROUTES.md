@@ -23,7 +23,7 @@ Wrapped by `ProtectedRoute` + `AppShell` layout.
 
 | Path | Component | Role gate | Backend scope |
 |------|-----------|-----------|---------------|
-| `/` | `DashboardPage` | All roles | `GET /api/dashboard/stats` |
+| `/` | `DashboardPage` | All roles | `GET /api/dashboard/` (optional `?office_unit=all\|{id}`) |
 | `/documents` | `DocumentsPage` | All roles | Documents, folders, upload, AI assistant |
 | `/settings` | `SettingsPage` | All roles | `POST /api/auth/update-password` |
 | `/users` | `UsersPage` | `admin`, `dept_head` | ` /api/users` |
@@ -33,6 +33,23 @@ Wrapped by `ProtectedRoute` + `AppShell` layout.
 | `/recycle-bin` | `RecycleBinPage` | `admin`, `dept_head` | `/api/recycle-bin` |
 
 > **Staff** see Dashboard, Documents, and Settings only (sidebar + route guards must stay in sync).
+
+### Dashboard (`/`)
+
+- **Admin:** Office Unit filter dropdown — `All Office Units` (global) or a specific unit; parent units with children use subtree aggregation (`aggregates_subtree: true`)
+- **Parent dept_head:** Filter label **My Organization (all units)** — aggregates assigned unit + descendants; can filter to child units
+- **Staff / leaf dept_head:** Fixed to assigned unit; no filter dropdown
+- **Storage charts:** `StorageUtilizationChart`, `OfficeUnitStorageComparisonChart`; refetches on tab focus and every 30s
+- **Low usage:** Percent shows `< 0.1%` when files exist but usage is tiny vs quota
+
+### Org Units (`/org-units`) — Admin only
+
+Table columns: **Envelope**, **To Children**, **Pool Available**, **Used (files)**, **File Space Left**, **Hierarchy (Parent)**. Child quotas are part of the parent envelope, not additional system storage.
+
+### Notifications (header bell)
+
+- Polls `GET /api/notifications/` and `GET /api/notifications/unread-count/` every 60s
+- **Clear** button calls `POST /api/notifications/clear/`
 
 ---
 

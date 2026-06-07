@@ -33,7 +33,8 @@ project_dfs/
 │   ├── config/              # Settings, URLs, pagination, middleware
 │   ├── accounts/            # Users, login, password flows
 │   ├── documents/           # Folders, categories, documents, recycle bin
-│   ├── orgunits/            # OrgUnit + OrgType hierarchy
+│   ├── orgunits/            # OrgUnit + OrgType hierarchy, storage allocation
+│   ├── notifications/       # Storage threshold alerts + bell API
 │   ├── auditlogs/           # Audit trail + exports
 │   ├── backups/             # Admin database/media backup downloads
 │   └── ai/                    # Document assistant chatbot
@@ -57,7 +58,8 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 |-----|----------------|
 | `accounts` | Custom `User` model, JWT login, password reset/activation, user CRUD |
 | `documents` | Folders, categories, PDF documents, upload, recycle bin, dashboard stats |
-| `orgunits` | OrgUnit tree, OrgType lookup |
+| `orgunits` | OrgUnit tree, OrgType lookup, hierarchical storage quotas |
+| `notifications` | Storage threshold alerts, notification list/clear API |
 | `auditlogs` | Immutable audit records, Excel export |
 | `backups` | Admin-only database (`mysqldump`) and media ZIP downloads |
 | `ai` | Document assistant (intent parsing + OpenRouter) |
@@ -116,6 +118,9 @@ OrgUnit list API (`GET /api/org-units/`) returns only accessible units for non-a
 | Audit log scope | `auditlogs/views.py` → `_scope_queryset` |
 | Backup downloads | `backups/permissions.py` → `assert_backup_access` |
 | OrgType admin-only | `orgunits/views.py` → `OrgTypeViewSet._require_admin` |
+| Dashboard stats / storage rollup | `documents/dashboard_service.py` → `DashboardService` |
+| Hierarchical storage quotas | `orgunits/storage.py` → allocation validation, usage rollup |
+| Storage notifications | `notifications/storage_alerts.py`, `notifications/views.py` |
 
 ---
 
@@ -192,7 +197,7 @@ log_audit(
 4. `validate_storage_quota(org_unit)` — per–Office Unit cap
 5. `generate_document_code(category)` — `{CategoryCode}-{Year}-{Sequence}` via `DocumentSequence` (locked per `category_code` + year)
 6. `Document.objects.create(...)` — metadata + file to `media/documents/YYYY/MM/DD/`
-7. `add_storage_usage()` + `check_storage_thresholds()` — updates usage and may create bell notifications
+7. `add_storage_usage()` + `check_storage_thresholds()` + `check_allocation_thresholds()` — updates usage and may create bell notifications
 8. `index_document_text(document)` — extract text for AI search
 
 **Document codes:** Preview with `GET /api/documents/next-code?categoryId=`. Assigned at upload. When a document's category is changed on edit, or when a category abbreviation changes in Manage Categories, auto-generated document codes swap their prefix only (e.g. `MEM-2026-000001` → `TES-2026-000001`); legacy non-standard codes are unchanged. Category codes are auto-generated from the category name on create/rename, or set manually via Manage Categories. Sequence counters are shared globally per category code and year.
@@ -203,14 +208,34 @@ log_audit(
 - **Restore:** `documents/services.py` → `restore_folder()`
 - **Permanent delete:** removes DB rows + media files
 
+### Hierarchical storage allocation
+
+Office Unit storage uses a **parent envelope** model (`orgunits/storage.py`):
+
+```text
+System limit (Settings → System)
+  └── Top-level Office Unit envelope (e.g. CISC 15 GB)
+        ├── Child unit quota drawn from parent (e.g. SDO 5 GB)
+        └── Parent pool available (e.g. 10 GB) for own files or future children
+```
+
+| Rule | Implementation |
+|------|----------------|
+| Top-level quota sum ≤ system limit | `get_top_level_allocated_quota_mb()`, `validate_org_unit_allocation_quota()` |
+| Child sibling quotas ≤ parent envelope | `get_parent_available_allocation_mb()`, parent validation in serializer |
+| Parent cannot shrink below child sum | `validate_parent_reduction()` |
+| Display usage | `get_display_used_mb()` — subtree rollup for parents, own files for children |
+| Dashboard subtree stats | `DashboardService.get_subtree_dashboard_stats()` — parent envelope quota, not sum of child quotas |
+
 ### Storage quota notifications
 
-- **Global cap (physical):** `SystemSettings.storage_quota_mb` — compared against total document file sizes; drives upload blocking at 100% and physical-usage bell alerts at 80/90/95/100%
-- **Allocation pool:** sum of `OrgUnit.storage_quota_mb` cannot exceed system quota on Office Unit create/update (`orgunits/storage.py` → `validate_org_unit_allocation_quota()`)
+- **Global cap (physical):** `SystemSettings.storage_quota_mb` — compared against total document file sizes; drives upload blocking at 100% and physical-usage bell alerts at 80/90/95/100% (audience: `all`)
+- **Top-level allocation pool:** sum of **root** Office Unit quotas cannot exceed system quota on create/update; child quotas validate against **parent envelope**, not the system pool directly
 - **Per–Office Unit cap:** `OrgUnit.storage_quota_mb` — upload blocking when unit usage exceeds its quota; both global physical and per-unit checks must pass on upload
+- **Allocation alerts:** 90% and 100% of top-level allocated quotas vs system limit (audience: `admin` only)
 - **Service:** `notifications/storage_alerts.py` — `check_storage_thresholds()` (physical), `check_allocation_thresholds()` (allocated quotas), `validate_global_storage_quota()`
 - **Hooks:** After upload, permanent delete, Office Unit quota changes, and when admin changes system quota
-- **UI:** Notification bell in `AppShell`; admin configures limits under Settings → System; Office Units modal shows allocation headroom remaining
+- **UI:** Notification bell in `AppShell` (`NotificationBell.tsx`) with unread count and **Clear** action (`POST /api/notifications/clear/`); admin configures limits under Settings → System; Office Units page shows **Envelope / To Children / Pool Available / Used / File Space Left** columns
 
 ---
 
@@ -237,6 +262,10 @@ For backend setup, copy `backend/.env.example` to `backend/.env`. Do not use a s
 | `src/lib/auth-context.tsx` | Login/logout, session rehydration |
 | `src/components/ProtectedRoute.tsx` | Auth + role gates |
 | `src/components/AppSidebar.tsx` | Role-based navigation |
+| `src/pages/dashboard/DashboardPage.tsx` | Dashboard stats, storage charts, Office Unit filter |
+| `src/pages/orgunits/OrgUnitsPage.tsx` | Office Unit CRUD, hierarchical quota modal + table |
+| `src/components/notifications/NotificationBell.tsx` | Storage alert bell + clear |
+| `src/lib/storage-quota-presets.ts` | Quota presets, allocation helpers, table formatters |
 | `src/pages/documents/DocumentsPage.tsx` | Main document UI |
 
 ### API calls
@@ -259,6 +288,18 @@ Token is read from `localStorage.auth_token`. On `401`, client clears storage an
 
 - `ProtectedRoute` — requires login
 - `RoleRoute` — requires one of `allowedRoles` (mirrors sidebar, not a substitute for backend checks)
+
+### Dashboard aggregation (by role)
+
+| Viewer | Filter | Documents / storage scope |
+|--------|--------|---------------------------|
+| Admin | `office_unit=all` | Global — all units, system quota |
+| Admin | Parent unit with children | Subtree — same as parent dept_head (`aggregates_subtree: true`) |
+| Admin | Leaf unit | Single unit only |
+| Parent dept_head | Default | Subtree of assigned unit |
+| Child dept_head / staff | Default | Own unit only |
+
+Implementation: `documents/dashboard_service.py`. See [API_DOCUMENTATION.md §7.2](./API_DOCUMENTATION.md#72-dashboard-api).
 
 See [FRONTEND_ROUTES.md](./FRONTEND_ROUTES.md) for the full route map.
 
@@ -290,6 +331,9 @@ After backend changes:
 - [ ] Staff cannot delete document
 - [ ] Recycle bin restore + permanent delete
 - [ ] User create + activation email flow
+- [ ] Dashboard: admin parent-unit filter includes child documents; parent dept_head shows envelope quota (not parent + child sum)
+- [ ] Office Units table: parent shows To Children + Pool Available; child shows "from {parent}"
+- [ ] Notification clear removes visible alerts; badge count resets
 
 After frontend changes:
 
@@ -303,8 +347,7 @@ After frontend changes:
 
 Documented in [API_DOCUMENTATION.md §15](./API_DOCUMENTATION.md#15-known-limitations--needs-review):
 
-- Dashboard stats not role-scoped
-- OrgUnit write endpoints enforce Admin-only on create/update
+- OrgUnit write endpoints enforce Admin-only on create/update (backend guard partial)
 - AuditLog ViewSet exposes full ModelViewSet verbs
 - No server-side logout / token denylist
 - JWT refresh not wired in frontend
@@ -318,6 +361,8 @@ Documented in [API_DOCUMENTATION.md §15](./API_DOCUMENTATION.md#15-known-limita
 | New/changed API route | `docs/API_DOCUMENTATION.md` + app `urls.py` header |
 | New role rule | View assert helper + this guide §3 + frontend `RoleRoute` |
 | New page | `App.tsx` + `FRONTEND_ROUTES.md` + sidebar if needed |
+| Storage / dashboard change | `API_DOCUMENTATION.md` §7.2 + § Hierarchical storage + `DEVELOPER_GUIDE.md` §4 |
+| Office Units UI / quota display | `ALPHA_TEST_CHECKLIST.md` §7 + `API_DOCUMENTATION.md` Office Units fields |
 | Document upload / metadata change | `API_DOCUMENTATION.md` upload and edit endpoints |
 | Chatbot behavior | `CHATBOT_CAPABILITIES.md` + `ai/services/intent_service.py` |
 
