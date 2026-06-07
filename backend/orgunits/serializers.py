@@ -87,8 +87,14 @@ class OrgUnitSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True,
     )
+    parentName = serializers.SerializerMethodField()
+    storageUsedDisplayMb = serializers.SerializerMethodField()
     storageRemainingMb = serializers.SerializerMethodField()
     storagePercentUsed = serializers.SerializerMethodField()
+    childrenAllocatedMb = serializers.SerializerMethodField()
+    availableForAllocationMb = serializers.SerializerMethodField()
+    storageOwnUsedMb = serializers.SerializerMethodField()
+    allocationContext = serializers.SerializerMethodField()
 
     class Meta:
         model = OrgUnit
@@ -96,6 +102,7 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "parentId",
+            "parentName",
             "type",
             "org_type_id",
             "org_type_name",
@@ -111,25 +118,33 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             "deleteBlockReason",
             "storageQuotaMb",
             "storageUsedMb",
+            "storageUsedDisplayMb",
             "storageRemainingMb",
             "storagePercentUsed",
+            "childrenAllocatedMb",
+            "availableForAllocationMb",
+            "storageOwnUsedMb",
+            "allocationContext",
         ]
         read_only_fields = ["storage_used_mb"]
 
     def validate_storage_quota_mb(self, value):
         if value is not None and value < 1:
             raise serializers.ValidationError("Storage quota must be at least 1 MB.")
-        if value is not None:
-            from system.services import get_storage_quota_mb
-            from orgunits.storage import validate_org_unit_allocation_quota
-
-            system_quota_mb = get_storage_quota_mb()
-            if value > system_quota_mb:
-                raise serializers.ValidationError(
-                    f"Office Unit quota cannot exceed the system-wide storage limit ({system_quota_mb} MB)."
-                )
-            validate_org_unit_allocation_quota(value, org_unit=getattr(self, "instance", None))
         return value
+
+    def _resolve_parent_for_validation(self, attrs):
+        instance = getattr(self, "instance", None)
+        if "parent_id" in attrs:
+            parent_id = attrs.get("parent_id")
+        elif instance is not None:
+            parent_id = instance.parent_id
+        else:
+            parent_id = None
+
+        if not parent_id:
+            return None
+        return OrgUnit.objects.filter(pk=parent_id, is_deleted=False).first()
 
     def validate_parentId(self, value):
         return value or None
@@ -159,6 +174,42 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"org_type_id": "Org Type is required."})
 
         attrs["type"] = org_type.name
+
+        parent_changed = (
+            instance is not None
+            and "parent_id" in attrs
+            and attrs.get("parent_id") != instance.parent_id
+        )
+        if "storage_quota_mb" in attrs or parent_changed:
+            from system.services import get_storage_quota_mb
+            from orgunits.storage import validate_org_unit_allocation_quota
+
+            requested_mb = attrs.get("storage_quota_mb")
+            if requested_mb is None and instance is not None:
+                requested_mb = instance.storage_quota_mb
+            if requested_mb is None:
+                return attrs
+
+            parent = self._resolve_parent_for_validation(attrs)
+
+            if parent is None:
+                system_quota_mb = get_storage_quota_mb()
+                if requested_mb > system_quota_mb:
+                    raise serializers.ValidationError(
+                        {
+                            "storageQuotaMb": (
+                                f"Office Unit quota cannot exceed the system-wide storage limit "
+                                f"({system_quota_mb} MB)."
+                            )
+                        }
+                    )
+
+            validate_org_unit_allocation_quota(
+                requested_mb,
+                org_unit=instance,
+                parent=parent,
+            )
+
         return attrs
 
     def get_orgTypeId(self, obj):
@@ -210,14 +261,50 @@ class OrgUnitSerializer(serializers.ModelSerializer):
             return ""
         return f"Cannot delete while this Office Unit contains {', '.join(reasons)}."
 
+    def get_parentName(self, obj):
+        return obj.parent.name if obj.parent_id else None
+
+    def get_storageUsedDisplayMb(self, obj):
+        from orgunits.storage import get_display_used_mb
+
+        return round(get_display_used_mb(obj), 2)
+
     def get_storageRemainingMb(self, obj):
+        from orgunits.storage import get_display_used_mb
+
         quota = obj.storage_quota_mb or 0
-        used = float(obj.storage_used_mb or 0)
+        used = get_display_used_mb(obj)
         return round(max(0, quota - used), 2)
 
     def get_storagePercentUsed(self, obj):
+        from orgunits.storage import get_display_used_mb
+
         quota = obj.storage_quota_mb or 0
         if not quota:
             return 0.0
-        used = float(obj.storage_used_mb or 0)
+        used = get_display_used_mb(obj)
         return round(min(100.0, (used / quota) * 100), 1)
+
+    def get_childrenAllocatedMb(self, obj):
+        from orgunits.storage import get_direct_children_quota_mb
+
+        return get_direct_children_quota_mb(obj)
+
+    def get_availableForAllocationMb(self, obj):
+        from orgunits.storage import get_direct_children_quota_mb, org_unit_has_active_children
+
+        if not org_unit_has_active_children(obj):
+            return None
+        quota = int(obj.storage_quota_mb or 0)
+        children_allocated = get_direct_children_quota_mb(obj)
+        return max(0, quota - children_allocated)
+
+    def get_storageOwnUsedMb(self, obj):
+        from orgunits.storage import bytes_to_mb, get_own_used_bytes
+
+        return round(float(bytes_to_mb(get_own_used_bytes(obj))), 2)
+
+    def get_allocationContext(self, obj):
+        from orgunits.storage import build_allocation_context
+
+        return build_allocation_context(obj)

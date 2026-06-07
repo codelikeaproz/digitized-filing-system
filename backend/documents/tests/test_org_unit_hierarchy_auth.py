@@ -73,6 +73,14 @@ class OrgUnitHierarchyAuthTests(TestCase):
         self.sdd_category = Category.objects.create(name="SDD Records", code="SDR", org_unit=self.sdd)
         self.other_category = Category.objects.create(name="Other Files", code="OTH", org_unit=self.other)
 
+    def _set_hierarchical_quotas(self):
+        self.cisc.storage_quota_mb = 15360
+        self.cisc.save(update_fields=["storage_quota_mb"])
+        self.sdd.storage_quota_mb = 5120
+        self.sdd.save(update_fields=["storage_quota_mb"])
+        self.it.storage_quota_mb = 2560
+        self.it.save(update_fields=["storage_quota_mb"])
+
     def _document_titles(self, response):
         if isinstance(response.data, dict) and "results" in response.data:
             return {row["title"] for row in response.data["results"]}
@@ -171,9 +179,55 @@ class OrgUnitHierarchyAuthTests(TestCase):
         response = self.client.get("/api/dashboard/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["scope"], "office_unit")
+        self.assertTrue(response.data["aggregates_subtree"])
         self.assertGreaterEqual(response.data["total_documents"], 3)
         self.assertTrue(response.data["can_filter_office_units"])
         self.assertGreaterEqual(len(response.data["storage_by_office_unit"]), 3)
+
+    def test_subtree_dashboard_quota_is_parent_envelope(self):
+        self._set_hierarchical_quotas()
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["storage"]["quota_mb"], 15360)
+        self.assertNotEqual(response.data["storage"]["quota_mb"], 15360 + 5120 + 2560)
+
+    def test_subtree_dashboard_usage_rollup(self):
+        self.client.force_authenticate(user=self.cisc_head)
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        expected_used_mb = round((1024 + 2048 + 4096) / (1024 * 1024), 2)
+        self.assertEqual(response.data["storage"]["used_mb"], expected_used_mb)
+
+    def test_admin_dashboard_parent_includes_child_documents(self):
+        self.cisc_doc.delete()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/dashboard/", {"office_unit": self.cisc.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["aggregates_subtree"])
+        self.assertEqual(response.data["total_documents"], 2)
+        self.assertGreaterEqual(len(response.data["storage_by_office_unit"]), 3)
+
+    def test_admin_parent_storage_matches_dept_head(self):
+        self._set_hierarchical_quotas()
+        self.client.force_authenticate(user=self.admin)
+        admin_response = self.client.get("/api/dashboard/", {"office_unit": self.cisc.id})
+        self.client.force_authenticate(user=self.cisc_head)
+        head_response = self.client.get("/api/dashboard/")
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertEqual(head_response.status_code, 200)
+        self.assertEqual(
+            admin_response.data["total_documents"],
+            head_response.data["total_documents"],
+        )
+        self.assertEqual(
+            admin_response.data["storage"]["quota_mb"],
+            head_response.data["storage"]["quota_mb"],
+        )
+        self.assertEqual(
+            admin_response.data["storage"]["used_mb"],
+            head_response.data["storage"]["used_mb"],
+        )
 
     def test_dashboard_child_filter_within_scope(self):
         self.client.force_authenticate(user=self.cisc_head)

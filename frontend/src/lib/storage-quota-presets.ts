@@ -91,16 +91,111 @@ export function sumOrgUnitAllocatedMb(
   }, 0);
 }
 
-export function getAvailableAllocationMb(
+export type OrgUnitAllocationRow = {
+  id?: string;
+  parentId?: string | null;
+  storageQuotaMb?: number;
+};
+
+export function sumTopLevelAllocatedMb(
+  orgUnits: ReadonlyArray<OrgUnitAllocationRow>,
+  excludeOrgUnitId?: string | null
+): number {
+  return orgUnits.reduce((total, unit) => {
+    if (unit.parentId) return total;
+    if (excludeOrgUnitId && unit.id === excludeOrgUnitId) return total;
+    const quota = Number(unit.storageQuotaMb ?? 0);
+    return total + (Number.isFinite(quota) && quota > 0 ? quota : 0);
+  }, 0);
+}
+
+export function sumDirectChildrenAllocatedMb(
+  parentId: string,
+  orgUnits: ReadonlyArray<OrgUnitAllocationRow>,
+  excludeOrgUnitId?: string | null
+): number {
+  return orgUnits.reduce((total, unit) => {
+    if (unit.parentId !== parentId) return total;
+    if (excludeOrgUnitId && unit.id === excludeOrgUnitId) return total;
+    const quota = Number(unit.storageQuotaMb ?? 0);
+    return total + (Number.isFinite(quota) && quota > 0 ? quota : 0);
+  }, 0);
+}
+
+export function getSystemAvailableAllocationMb(
   systemQuotaMb: number | null,
-  orgUnits: ReadonlyArray<{ id?: string; storageQuotaMb?: number }>,
+  orgUnits: ReadonlyArray<OrgUnitAllocationRow>,
   excludeOrgUnitId?: string | null
 ): number | null {
   if (systemQuotaMb == null || !Number.isFinite(systemQuotaMb)) {
     return null;
   }
-  const allocated = sumOrgUnitAllocatedMb(orgUnits, excludeOrgUnitId);
+  const allocated = sumTopLevelAllocatedMb(orgUnits, excludeOrgUnitId);
   return Math.max(0, systemQuotaMb - allocated);
+}
+
+export function getParentAvailableAllocationMb(
+  parentId: string,
+  orgUnits: ReadonlyArray<OrgUnitAllocationRow>,
+  excludeOrgUnitId?: string | null
+): number | null {
+  const parent = orgUnits.find((unit) => unit.id === parentId);
+  if (!parent) return null;
+  const parentQuota = Number(parent.storageQuotaMb ?? 0);
+  if (!Number.isFinite(parentQuota) || parentQuota <= 0) return 0;
+  const childrenAllocated = sumDirectChildrenAllocatedMb(parentId, orgUnits, excludeOrgUnitId);
+  return Math.max(0, parentQuota - childrenAllocated);
+}
+
+export function getProjectedParentAllocationSummary(
+  parentQuotaMb: number,
+  siblingsAllocatedMb: number,
+  selectedQuotaMb: number
+): {
+  childrenAllocatedMb: number;
+  availableForAllocationMb: number;
+} {
+  const selected =
+    Number.isFinite(selectedQuotaMb) && selectedQuotaMb >= 1 ? selectedQuotaMb : 0;
+  const childrenAllocatedMb = siblingsAllocatedMb + selected;
+  const availableForAllocationMb = Math.max(0, parentQuotaMb - childrenAllocatedMb);
+  return { childrenAllocatedMb, availableForAllocationMb };
+}
+
+export function getProjectedSystemAllocationSummary(
+  systemQuotaMb: number,
+  siblingsTopLevelAllocatedMb: number,
+  selectedQuotaMb: number
+): {
+  topLevelAllocatedMb: number;
+  availableForAllocationMb: number;
+} {
+  const selected =
+    Number.isFinite(selectedQuotaMb) && selectedQuotaMb >= 1 ? selectedQuotaMb : 0;
+  const topLevelAllocatedMb = siblingsTopLevelAllocatedMb + selected;
+  const availableForAllocationMb = Math.max(0, systemQuotaMb - topLevelAllocatedMb);
+  return { topLevelAllocatedMb, availableForAllocationMb };
+}
+
+export function resolveAvailableAllocationMb(
+  systemQuotaMb: number | null,
+  orgUnits: ReadonlyArray<OrgUnitAllocationRow>,
+  parentId: string | null | undefined,
+  excludeOrgUnitId?: string | null
+): number | null {
+  if (parentId) {
+    return getParentAvailableAllocationMb(parentId, orgUnits, excludeOrgUnitId);
+  }
+  return getSystemAvailableAllocationMb(systemQuotaMb, orgUnits, excludeOrgUnitId);
+}
+
+/** @deprecated Use getSystemAvailableAllocationMb for top-level allocation checks. */
+export function getAvailableAllocationMb(
+  systemQuotaMb: number | null,
+  orgUnits: ReadonlyArray<{ id?: string; storageQuotaMb?: number }>,
+  excludeOrgUnitId?: string | null
+): number | null {
+  return getSystemAvailableAllocationMb(systemQuotaMb, orgUnits, excludeOrgUnitId);
 }
 
 export function orgUnitQuotaExceedsAvailableAllocation(
@@ -119,4 +214,44 @@ export function formatAllocationError(requestedMb: number, availableMb: number):
     `Available: ${availableMb} MB\n\n` +
     "Please reduce the storage allocation or increase the system storage quota."
   );
+}
+
+export function formatParentAllocationError(
+  requestedMb: number,
+  availableMb: number,
+  parentName: string,
+  parentAllocationMb: number,
+  childrenAllocatedMb: number
+): string {
+  return (
+    "Child Office Unit allocations exceed the available Parent Office Unit storage.\n\n" +
+    `Parent Allocation: ${parentAllocationMb} MB\n` +
+    `Allocated to Children: ${childrenAllocatedMb} MB\n` +
+    `Available: ${availableMb} MB\n\n` +
+    `Requested: ${requestedMb} MB\n\n` +
+    `Parent Office Unit: ${parentName}`
+  );
+}
+
+export function formatStorageCell(mb: number | undefined): string {
+  if (mb == null || !Number.isFinite(mb)) return '0 MB';
+  const dual = formatStorageQuotaDual(Math.round(mb * 100) / 100);
+  return dual.secondary ? `${dual.primary} (${dual.secondary})` : dual.primary;
+}
+
+type OrgUnitAllocationRow = {
+  childCount?: number;
+  storageQuotaMb?: number;
+  childrenAllocatedMb?: number;
+  availableForAllocationMb?: number | null;
+};
+
+export function isParentWithChildren(ou: { childCount?: number }): boolean {
+  return (ou.childCount ?? 0) > 0;
+}
+
+export function resolvePoolAvailableMb(ou: OrgUnitAllocationRow): number | null {
+  if (!isParentWithChildren(ou)) return null;
+  if (ou.availableForAllocationMb != null) return ou.availableForAllocationMb;
+  return Math.max(0, (ou.storageQuotaMb ?? 0) - (ou.childrenAllocatedMb ?? 0));
 }

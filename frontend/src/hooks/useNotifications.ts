@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchNotificationCount, fetchNotifications } from "@/lib/system-settings";
+import { clearNotifications, fetchNotificationCount, fetchNotifications } from "@/lib/system-settings";
 import type { AppNotification } from "@/types";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -27,5 +27,15 @@ export function useNotifications() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  return { notifications, unreadCount, loading, refresh };
+  const clearAll = useCallback(async () => {
+    try {
+      await clearNotifications();
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch {
+      // Keep prior state on failure.
+    }
+  }, []);
+
+  return { notifications, unreadCount, loading, refresh, clearAll };
 }

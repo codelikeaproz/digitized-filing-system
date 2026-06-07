@@ -58,6 +58,11 @@ export async function fetchNotificationCount(): Promise<number> {
   return Number(data?.count ?? 0);
 }
 
+export async function clearNotifications(): Promise<number> {
+  const data = await api.post<{ deleted: number }>("/api/notifications/clear/", {});
+  return Number(data?.deleted ?? 0);
+}
+
 export function formatUploadSizeError(limitMb: number): string {
   return `File exceeds the maximum allowed size of ${limitMb} MB. Please compress the file and try again.`;
 }

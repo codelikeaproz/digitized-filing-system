@@ -24,3 +24,9 @@ class NotificationUnreadCountAPIView(APIView):
     def get(self, request):
         count = notifications_for_user(request.user).count()
         return Response({"count": count})
+
+
+class NotificationClearAPIView(APIView):
+    def post(self, request):
+        deleted, _ = notifications_for_user(request.user).delete()
+        return Response({"deleted": deleted})

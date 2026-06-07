@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,7 +20,18 @@ function formatTimestamp(value: string) {
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, loading } = useNotifications();
+  const { notifications, unreadCount, loading, clearAll } = useNotifications();
+  const [clearing, setClearing] = useState(false);
+
+  const handleClear = async () => {
+    if (notifications.length === 0 || clearing) return;
+    setClearing(true);
+    try {
+      await clearAll();
+    } finally {
+      setClearing(false);
+    }
+  };
 
   return (
     <Popover>
@@ -32,16 +44,30 @@ export function NotificationBell() {
         >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 ? (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-0">
-        <div className="border-b px-4 py-3">
-          <p className="text-sm font-semibold">Notifications</p>
-          <p className="text-xs text-muted-foreground">System storage alerts and updates</p>
+        <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold">Notifications</p>
+            <p className="text-xs text-muted-foreground">System storage alerts and updates</p>
+          </div>
+          {notifications.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={handleClear}
+              disabled={clearing}
+            >
+              {clearing ? "Clearing..." : "Clear"}
+            </Button>
+          ) : null}
         </div>
         <div className="max-h-96 overflow-y-auto">
           {loading && notifications.length === 0 ? (

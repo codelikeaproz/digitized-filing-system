@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CHART_BRAND_YELLOW, CHART_REMAINING } from "@/lib/chart-colors";
-import { formatStorageMbWithGb } from "@/lib/storage";
+import { formatStorageMbWithGb, formatStoragePercent } from "@/lib/storage";
 import { HardDrive } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { StorageChartTooltip } from "@/components/dashboard/StorageChartTooltip";
@@ -10,6 +10,7 @@ export type StorageStats = {
   used_mb: number;
   quota_mb: number;
   org_units_quota_mb?: number | null;
+  org_units_allocation_remaining_mb?: number | null;
   remaining_mb: number;
   percent_used: number;
 };
@@ -28,6 +29,7 @@ export function StorageUtilizationChart({ storage, isGlobal = false }: StorageUt
     { name: "Used Storage", value: storage.used_mb, color: CHART_BRAND_YELLOW },
     { name: "Remaining Storage", value: storage.remaining_mb, color: CHART_REMAINING },
   ];
+  const percentLabel = formatStoragePercent(storage.percent_used, storage.used_mb);
 
   return (
     <Card>
@@ -53,6 +55,7 @@ export function StorageUtilizationChart({ storage, isGlobal = false }: StorageUt
                     innerRadius={52}
                     outerRadius={72}
                     paddingAngle={2}
+                    minAngle={storage.used_mb > 0 ? 4 : 0}
                     stroke="none"
                   >
                     {chartData.map((entry) => (
@@ -63,8 +66,14 @@ export function StorageUtilizationChart({ storage, isGlobal = false }: StorageUt
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="text-2xl font-bold text-gray-900">{storage.percent_used.toFixed(1)}%</div>
-                <div className="text-xs font-medium text-gray-600">Used</div>
+                <div className="text-xl font-bold text-gray-900">{percentLabel}</div>
+                {storage.used_mb > 0 ? (
+                  <div className="text-xs font-medium text-gray-600 mt-0.5">
+                    {storage.used_mb.toFixed(2)} MB
+                  </div>
+                ) : (
+                  <div className="text-xs font-medium text-gray-600">Used</div>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2">
@@ -85,7 +94,7 @@ export function StorageUtilizationChart({ storage, isGlobal = false }: StorageUt
               <span className="font-semibold text-gray-900 text-right">{formatStorageMbWithGb(storage.used_mb)}</span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="font-medium text-gray-700">Remaining Storage</span>
+              <span className="font-medium text-gray-700">Remaining Storage (files)</span>
               <span className="font-semibold text-gray-900 text-right">{formatStorageMbWithGb(storage.remaining_mb)}</span>
             </div>
             <div className="flex items-center justify-between gap-4">
@@ -96,20 +105,29 @@ export function StorageUtilizationChart({ storage, isGlobal = false }: StorageUt
             </div>
             {isGlobal && storage.org_units_quota_mb != null ? (
               <div className="flex items-center justify-between gap-4">
-                <span className="font-medium text-gray-700">Total Office Unit Quotas</span>
+                <span className="font-medium text-gray-700">Total Top-Level Allocated</span>
                 <span className="font-semibold text-gray-900 text-right">
                   {formatStorageMbWithGb(storage.org_units_quota_mb)}
                 </span>
               </div>
             ) : null}
+            {isGlobal && storage.org_units_allocation_remaining_mb != null ? (
+              <div className="flex items-center justify-between gap-4">
+                <span className="font-medium text-gray-700">System Allocation Remaining</span>
+                <span className="font-semibold text-gray-900 text-right">
+                  {formatStorageMbWithGb(storage.org_units_allocation_remaining_mb)}
+                </span>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium text-gray-700">Percentage Used</span>
-              <span className="font-semibold text-gray-900">{storage.percent_used.toFixed(1)}%</span>
+              <span className="font-semibold text-gray-900">{percentLabel}</span>
             </div>
             {isGlobal ? (
               <p className="text-xs text-muted-foreground pt-1">
-                System limit applies to all units combined. Office Unit quotas are configured per unit under
-                Office Units.
+                Remaining Storage (files) is based on uploaded documents. System Allocation Remaining
+                is the unassigned top-level quota pool. Child units receive storage from their parent
+                envelope and are not counted in top-level allocation totals.
               </p>
             ) : null}
           </div>

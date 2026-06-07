@@ -380,10 +380,13 @@ class DashboardStorageSerializer(serializers.Serializer):
     org_unit_name = serializers.CharField(allow_null=True, required=False)
     quota_mb = serializers.IntegerField()
     org_units_quota_mb = serializers.IntegerField(required=False, allow_null=True)
+    org_units_allocation_remaining_mb = serializers.IntegerField(required=False, allow_null=True)
     used_mb = serializers.FloatField()
     remaining_mb = serializers.FloatField()
     usage_percentage = serializers.FloatField()
     percent_used = serializers.FloatField(required=False)
+    children_allocated_mb = serializers.IntegerField(required=False, allow_null=True)
+    available_for_allocation_mb = serializers.IntegerField(required=False, allow_null=True)
 
 
 class OfficeUnitStorageUsageSerializer(serializers.Serializer):
@@ -401,6 +404,7 @@ class DashboardStatsSerializer(serializers.Serializer):
     office_unit_name = serializers.CharField()
     office_unit_filter = serializers.CharField()
     can_filter_office_units = serializers.BooleanField()
+    aggregates_subtree = serializers.BooleanField(required=False, default=False)
     total_documents = serializers.IntegerField()
     uploaded_files = serializers.IntegerField()
     total_org_units = serializers.IntegerField(allow_null=True, required=False)

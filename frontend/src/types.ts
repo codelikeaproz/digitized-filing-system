@@ -29,10 +29,19 @@ export interface OrgType {
   sort_order: number;
 }
 
+export interface OrgUnitAllocationContext {
+  source: 'system' | 'parent';
+  parentName: string | null;
+  parentAllocationMb: number;
+  childrenAllocatedMb: number;
+  availableForAllocationMb: number;
+}
+
 export interface OrgUnit {
   id: string;
   name: string;
   parentId: string | null;
+  parentName?: string | null;
   type?: string | null;
   org_type_id?: string | number | null;
   org_type_name?: string | null;
@@ -47,8 +56,13 @@ export interface OrgUnit {
   deleteBlockReason?: string;
   storageQuotaMb?: number;
   storageUsedMb?: number;
+  storageUsedDisplayMb?: number;
   storageRemainingMb?: number;
   storagePercentUsed?: number;
+  childrenAllocatedMb?: number;
+  availableForAllocationMb?: number | null;
+  storageOwnUsedMb?: number;
+  allocationContext?: OrgUnitAllocationContext;
 }
 
 export type DocumentStatus = 'Received';

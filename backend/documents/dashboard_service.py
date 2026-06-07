@@ -12,11 +12,28 @@ from accounts.models import User
 from documents.models import Document
 from documents.permissions import get_accessible_org_unit_ids, org_unit_scope_ids
 from orgunits.models import OrgUnit
-from orgunits.storage import DEFAULT_STORAGE_QUOTA_MB, bytes_to_mb
+from orgunits.storage import (
+    DEFAULT_STORAGE_QUOTA_MB,
+    bytes_to_mb,
+    get_direct_children_quota_mb,
+    get_display_used_mb,
+    get_subtree_org_unit_ids,
+    get_subtree_used_bytes,
+    get_top_level_allocated_quota_mb,
+    org_unit_has_active_children,
+)
 
 
 class DashboardService:
     """Reusable dashboard aggregation for global and per-Office-Unit views."""
+
+    @staticmethod
+    def _subtree_scope_ids(org_unit):
+        return get_subtree_org_unit_ids(org_unit)
+
+    @staticmethod
+    def _should_aggregate_subtree(org_unit):
+        return org_unit_has_active_children(org_unit)
 
     @staticmethod
     def _usage_bytes_by_org_unit():
@@ -56,8 +73,9 @@ class DashboardService:
         """Build storage summary for one Office Unit from live document sizes."""
         quota_mb = org_unit.storage_quota_mb or DEFAULT_STORAGE_QUOTA_MB
         if used_bytes is None:
-            used_bytes = cls.compute_used_bytes(org_unit.id)
-        used_mb = float(bytes_to_mb(used_bytes))
+            used_mb = get_display_used_mb(org_unit)
+        else:
+            used_mb = float(bytes_to_mb(used_bytes))
         remaining_mb = round(max(0.0, quota_mb - used_mb), 2)
         usage_percentage = round((used_mb / quota_mb) * 100, 1) if quota_mb else 0.0
         return {
@@ -82,8 +100,18 @@ class DashboardService:
 
         results = []
         for org_unit in queryset:
-            used_bytes = usage_map.get(org_unit.id, 0)
+            if org_unit_has_active_children(org_unit):
+                used_bytes = get_subtree_used_bytes(org_unit)
+            else:
+                used_bytes = usage_map.get(org_unit.id, 0)
             summary = cls.get_storage_summary(org_unit, used_bytes=used_bytes)
+            has_children = org_unit_has_active_children(org_unit)
+            children_allocated_mb = (
+                get_direct_children_quota_mb(org_unit) if has_children else 0
+            )
+            available_for_allocation_mb = (
+                max(0, summary["quota_mb"] - children_allocated_mb) if has_children else 0
+            )
             results.append(
                 {
                     "org_unit_id": summary["org_unit_id"],
@@ -92,6 +120,9 @@ class DashboardService:
                     "used_mb": summary["used_mb"],
                     "remaining_mb": summary["remaining_mb"],
                     "usage_percentage": summary["usage_percentage"],
+                    "has_children": has_children,
+                    "children_allocated_mb": int(children_allocated_mb),
+                    "available_for_allocation_mb": int(available_for_allocation_mb),
                 }
             )
         return sorted(results, key=lambda row: row["used_mb"], reverse=True)
@@ -105,7 +136,8 @@ class DashboardService:
         usage_map = cls._usage_bytes_by_org_unit()
 
         system_quota_mb = get_storage_quota_mb()
-        org_units_quota_mb = sum(unit.storage_quota_mb or DEFAULT_STORAGE_QUOTA_MB for unit in org_units)
+        org_units_quota_mb = get_top_level_allocated_quota_mb()
+        org_units_allocation_remaining_mb = max(0, int(system_quota_mb) - org_units_quota_mb)
         total_used_bytes = sum(usage_map.values())
         total_used_mb = float(bytes_to_mb(total_used_bytes))
         remaining_mb = round(max(0.0, system_quota_mb - total_used_mb), 2)
@@ -118,6 +150,7 @@ class DashboardService:
             "office_unit_name": "All Office Units",
             "office_unit_filter": "all",
             "can_filter_office_units": True,
+            "aggregates_subtree": False,
             "total_documents": docs.count(),
             "uploaded_files": docs.count(),
             "total_org_units": len(org_units),
@@ -128,6 +161,7 @@ class DashboardService:
                 "org_unit_name": "All Office Units",
                 "quota_mb": int(system_quota_mb),
                 "org_units_quota_mb": int(org_units_quota_mb),
+                "org_units_allocation_remaining_mb": int(org_units_allocation_remaining_mb),
                 "used_mb": round(total_used_mb, 2),
                 "remaining_mb": remaining_mb,
                 "usage_percentage": usage_percentage,
@@ -149,6 +183,7 @@ class DashboardService:
             "office_unit_name": org_unit.name,
             "office_unit_filter": str(org_unit.id),
             "can_filter_office_units": False,
+            "aggregates_subtree": False,
             "total_documents": docs.count(),
             "uploaded_files": docs.count(),
             "total_org_units": None,
@@ -159,31 +194,28 @@ class DashboardService:
         }
 
     @classmethod
-    def get_subtree_dashboard_stats(cls, root_org_unit, scope_ids):
-        """Aggregated dashboard for a dept_head's assigned unit and descendants."""
+    def get_subtree_dashboard_stats(cls, root_org_unit, scope_ids, can_filter=True):
+        """Aggregated dashboard for a parent unit and its descendants."""
         usage_map = cls._usage_bytes_by_org_unit()
         docs = cls._active_documents(scope_ids)
         deleted = cls._deleted_documents(scope_ids)
 
-        total_used_bytes = sum(usage_map.get(unit_id, 0) for unit_id in scope_ids)
-        total_quota_mb = sum(
-            (OrgUnit.objects.filter(pk=unit_id).values_list("storage_quota_mb", flat=True).first()
-             or DEFAULT_STORAGE_QUOTA_MB)
-            for unit_id in scope_ids
-        )
+        total_quota_mb = root_org_unit.storage_quota_mb or DEFAULT_STORAGE_QUOTA_MB
+        total_used_bytes = get_subtree_used_bytes(root_org_unit)
         used_mb = float(bytes_to_mb(total_used_bytes))
         remaining_mb = round(max(0.0, total_quota_mb - used_mb), 2)
         usage_percentage = round((used_mb / total_quota_mb) * 100, 1) if total_quota_mb else 0.0
 
-        descendant_count = max(0, len(scope_ids) - 1)
-        has_children = descendant_count > 0
+        has_children = org_unit_has_active_children(root_org_unit)
+        children_allocated_mb = get_direct_children_quota_mb(root_org_unit) if has_children else 0
 
         return {
             "scope": "office_unit",
             "office_unit_id": str(root_org_unit.id),
             "office_unit_name": root_org_unit.name,
             "office_unit_filter": str(root_org_unit.id),
-            "can_filter_office_units": has_children,
+            "can_filter_office_units": can_filter and has_children,
+            "aggregates_subtree": True,
             "total_documents": docs.count(),
             "uploaded_files": docs.count(),
             "total_org_units": len(scope_ids),
@@ -197,6 +229,8 @@ class DashboardService:
                 "remaining_mb": remaining_mb,
                 "usage_percentage": usage_percentage,
                 "percent_used": usage_percentage,
+                "children_allocated_mb": int(children_allocated_mb),
+                "available_for_allocation_mb": max(0, int(total_quota_mb) - children_allocated_mb),
             },
             "storage_by_office_unit": cls.get_storage_usage_by_office_unit(usage_map, scope_ids),
         }
@@ -249,6 +283,7 @@ class DashboardService:
         if org_unit is None:
             payload = cls.get_global_dashboard_stats()
             payload["can_filter_office_units"] = is_admin
+            payload["aggregates_subtree"] = False
             return payload
 
         if role == "dept_head":
@@ -266,6 +301,11 @@ class DashboardService:
                     payload["can_filter_office_units"] = True
                 else:
                     payload["can_filter_office_units"] = False
+            return payload
+
+        if cls._should_aggregate_subtree(org_unit):
+            scope_ids = cls._subtree_scope_ids(org_unit)
+            payload = cls.get_subtree_dashboard_stats(org_unit, scope_ids, can_filter=is_admin)
             return payload
 
         payload = cls.get_office_unit_dashboard_stats(org_unit)

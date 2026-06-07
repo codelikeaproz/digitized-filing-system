@@ -21,6 +21,7 @@ from documents.models import Document, Folder
 from documents.permissions import get_scoped_org_units_queryset
 from .models import OrgType, OrgUnit
 from .serializers import OrgTypeSerializer, OrgUnitSerializer
+from .storage import ALLOCATION_ERROR_MESSAGES
 
 
 def ensure_default_org_unit():
@@ -129,15 +130,29 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
         detail = getattr(exc, "detail", None)
         if not isinstance(detail, dict):
             return False
-        if detail.get("message") == "Insufficient available system storage.":
+        message = detail.get("message")
+        if message in ALLOCATION_ERROR_MESSAGES:
             return True
         storage_err = detail.get("storageQuotaMb") or detail.get("storage_quota_mb")
-        return storage_err is not None and "Insufficient available system storage" in str(storage_err)
+        if storage_err is None:
+            return False
+        storage_err_text = str(storage_err)
+        return any(marker in storage_err_text for marker in ALLOCATION_ERROR_MESSAGES)
 
-    def _audit_allocation_failure(self, request, *, org_unit_name="", previous_quota=None, requested_quota=None):
+    def _audit_allocation_failure(
+        self,
+        request,
+        *,
+        org_unit_name="",
+        parent_name=None,
+        previous_quota=None,
+        requested_quota=None,
+    ):
         parts = ["Storage allocation validation failed."]
         if org_unit_name:
             parts.append(f"Office Unit: {org_unit_name}.")
+        if parent_name:
+            parts.append(f"Parent Office Unit: {parent_name}.")
         if previous_quota is not None:
             parts.append(f"Previous quota: {previous_quota} MB.")
         if requested_quota is not None:
@@ -151,6 +166,15 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
             target_org_unit=org_unit_name or None,
         )
 
+    def _resolve_parent_name_for_request(self, request, instance=None):
+        parent_id = request.data.get("parentId")
+        if parent_id is None and instance is not None:
+            parent_id = instance.parent_id
+        if not parent_id:
+            return None
+        parent = OrgUnit.objects.filter(pk=parent_id, is_deleted=False).first()
+        return parent.name if parent else None
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         try:
@@ -160,6 +184,7 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
                 self._audit_allocation_failure(
                     request,
                     org_unit_name=(request.data.get("name") or "").strip(),
+                    parent_name=self._resolve_parent_name_for_request(request),
                     requested_quota=request.data.get("storageQuotaMb"),
                 )
             raise
@@ -183,6 +208,7 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
                 self._audit_allocation_failure(
                     request,
                     org_unit_name=instance.name,
+                    parent_name=self._resolve_parent_name_for_request(request, instance),
                     previous_quota=previous_quota,
                     requested_quota=request.data.get("storageQuotaMb"),
                 )
@@ -259,11 +285,19 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
         if "storage_quota_mb" in serializer.validated_data:
             new_quota = instance.storage_quota_mb
             if previous_quota != new_quota:
+                allocation_label = (
+                    "Child allocation updated"
+                    if instance.parent_id
+                    else "Parent allocation updated"
+                )
+                parent_note = ""
+                if instance.parent_id:
+                    parent_note = f" (Parent: {instance.parent.name})"
                 log_audit(
                     self.request.user,
                     "STORAGE_ALLOCATION_UPDATED",
                     (
-                        f"Storage allocation updated for {instance.name}: "
+                        f"{allocation_label} for {instance.name}{parent_note}: "
                         f"{previous_quota} MB → {new_quota} MB"
                     ),
                     target_type="org_unit",

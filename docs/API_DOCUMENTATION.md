@@ -473,10 +473,13 @@ Or custom:
 | `office_unit` | `all` (default for admin), Office Unit ID | Admin: any unit. Dept Head: own unit or descendant IDs only. Staff: ignored (own unit only). |
 
 **Role behavior:**
-- **Admin** — `office_unit=all` returns global stats + storage comparison chart data; specific ID returns scoped Office Unit stats
-- **Dept Head (parent unit)** — default view aggregates own unit + all descendants; `storage_by_office_unit` lists each accessible child; `can_filter_office_units` is true when descendants exist
-- **Dept Head (child-only or filtered to child)** — scoped to selected unit; comparison chart still lists accessible subtree units when applicable
+- **Admin** — `office_unit=all` returns global stats + storage comparison chart data; filtering to a **parent unit with children** aggregates documents and usage across the subtree (same as parent dept_head), uses the parent's quota envelope (not the sum of child quotas), and includes `storage_by_office_unit` breakdown; filtering to a **leaf unit** returns single-unit stats only
+- **Dept Head (parent unit)** — default view aggregates own unit + all descendants; `storage.quota_mb` is the parent allocation envelope; `storage_by_office_unit` lists each accessible child; `can_filter_office_units` is true when descendants exist; `aggregates_subtree` is true
+- **Dept Head (child-only or filtered to child)** — scoped to selected unit; comparison chart still lists accessible subtree units when applicable; `aggregates_subtree` is false
 - **Staff** — always scoped to assigned Office Unit; filter param ignored
+
+**Response fields:**
+- `aggregates_subtree` — `true` when document counts and storage usage include descendant Office Units (parent dept_head default, admin filtering to a parent with children)
 
 **Success `200` (global):**
 
@@ -541,10 +544,72 @@ Or custom:
 **Storage calculations (global admin view):**
 
 - `storage.quota_mb` — system-wide cap from Settings → System (`SystemSettings.storage_quota_mb`); drives utilization percentage, notifications, and upload blocking
-- `storage.org_units_quota_mb` — sum of all Office Unit `storage_quota_mb` values (total allocated across units)
+- `storage.org_units_quota_mb` — sum of **top-level** Office Unit `storage_quota_mb` values (system pool consumption; child quotas are drawn from their parent)
 - `storage.used_mb`, `storage.remaining_mb`, `storage.usage_percentage` — computed from `Document.file_size` vs system `quota_mb`
 
-**Storage calculations (Office Unit scope):** `used_mb`, `remaining_mb`, and `usage_percentage` use that unit's `OrgUnit.storage_quota_mb`.
+**Storage calculations (Office Unit scope):** `used_mb`, `remaining_mb`, and `usage_percentage` use that unit's `OrgUnit.storage_quota_mb`. Parent Office Units with children include descendant document usage in `used_mb` for display and upload validation.
+
+---
+
+### Hierarchical storage allocation
+
+Office Unit storage follows the org hierarchy:
+
+- **Top-level units** (`parentId` null): quota validated against remaining **system** storage (`sum(top-level quotas) <= system quota`).
+- **Child units**: quota validated against remaining **parent** allocation (`sum(direct sibling quotas) <= parent.storage_quota_mb`).
+- **Multi-level**: each child validates against its immediate parent only (e.g. Section under Department under College).
+- **Parent reduction**: a parent quota cannot be set below the sum of its direct children's quotas.
+- **Usage display**: parent units roll up own + descendant file usage; child units show own documents only.
+
+**Response fields (list/create/update):**
+
+| Field | Description |
+|-------|-------------|
+| `parentName` | Parent Office Unit name, or `null` for top-level |
+| `storageUsedMb` | Own document usage (stored field) |
+| `storageUsedDisplayMb` | Display usage (rollup for parents, own for children) |
+| `storageOwnUsedMb` | File usage in this unit's folders only (excludes descendant units) |
+| `storageRemainingMb` | File space left: `storageQuotaMb - storageUsedDisplayMb` |
+| `childrenAllocatedMb` | Sum of direct children's quotas (parent units only; shown in **To Children** column) |
+| `availableForAllocationMb` | Parent pool remaining within envelope: `storageQuotaMb - childrenAllocatedMb`; `null` for leaf units (**Pool Available** column) |
+| `allocationContext` | `{ source, parentName, parentAllocationMb, childrenAllocatedMb, availableForAllocationMb }` where `source` is `system` or `parent` |
+
+**Office Units table semantics (UI):**
+
+- **Envelope** — total allocation for the unit (parent envelope includes all descendants; child envelope is drawn from parent)
+- **To Children** — direct child quota sum (parent rows only)
+- **Pool Available** — envelope minus allocated children; space still assignable to new/updated child quotas
+- **Used (files)** — uploaded document bytes; parents show subtree rollup with own usage as secondary
+- **File Space Left** — envelope minus file usage (not the same as Pool Available)
+
+**Allocation error examples `400`:**
+
+Top-level (system pool exhausted):
+
+```json
+{
+  "storageQuotaMb": ["Insufficient available system storage.\n\nRequested: 500 MB\nAvailable: 200 MB\n\n..."],
+  "message": "Insufficient available system storage."
+}
+```
+
+Child exceeds parent pool:
+
+```json
+{
+  "storageQuotaMb": ["Child Office Unit allocations exceed the available Parent Office Unit storage.\n\nParent Allocation: 15360 MB\nAllocated to Children: 18000 MB\nAvailable: 0 MB\n\n..."],
+  "message": "Child Office Unit allocations exceed the available Parent Office Unit storage."
+}
+```
+
+Parent reduction blocked:
+
+```json
+{
+  "storageQuotaMb": ["Parent allocation cannot be reduced below the total allocated child storage.\n\nCurrent Child Allocation: 12000 MB\nRequested Parent Allocation: 10240 MB"],
+  "message": "Parent allocation cannot be reduced below the total allocated child storage."
+}
+```
 
 ---
 
@@ -1022,7 +1087,7 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 | `search` | Matches name, type, org type name |
 | `page`, `page_size` | Pagination |
 
-**Response includes:** `userCount`, `folderCount`, `documentCount`, `childCount`, `canDelete`, `deleteBlockReason`.
+**Response includes:** `userCount`, `folderCount`, `documentCount`, `childCount`, `canDelete`, `deleteBlockReason`, `parentName`, `storageUsedDisplayMb`, `storageOwnUsedMb`, `storageRemainingMb`, `childrenAllocatedMb`, `availableForAllocationMb`, `allocationContext`.
 
 ---
 
@@ -1049,21 +1114,15 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 - Name required; unique among siblings
 - No circular parent relationships
 - Active Org Type required (`org_type_id`)
-- `storageQuotaMb` — admin only; minimum 1 MB; cannot exceed system-wide `storage_quota_mb`
-- **Allocation validation:** sum of all active Office Unit quotas (excluding the unit being edited) plus requested quota must not exceed `storage_quota_mb`
+- `storageQuotaMb` — admin only; minimum 1 MB
+- **Top-level allocation:** cannot exceed system-wide `storage_quota_mb`; sum of top-level quotas must not exceed system quota
+- **Child allocation:** sum of direct sibling quotas (including requested) must not exceed parent `storageQuotaMb`
+- **Parent reduction:** parent quota cannot be set below sum of direct child quotas
+- Quota cannot be set below the unit's own current file usage
 
-**Allocation error `400`:**
+**Allocation error `400`:** See [Hierarchical storage allocation](#hierarchical-storage-allocation) for message formats.
 
-```json
-{
-  "storageQuotaMb": [
-    "Insufficient available system storage.\n\nRequested: 500 MB\nAvailable: 200 MB\n\nPlease reduce the storage allocation or increase the system storage quota."
-  ],
-  "message": "Insufficient available system storage."
-}
-```
-
-**Audit actions:** `CREATE_ORG_UNIT`, `UPDATE_ORG_UNIT`, `STORAGE_ALLOCATION_UPDATED` (quota change), `STORAGE_ALLOCATION_VALIDATION_FAILED`
+**Audit actions:** `CREATE_ORG_UNIT`, `UPDATE_ORG_UNIT`, `STORAGE_ALLOCATION_UPDATED` (quota change; distinguishes parent vs child allocation), `STORAGE_ALLOCATION_VALIDATION_FAILED` (includes parent context when applicable)
 
 **Permissions:** Admin only (`403` for non-admin create/update).
 
@@ -1076,7 +1135,7 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 | **Method** | `PUT` / `PATCH` |
 | **Path** | `/api/org-units/{id}/` |
 
-Same storage allocation validation as create. When updating quota, the unit's previous allocation is excluded from the allocated sum before checking headroom.
+Same hierarchical storage allocation validation as create. When updating quota, the unit's previous allocation is excluded from the sibling/top-level sum before checking headroom.
 
 ---
 

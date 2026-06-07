@@ -1,20 +1,20 @@
-/** Format storage for display: e.g. "6067.85 MB / 6 GB" */
+import { formatStorageQuotaDual } from "@/lib/storage-quota-presets";
+
+/** Format storage for display: GB primary with MB secondary (matches Office Units page). */
 export function formatStorageMbWithGb(mb: number): string {
-  const mbText = `${mb.toFixed(2)} MB`;
-  const gb = mb / 1024;
+  const dual = formatStorageQuotaDual(Math.round(mb * 100) / 100);
+  return dual.secondary ? `${dual.primary} (${dual.secondary})` : dual.primary;
+}
 
-  if (gb < 0.01) {
-    return mbText;
+/** Format storage usage percentage with adaptive precision for low usage. */
+export function formatStoragePercent(percent: number, usedMb?: number): string {
+  const roundedOne = Math.round(percent * 10) / 10;
+  if (usedMb != null && usedMb > 0 && roundedOne === 0) {
+    return "< 0.1%";
   }
-
-  let gbText: string;
-  if (gb >= 10) {
-    gbText = `${Math.round(gb)} GB`;
-  } else if (gb >= 1) {
-    gbText = `${gb.toFixed(1)} GB`;
-  } else {
-    gbText = `${gb.toFixed(2)} GB`;
+  if (percent < 1) {
+    const formatted = percent.toFixed(3).replace(/\.?0+$/, "");
+    return `${formatted}%`;
   }
-
-  return `${mbText} / ${gbText}`;
+  return `${percent.toFixed(1)}%`;
 }

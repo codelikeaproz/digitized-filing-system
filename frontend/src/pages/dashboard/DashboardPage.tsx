@@ -31,6 +31,7 @@ type DashboardResponse = {
   office_unit_name: string;
   office_unit_filter: string;
   can_filter_office_units: boolean;
+  aggregates_subtree?: boolean;
   total_documents: number;
   uploaded_files: number;
   total_org_units?: number | null;
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const [dashboardScope, setDashboardScope] = useState<"global" | "office_unit">("global");
   const [officeUnitLabel, setOfficeUnitLabel] = useState("All Office Units");
   const [canFilter, setCanFilter] = useState(false);
+  const [aggregatesSubtree, setAggregatesSubtree] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -157,6 +159,7 @@ export default function DashboardPage() {
       setDashboardScope(data.scope);
       setOfficeUnitLabel(data.office_unit_name);
       setCanFilter(data.can_filter_office_units);
+      setAggregatesSubtree(Boolean(data.aggregates_subtree));
     } catch (error) {
       console.error("Dashboard Stats Error:", error);
     } finally {
@@ -167,7 +170,19 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchStats();
     const interval = setInterval(fetchStats, 30000);
-    return () => clearInterval(interval);
+    const onFocus = () => fetchStats();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchStats();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchStats]);
 
   const gridCols =
@@ -186,6 +201,11 @@ export default function DashboardPage() {
           <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
           <p className="text-muted-foreground">
             Welcome back. Here's what's happening in your organization.
+            {aggregatesSubtree ? (
+              <span className="block text-xs mt-1">
+                Includes documents and usage from child Office Units.
+              </span>
+            ) : null}
           </p>
         </div>
 
@@ -201,7 +221,9 @@ export default function DashboardPage() {
               onChange={(e) => setOfficeUnitFilter(e.target.value)}
               className="flex h-11 w-full items-center rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             >
-              <option value="all">All Office Units</option>
+              <option value="all">
+                {isAdmin ? "All Office Units" : "My Organization (all units)"}
+              </option>
               {orgUnits.map((ou) => (
                 <option key={ou.id} value={ou.id}>
                   {ou.name}

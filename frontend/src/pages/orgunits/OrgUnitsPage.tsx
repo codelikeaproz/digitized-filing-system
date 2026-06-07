@@ -21,8 +21,17 @@ import {
   formatStorageQuotaDual,
   orgUnitQuotaExceedsSystemLimit,
   orgUnitQuotaExceedsAvailableAllocation,
-  getAvailableAllocationMb,
+  getSystemAvailableAllocationMb,
+  resolveAvailableAllocationMb,
+  sumDirectChildrenAllocatedMb,
+  sumTopLevelAllocatedMb,
+  getProjectedParentAllocationSummary,
+  getProjectedSystemAllocationSummary,
   formatAllocationError,
+  formatParentAllocationError,
+  formatStorageCell,
+  isParentWithChildren,
+  resolvePoolAvailableMb,
   ORG_UNIT_STORAGE_QUOTA_PRESETS,
   type OrgUnitStorageQuotaPreset,
 } from '@/lib/storage-quota-presets';
@@ -145,33 +154,102 @@ export default function OrgUnitsPage() {
   }, [isModalOpen]);
 
   const selectedOrgUnitQuotaMb = Number(formData.storageQuotaMb);
+  const isChildUnit = Boolean(formData.parentId);
+  const selectedParent = useMemo(
+    () => allOrgUnits.find((ou) => ou.id === formData.parentId) ?? null,
+    [allOrgUnits, formData.parentId]
+  );
+
   const quotaExceedsSystemLimit = useMemo(() => {
-    if (systemStorageQuotaMb == null) return false;
+    if (isChildUnit || systemStorageQuotaMb == null) return false;
     if (!Number.isFinite(selectedOrgUnitQuotaMb) || selectedOrgUnitQuotaMb < 1) return false;
     return orgUnitQuotaExceedsSystemLimit(selectedOrgUnitQuotaMb, systemStorageQuotaMb);
-  }, [formData.storageQuotaMb, selectedOrgUnitQuotaMb, systemStorageQuotaMb]);
+  }, [formData.storageQuotaMb, formData.parentId, isChildUnit, selectedOrgUnitQuotaMb, systemStorageQuotaMb]);
 
   const availableAllocationMb = useMemo(
-    () => getAvailableAllocationMb(systemStorageQuotaMb, allOrgUnits, isEditMode ? editId : null),
-    [systemStorageQuotaMb, allOrgUnits, isEditMode, editId]
+    () =>
+      resolveAvailableAllocationMb(
+        systemStorageQuotaMb,
+        allOrgUnits,
+        formData.parentId || null,
+        isEditMode ? editId : null
+      ),
+    [systemStorageQuotaMb, allOrgUnits, formData.parentId, isEditMode, editId]
   );
+
+  const childrenAllocatedMb = useMemo(() => {
+    if (!formData.parentId) return 0;
+    return sumDirectChildrenAllocatedMb(
+      formData.parentId,
+      allOrgUnits,
+      isEditMode ? editId : null
+    );
+  }, [allOrgUnits, formData.parentId, isEditMode, editId]);
+
+  const projectedParentAllocation = useMemo(() => {
+    if (!isChildUnit || !selectedParent) return null;
+    const parentQuota = Number(selectedParent.storageQuotaMb ?? 0);
+    const selected =
+      Number.isFinite(selectedOrgUnitQuotaMb) && selectedOrgUnitQuotaMb >= 1
+        ? selectedOrgUnitQuotaMb
+        : 0;
+    return getProjectedParentAllocationSummary(parentQuota, childrenAllocatedMb, selected);
+  }, [isChildUnit, selectedParent, childrenAllocatedMb, selectedOrgUnitQuotaMb]);
+
+  const projectedChildrenAllocatedDisplay = useMemo(() => {
+    if (projectedParentAllocation == null) return null;
+    return formatStorageQuotaDual(projectedParentAllocation.childrenAllocatedMb);
+  }, [projectedParentAllocation]);
+
+  const projectedAvailableAllocationDisplay = useMemo(() => {
+    if (projectedParentAllocation == null) return null;
+    return formatStorageQuotaDual(projectedParentAllocation.availableForAllocationMb);
+  }, [projectedParentAllocation]);
+
+  const topLevelSiblingsAllocatedMb = useMemo(() => {
+    if (isChildUnit) return 0;
+    return sumTopLevelAllocatedMb(allOrgUnits, isEditMode ? editId : null);
+  }, [allOrgUnits, isChildUnit, isEditMode, editId]);
+
+  const projectedSystemAllocation = useMemo(() => {
+    if (isChildUnit || systemStorageQuotaMb == null) return null;
+    const selected =
+      Number.isFinite(selectedOrgUnitQuotaMb) && selectedOrgUnitQuotaMb >= 1
+        ? selectedOrgUnitQuotaMb
+        : 0;
+    return getProjectedSystemAllocationSummary(
+      systemStorageQuotaMb,
+      topLevelSiblingsAllocatedMb,
+      selected
+    );
+  }, [
+    isChildUnit,
+    systemStorageQuotaMb,
+    topLevelSiblingsAllocatedMb,
+    selectedOrgUnitQuotaMb,
+  ]);
+
+  const projectedTopLevelAllocatedDisplay = useMemo(() => {
+    if (projectedSystemAllocation == null) return null;
+    return formatStorageQuotaDual(projectedSystemAllocation.topLevelAllocatedMb);
+  }, [projectedSystemAllocation]);
+
+  const projectedSystemAvailableDisplay = useMemo(() => {
+    if (projectedSystemAllocation == null) return null;
+    return formatStorageQuotaDual(projectedSystemAllocation.availableForAllocationMb);
+  }, [projectedSystemAllocation]);
 
   const quotaExceedsAvailableAllocation = useMemo(() => {
     return orgUnitQuotaExceedsAvailableAllocation(selectedOrgUnitQuotaMb, availableAllocationMb);
   }, [selectedOrgUnitQuotaMb, availableAllocationMb]);
 
-  const availableAllocationDisplay = useMemo(() => {
-    if (availableAllocationMb == null) return null;
-    return formatStorageQuotaDual(availableAllocationMb);
-  }, [availableAllocationMb]);
-
-  const availableForNewUnitMb = useMemo(
-    () => getAvailableAllocationMb(systemStorageQuotaMb, allOrgUnits, null),
+  const availableForNewTopLevelUnitMb = useMemo(
+    () => getSystemAvailableAllocationMb(systemStorageQuotaMb, allOrgUnits, null),
     [systemStorageQuotaMb, allOrgUnits]
   );
 
   const isAddOfficeUnitDisabled =
-    systemStorageQuotaMb != null && availableForNewUnitMb === 0;
+    systemStorageQuotaMb != null && availableForNewTopLevelUnitMb === 0;
 
   const systemQuotaLabel =
     systemStorageQuotaMb != null ? formatStorageQuotaMb(systemStorageQuotaMb) : null;
@@ -286,9 +364,21 @@ export default function OrgUnitsPage() {
     }
 
     if (quotaExceedsAvailableAllocation && availableAllocationMb != null) {
-      const message = formatAllocationError(selectedOrgUnitQuotaMb, availableAllocationMb);
+      const message = isChildUnit && selectedParent
+        ? formatParentAllocationError(
+            selectedOrgUnitQuotaMb,
+            availableAllocationMb,
+            selectedParent.name,
+            Number(selectedParent.storageQuotaMb ?? 0),
+            projectedParentAllocation?.childrenAllocatedMb ?? childrenAllocatedMb + selectedOrgUnitQuotaMb
+          )
+        : formatAllocationError(selectedOrgUnitQuotaMb, availableAllocationMb);
       setStorageQuotaError(message);
-      toast.error('Insufficient available system storage.');
+      toast.error(
+        isChildUnit
+          ? 'Child Office Unit allocation exceeds available parent storage.'
+          : 'Insufficient available system storage.'
+      );
       return;
     }
 
@@ -397,6 +487,37 @@ export default function OrgUnitsPage() {
 
   const parentOptions = allOrgUnits.filter(ou => !isEditMode || ou.id !== editId);
 
+  const TABLE_COLUMN_COUNT = 9;
+
+  const renderEnvelopeCell = (ou: OrgUnit) => (
+    <div className="space-y-0.5">
+      <div>{formatStorageCell(ou.storageQuotaMb ?? 1024)}</div>
+      {ou.parentId ? (
+        <div className="text-xs text-muted-foreground">
+          from {ou.parentName ?? getParentName(ou.parentId)}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const renderUsedCell = (ou: OrgUnit) => {
+    const displayUsed = ou.storageUsedDisplayMb ?? ou.storageUsedMb ?? 0;
+    const ownUsed = ou.storageOwnUsedMb ?? displayUsed;
+    const hasSubtreeUsage = isParentWithChildren(ou) && ownUsed < displayUsed;
+
+    return (
+      <div className="space-y-0.5">
+        <div>{formatStorageCell(displayUsed)}</div>
+        {hasSubtreeUsage ? (
+          <>
+            <div className="text-xs text-muted-foreground">includes child units</div>
+            <div className="text-xs text-muted-foreground">own: {formatStorageCell(ownUsed)}</div>
+          </>
+        ) : null}
+      </div>
+    );
+  };
+
   if (!isAdmin) {
     return <div className="p-8 text-center text-red-500">Access Denied. Admins Only.</div>;
   }
@@ -412,8 +533,8 @@ export default function OrgUnitsPage() {
           <p className="text-gray-500 mt-1">Manage office structure, storage quotas, and database-driven types.</p>
           {isAddOfficeUnitDisabled ? (
             <p className="text-xs text-muted-foreground mt-2 max-w-xl">
-              All system storage has been allocated. Increase the system quota under Settings → System
-              or reduce an existing Office Unit quota.
+              All top-level system storage has been allocated. Increase the system quota under Settings → System,
+              reduce a top-level Office Unit quota, or add a child Office Unit under an existing parent.
             </p>
           ) : null}
         </div>
@@ -422,7 +543,7 @@ export default function OrgUnitsPage() {
           disabled={isAddOfficeUnitDisabled}
           title={
             isAddOfficeUnitDisabled
-              ? 'No system storage remaining for new Office Units.'
+              ? 'No top-level system storage remaining. Add a child Office Unit under a parent instead.'
               : undefined
           }
           className="bg-[#0A4D27] hover:bg-[#083E1D] text-white gap-2 h-11 px-6 rounded-xl shadow-sm disabled:opacity-50"
@@ -437,9 +558,13 @@ export default function OrgUnitsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[30%] pl-6">Name</TableHead>
+                <TableHead className="w-[18%] pl-6">Name</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>Storage</TableHead>
+                <TableHead>Envelope</TableHead>
+                <TableHead>To Children</TableHead>
+                <TableHead>Pool Available</TableHead>
+                <TableHead>Used (files)</TableHead>
+                <TableHead>File Space Left</TableHead>
                 <TableHead>Hierarchy (Parent)</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
               </TableRow>
@@ -447,19 +572,23 @@ export default function OrgUnitsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={TABLE_COLUMN_COUNT} className="h-24 text-center text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-[#0A4D27]" />
                     Loading structure...
                   </TableCell>
                 </TableRow>
               ) : orgUnits.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={TABLE_COLUMN_COUNT} className="h-24 text-center text-muted-foreground">
                     No Office Units found.
                   </TableCell>
                 </TableRow>
               ) : (
-                orgUnits.map((ou) => (
+                orgUnits.map((ou) => {
+                  const poolAvailable = resolvePoolAvailableMb(ou);
+                  const isParent = isParentWithChildren(ou);
+
+                  return (
                   <TableRow key={ou.id}>
                     <TableCell className="pl-6 font-medium flex items-center gap-2">
                       <FolderTree className="h-4 w-4 text-muted-foreground ml-2" />
@@ -469,7 +598,19 @@ export default function OrgUnitsPage() {
                       <Badge variant="outline">{getOrgTypeName(ou)}</Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {(ou.storageUsedMb ?? 0).toString()} / {ou.storageQuotaMb ?? 1024} MB
+                      {renderEnvelopeCell(ou)}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {isParent ? formatStorageCell(ou.childrenAllocatedMb ?? 0) : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {poolAvailable != null ? formatStorageCell(poolAvailable) : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {renderUsedCell(ou)}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatStorageCell(ou.storageRemainingMb ?? 0)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {getParentName(ou.parentId)}
@@ -490,11 +631,18 @@ export default function OrgUnitsPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </div>
+        <p className="px-4 py-3 text-xs text-muted-foreground border-t">
+          Child quotas are part of the parent envelope, not additional system storage.{' '}
+          <span className="font-medium text-gray-700">Pool Available</span> is space still assignable within the
+          parent; <span className="font-medium text-gray-700">File Space Left</span> is unused space based on
+          uploaded documents.
+        </p>
         <PaginationControls
           count={orgUnitCount}
           currentPage={currentPage}
@@ -553,19 +701,89 @@ export default function OrgUnitsPage() {
                 </select>
               </div>
 
+              <div className="space-y-2">
+                <label htmlFor="org-unit-parent" className="text-sm font-medium text-gray-700">Parent (Optional)</label>
+                <select
+                  id="org-unit-parent"
+                  name="parentId"
+                  value={formData.parentId}
+                  onChange={handleInputChange}
+                  className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                >
+                  <option value="">None (Top-level)</option>
+                  {parentOptions.map(ou => (
+                    <option key={ou.id} value={ou.id}>{ou.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-3">
                 <label htmlFor="org-unit-storage-quota-preset" className="text-sm font-medium text-gray-700">Storage Quota</label>
-                {availableAllocationDisplay != null ? (
-                  <div className="rounded-xl border border-[#0A4D27]/20 bg-[#0A4D27]/5 px-3 py-2.5">
-                    <p className="text-xs font-medium text-[#0A4D27]">Available System Storage</p>
-                    <p className="mt-1 text-sm font-semibold text-gray-900">
-                      {availableAllocationDisplay.primary} remaining
-                    </p>
-                    {availableAllocationDisplay.secondary ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {availableAllocationDisplay.secondary}
+                {isChildUnit && selectedParent ? (
+                  <div className="rounded-xl border border-[#0A4D27]/20 bg-[#0A4D27]/5 px-3 py-2.5 space-y-2">
+                    <p className="text-xs font-medium text-[#0A4D27]">Parent Office Unit</p>
+                    <p className="text-sm font-semibold text-gray-900">{selectedParent.name}</p>
+                    <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+                      <p>
+                        Parent Allocation:{' '}
+                        <span className="font-medium text-gray-900">
+                          {formatStorageQuotaDual(Number(selectedParent.storageQuotaMb ?? 0)).primary}
+                        </span>
                       </p>
-                    ) : null}
+                      <p>
+                        Allocated To Children:{' '}
+                        <span className="font-medium text-gray-900">
+                          {projectedChildrenAllocatedDisplay?.primary ?? '0 MB'}
+                        </span>
+                        {projectedChildrenAllocatedDisplay?.secondary ? (
+                          <span className="ml-1 font-medium text-gray-900">
+                            ({projectedChildrenAllocatedDisplay.secondary})
+                          </span>
+                        ) : null}
+                      </p>
+                      {projectedAvailableAllocationDisplay ? (
+                        <p>
+                          Available For Allocation:{' '}
+                          <span className="font-medium text-gray-900">
+                            {projectedAvailableAllocationDisplay.primary}
+                          </span>
+                          {projectedAvailableAllocationDisplay.secondary ? (
+                            <span className="ml-1">({projectedAvailableAllocationDisplay.secondary})</span>
+                          ) : null}
+                        </p>
+                      ) : null}
+                      <p className="text-[11px] pt-1">
+                        Child quotas count toward the parent envelope, not the system limit separately.
+                      </p>
+                    </div>
+                  </div>
+                ) : projectedSystemAllocation != null ? (
+                  <div className="rounded-xl border border-[#0A4D27]/20 bg-[#0A4D27]/5 px-3 py-2.5 space-y-2">
+                    <p className="text-xs font-medium text-[#0A4D27]">Available System Storage</p>
+                    <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+                      <p>
+                        Total Top-Level Allocated:{' '}
+                        <span className="font-medium text-gray-900">
+                          {projectedTopLevelAllocatedDisplay?.primary ?? '0 MB'}
+                        </span>
+                        {projectedTopLevelAllocatedDisplay?.secondary ? (
+                          <span className="ml-1 font-medium text-gray-900">
+                            ({projectedTopLevelAllocatedDisplay.secondary})
+                          </span>
+                        ) : null}
+                      </p>
+                      {projectedSystemAvailableDisplay ? (
+                        <p>
+                          Available For Allocation:{' '}
+                          <span className="font-medium text-gray-900">
+                            {projectedSystemAvailableDisplay.primary}
+                          </span>
+                          {projectedSystemAvailableDisplay.secondary ? (
+                            <span className="ml-1">({projectedSystemAvailableDisplay.secondary})</span>
+                          ) : null}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
                 <select
@@ -599,15 +817,22 @@ export default function OrgUnitsPage() {
                 )}
                 <p className="text-xs text-muted-foreground">
                   Admin-only setting. Uploads are blocked when this Office Unit exceeds its quota.
-                  System-wide storage limits are configured under Settings → System.
-                  {systemQuotaLabel ? (
-                    <> Current system limit: <span className="font-medium">{systemQuotaLabel}</span>.</>
-                  ) : null}
+                  {isChildUnit ? (
+                    <> Child Office Units receive storage from their parent allocation.</>
+                  ) : (
+                    <>
+                      {' '}
+                      System-wide storage limits are configured under Settings → System.
+                      {systemQuotaLabel ? (
+                        <> Current system limit: <span className="font-medium">{systemQuotaLabel}</span>.</>
+                      ) : null}
+                    </>
+                  )}
                   {formData.storageQuotaPreset !== 'custom' && (
                     <> Selected: <span className="font-medium">{formData.storageQuotaMb} MB</span>.</>
                   )}
                 </p>
-                {quotaExceedsSystemLimit && systemQuotaLabel ? (
+                {!isChildUnit && quotaExceedsSystemLimit && systemQuotaLabel ? (
                   <p className="text-xs font-medium text-destructive">
                     Office Unit quota cannot exceed the system-wide limit ({systemQuotaLabel}). Lower the
                     quota or increase the system limit under Settings → System.
@@ -615,28 +840,14 @@ export default function OrgUnitsPage() {
                 ) : null}
                 {quotaExceedsAvailableAllocation && availableAllocationMb != null ? (
                   <p className="text-xs font-medium text-destructive">
-                    Selected quota exceeds available system storage ({formatStorageQuotaDual(availableAllocationMb).primary} remaining).
+                    {isChildUnit
+                      ? `Selected quota exceeds available parent storage (${projectedAvailableAllocationDisplay?.primary ?? formatStorageQuotaDual(availableAllocationMb).primary} remaining).`
+                      : `Selected quota exceeds available system storage (${projectedSystemAvailableDisplay?.primary ?? formatStorageQuotaDual(availableAllocationMb).primary} remaining).`}
                   </p>
                 ) : null}
                 {storageQuotaError ? (
                   <p className="text-xs font-medium text-destructive whitespace-pre-line">{storageQuotaError}</p>
                 ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="org-unit-parent" className="text-sm font-medium text-gray-700">Parent (Optional)</label>
-                <select
-                  id="org-unit-parent"
-                  name="parentId"
-                  value={formData.parentId}
-                  onChange={handleInputChange}
-                  className="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                >
-                  <option value="">None (Top-level)</option>
-                  {parentOptions.map(ou => (
-                    <option key={ou.id} value={ou.id}>{ou.name}</option>
-                  ))}
-                </select>
               </div>
 
               <div className="pt-4 flex justify-end gap-3">
