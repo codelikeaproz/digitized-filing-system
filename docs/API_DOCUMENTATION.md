@@ -476,7 +476,7 @@ Or custom:
 - **Admin** — `office_unit=all` returns global stats + storage comparison chart data; filtering to a **parent unit with children** aggregates documents and usage across the subtree (same as parent dept_head), uses the parent's quota envelope (not the sum of child quotas), and includes `storage_by_office_unit` breakdown; filtering to a **leaf unit** returns single-unit stats only
 - **Dept Head (parent unit)** — default view aggregates own unit + all descendants; `storage.quota_mb` is the parent allocation envelope; `storage_by_office_unit` lists each accessible child; `can_filter_office_units` is true when descendants exist; `aggregates_subtree` is true
 - **Dept Head (child-only or filtered to child)** — scoped to selected unit; comparison chart still lists accessible subtree units when applicable; `aggregates_subtree` is false
-- **Staff** — always scoped to assigned Office Unit; filter param ignored
+- **Staff** — always scoped to assigned Office Unit only (not descendants), even when assigned to a parent unit with child Office Units; filter param ignored; `aggregates_subtree` is false and `storage_by_office_unit` is empty
 
 **Response fields:**
 

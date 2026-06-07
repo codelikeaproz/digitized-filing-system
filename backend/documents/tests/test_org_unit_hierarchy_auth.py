@@ -38,6 +38,12 @@ class OrgUnitHierarchyAuthTests(TestCase):
             role="staff",
             org_unit=self.sdd,
         )
+        self.cisc_staff = User.objects.create_user(
+            email="cisc-staff@test.local",
+            password="Test@12345",
+            role="staff",
+            org_unit=self.cisc,
+        )
         self.admin = User.objects.create_user(
             email="admin-hierarchy@test.local",
             password="Test@12345",
@@ -238,6 +244,21 @@ class OrgUnitHierarchyAuthTests(TestCase):
     def test_dashboard_child_filter_out_of_scope_for_sdd_head(self):
         self.client.force_authenticate(user=self.sdd_head)
         response = self.client.get("/api/dashboard/", {"office_unit": self.cisc.id})
+        self.assertEqual(response.status_code, 403)
+
+    def test_cisc_staff_dashboard_single_unit_only(self):
+        self.client.force_authenticate(user=self.cisc_staff)
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["aggregates_subtree"])
+        self.assertEqual(response.data["total_documents"], 1)
+        self.assertEqual(response.data["storage_by_office_unit"], [])
+        self.assertFalse(response.data["can_filter_office_units"])
+        self.assertEqual(response.data["office_unit_id"], str(self.cisc.id))
+
+    def test_cisc_staff_dashboard_rejects_foreign_filter(self):
+        self.client.force_authenticate(user=self.cisc_staff)
+        response = self.client.get("/api/dashboard/", {"office_unit": self.sdd.id})
         self.assertEqual(response.status_code, 403)
 
     def test_ai_search_preview_audited(self):

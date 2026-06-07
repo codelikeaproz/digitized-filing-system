@@ -303,6 +303,11 @@ class DashboardService:
                     payload["can_filter_office_units"] = False
             return payload
 
+        if role == "staff":
+            payload = cls.get_office_unit_dashboard_stats(org_unit)
+            payload["can_filter_office_units"] = False
+            return payload
+
         if cls._should_aggregate_subtree(org_unit):
             scope_ids = cls._subtree_scope_ids(org_unit)
             payload = cls.get_subtree_dashboard_stats(org_unit, scope_ids, can_filter=is_admin)

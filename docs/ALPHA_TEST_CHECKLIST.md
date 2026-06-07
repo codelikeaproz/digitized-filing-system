@@ -48,6 +48,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Parent Dept Head sees subtree folder tree (assigned unit + descendants) | Dept Head | [ ] |
 | Parent Dept Head dashboard: 15 GB envelope (not parent + child quota sum); aggregates docs across subtree | Dept Head | [ ] |
 | Parent Dept Head comparison chart lists child units; subtitle notes child inclusion when applicable | Dept Head | [ ] |
+| Staff at parent unit: dashboard shows assigned unit only; no subtree aggregation or comparison chart | Staff | [ ] |
 | Child Dept Head / Staff see only assigned unit in tree, org-unit list, and documents | Dept Head, Staff | [ ] |
 | Tampered `orgUnitId` on document list returns 403 for out-of-scope unit | Dept Head | [ ] |
 
