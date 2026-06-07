@@ -584,11 +584,7 @@ export default function OrgUnitsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                orgUnits.map((ou) => {
-                  const poolAvailable = resolvePoolAvailableMb(ou);
-                  const isParent = isParentWithChildren(ou);
-
-                  return (
+                orgUnits.map((ou) => (
                   <TableRow key={ou.id}>
                     <TableCell className="pl-6 font-medium flex items-center gap-2">
                       <FolderTree className="h-4 w-4 text-muted-foreground ml-2" />
@@ -601,10 +597,10 @@ export default function OrgUnitsPage() {
                       {renderEnvelopeCell(ou)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {isParent ? formatStorageCell(ou.childrenAllocatedMb ?? 0) : '—'}
+                      {formatStorageCell(ou.childrenAllocatedMb ?? 0)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {poolAvailable != null ? formatStorageCell(poolAvailable) : '—'}
+                      {formatStorageCell(resolvePoolAvailableMb(ou))}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {renderUsedCell(ou)}
@@ -631,16 +627,17 @@ export default function OrgUnitsPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                  );
-                })
+                ))
               )}
             </TableBody>
           </Table>
         </div>
         <p className="px-4 py-3 text-xs text-muted-foreground border-t">
           Child quotas are part of the parent envelope, not additional system storage.{' '}
+          Leaf units show <span className="font-medium text-gray-700">To Children: 0 MB</span> and{' '}
+          <span className="font-medium text-gray-700">Pool Available</span> equal to their full envelope.{' '}
           <span className="font-medium text-gray-700">Pool Available</span> is space still assignable within the
-          parent; <span className="font-medium text-gray-700">File Space Left</span> is unused space based on
+          unit; <span className="font-medium text-gray-700">File Space Left</span> is unused space based on
           uploaded documents.
         </p>
         <PaginationControls

@@ -60,7 +60,7 @@ export interface OrgUnit {
   storageRemainingMb?: number;
   storagePercentUsed?: number;
   childrenAllocatedMb?: number;
-  availableForAllocationMb?: number | null;
+  availableForAllocationMb?: number;
   storageOwnUsedMb?: number;
   allocationContext?: OrgUnitAllocationContext;
 }

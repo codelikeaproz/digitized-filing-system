@@ -291,10 +291,8 @@ class OrgUnitSerializer(serializers.ModelSerializer):
         return get_direct_children_quota_mb(obj)
 
     def get_availableForAllocationMb(self, obj):
-        from orgunits.storage import get_direct_children_quota_mb, org_unit_has_active_children
+        from orgunits.storage import get_direct_children_quota_mb
 
-        if not org_unit_has_active_children(obj):
-            return None
         quota = int(obj.storage_quota_mb or 0)
         children_allocated = get_direct_children_quota_mb(obj)
         return max(0, quota - children_allocated)

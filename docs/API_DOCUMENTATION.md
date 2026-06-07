@@ -653,15 +653,15 @@ Office Unit storage follows the org hierarchy:
 | `storageUsedDisplayMb` | Display usage (rollup for parents, own for children) |
 | `storageOwnUsedMb` | File usage in this unit's folders only (excludes descendant units) |
 | `storageRemainingMb` | File space left: `storageQuotaMb - storageUsedDisplayMb` |
-| `childrenAllocatedMb` | Sum of direct children's quotas (parent units only; shown in **To Children** column) |
-| `availableForAllocationMb` | Parent pool remaining within envelope: `storageQuotaMb - childrenAllocatedMb`; `null` for leaf units (**Pool Available** column) |
+| `childrenAllocatedMb` | Sum of direct children's quotas; `0` for leaf units (**To Children** column) |
+| `availableForAllocationMb` | Pool remaining within envelope: `storageQuotaMb - childrenAllocatedMb`; always returned—for leaf units equals full envelope (**Pool Available** column) |
 | `allocationContext` | `{ source, parentName, parentAllocationMb, childrenAllocatedMb, availableForAllocationMb }` where `source` is `system` or `parent` |
 
 **Office Units table semantics (UI):**
 
 - **Envelope** — total allocation for the unit (parent envelope includes all descendants; child envelope is drawn from parent)
-- **To Children** — direct child quota sum (parent rows only)
-- **Pool Available** — envelope minus allocated children; space still assignable to new/updated child quotas
+- **To Children** — direct child quota sum; leaf units show **0 MB**
+- **Pool Available** — envelope minus allocated children; for leaf units equals full envelope
 - **Used (files)** — uploaded document bytes; parents show subtree rollup with own usage as secondary
 - **File Space Left** — envelope minus file usage (not the same as Pool Available)
 

@@ -243,15 +243,14 @@ type OrgUnitAllocationRow = {
   childCount?: number;
   storageQuotaMb?: number;
   childrenAllocatedMb?: number;
-  availableForAllocationMb?: number | null;
+  availableForAllocationMb?: number;
 };
 
 export function isParentWithChildren(ou: { childCount?: number }): boolean {
   return (ou.childCount ?? 0) > 0;
 }
 
-export function resolvePoolAvailableMb(ou: OrgUnitAllocationRow): number | null {
-  if (!isParentWithChildren(ou)) return null;
+export function resolvePoolAvailableMb(ou: OrgUnitAllocationRow): number {
   if (ou.availableForAllocationMb != null) return ou.availableForAllocationMb;
   return Math.max(0, (ou.storageQuotaMb ?? 0) - (ou.childrenAllocatedMb ?? 0));
 }
