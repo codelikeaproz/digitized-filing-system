@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Network, Plus, Trash2, Edit, Loader2, FolderTree } from 'lucide-react';
+import { Network, Plus, Trash2, Edit, Loader2, FolderTree, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth-context';
@@ -59,6 +59,17 @@ const STORAGE_QUOTA_PRESETS = ORG_UNIT_STORAGE_QUOTA_PRESETS;
 
 type StorageQuotaPreset = OrgUnitStorageQuotaPreset;
 
+type OrgUnitListSummary = {
+  unit_count: number;
+  document_count: number;
+  folder_count: number;
+  user_count: number;
+};
+
+type OrgUnitListResponse = PaginatedResponse<OrgUnit> & {
+  summary?: OrgUnitListSummary;
+};
+
 const resolvePresetForQuotaMb = (quotaMb: number | string | undefined): StorageQuotaPreset =>
   getPresetForQuotaMb(quotaMb, STORAGE_QUOTA_PRESETS, '1024');
 
@@ -91,6 +102,8 @@ export default function OrgUnitsPage() {
   const [isSavingType, setIsSavingType] = useState(false);
   const [systemStorageQuotaMb, setSystemStorageQuotaMb] = useState<number | null>(null);
   const [storageQuotaError, setStorageQuotaError] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [listSummary, setListSummary] = useState<OrgUnitListSummary | null>(null);
 
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
@@ -98,12 +111,17 @@ export default function OrgUnitsPage() {
   const fetchOrgUnits = async () => {
     try {
       setIsLoading(true);
-      const data = await api.get<PaginatedResponse<OrgUnit>>('/api/org-units/', {
+      const params: Record<string, string | number> = {
         page: currentPage,
         page_size: pageSize,
-      });
+      };
+      if (typeFilter !== 'all') {
+        params.org_type_id = typeFilter;
+      }
+      const data = await api.get<OrgUnitListResponse>('/api/org-units/', params);
       setOrgUnits(data.results);
       setOrgUnitCount(data.count);
+      setListSummary(data.summary ?? null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to fetch Office Units');
     } finally {
@@ -135,7 +153,7 @@ export default function OrgUnitsPage() {
 
   useEffect(() => {
     fetchOrgUnits();
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, typeFilter]);
 
   useEffect(() => {
     fetchAllOrgUnits();
@@ -487,7 +505,38 @@ export default function OrgUnitsPage() {
 
   const parentOptions = allOrgUnits.filter(ou => !isEditMode || ou.id !== editId);
 
-  const TABLE_COLUMN_COUNT = 9;
+  const TABLE_COLUMN_COUNT = 10;
+
+  const selectedTypeLabel = useMemo(() => {
+    if (typeFilter === 'all') return 'Office Units';
+    return orgTypes.find((type) => String(type.id) === typeFilter)?.name ?? 'Office Units';
+  }, [orgTypes, typeFilter]);
+
+  const handleTypeFilterChange = (value: string) => {
+    setTypeFilter(value);
+    setCurrentPage(1);
+  };
+
+  const renderImpactSummary = () => {
+    if (!listSummary) return null;
+
+    const unitLabel =
+      typeFilter === 'all'
+        ? `${listSummary.unit_count} Office Unit${listSummary.unit_count === 1 ? '' : 's'}`
+        : `${listSummary.unit_count} ${selectedTypeLabel}${listSummary.unit_count === 1 ? '' : 's'}`;
+
+    return (
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium text-gray-800">{unitLabel}</span>
+        {' · '}
+        {listSummary.document_count} document{listSummary.document_count === 1 ? '' : 's'}
+        {' · '}
+        {listSummary.folder_count} folder{listSummary.folder_count === 1 ? '' : 's'}
+        {' · '}
+        {listSummary.user_count} user{listSummary.user_count === 1 ? '' : 's'}
+      </p>
+    );
+  };
 
   const renderEnvelopeCell = (ou: OrgUnit) => (
     <div className="space-y-0.5">
@@ -554,6 +603,25 @@ export default function OrgUnitsPage() {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4 items-center justify-between bg-gray-50/50">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+            <select
+              title="Filter by Office Unit type"
+              value={typeFilter}
+              onChange={(event) => handleTypeFilterChange(event.target.value)}
+              className="h-10 w-full sm:w-56 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-[#0A4D27] outline-none bg-white"
+            >
+              <option value="all">All Types</option>
+              {orgTypes.map((type) => (
+                <option key={type.id} value={String(type.id)}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-full sm:text-right">{renderImpactSummary()}</div>
+        </div>
         <div className="overflow-x-auto bg-card rounded-md border-0 sm:border">
           <Table>
             <TableHeader>
@@ -564,6 +632,7 @@ export default function OrgUnitsPage() {
                 <TableHead>To Children</TableHead>
                 <TableHead>Pool Available</TableHead>
                 <TableHead>Used (files)</TableHead>
+                <TableHead>Documents</TableHead>
                 <TableHead>File Space Left</TableHead>
                 <TableHead>Hierarchy (Parent)</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
@@ -604,6 +673,9 @@ export default function OrgUnitsPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {renderUsedCell(ou)}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {ou.documentCount ?? 0}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatStorageCell(ou.storageRemainingMb ?? 0)}

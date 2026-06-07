@@ -120,7 +120,36 @@ class OrgUnitViewSet(viewsets.ModelViewSet):
                 | Q(type__icontains=search)
                 | Q(org_type__name__icontains=search)
             )
+        org_type_id = self.request.query_params.get("org_type_id")
+        if org_type_id and str(org_type_id).lower() != "all":
+            queryset = queryset.filter(org_type_id=org_type_id)
         return queryset
+
+    def _build_org_unit_list_summary(self, queryset):
+        return {
+            "unit_count": queryset.count(),
+            "document_count": Document.objects.filter(
+                folder__org_unit__in=queryset,
+                is_deleted=False,
+            ).count(),
+            "folder_count": Folder.objects.filter(
+                org_unit__in=queryset,
+                is_deleted=False,
+            ).count(),
+            "user_count": User.objects.filter(org_unit__in=queryset).count(),
+        }
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        summary = self._build_org_unit_list_summary(queryset)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data["summary"] = summary
+            return response
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({"summary": summary, "results": serializer.data})
 
     def _require_admin(self):
         if getattr(self.request.user, "role", None) != "admin":

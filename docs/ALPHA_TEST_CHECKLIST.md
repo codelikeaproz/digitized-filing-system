@@ -156,7 +156,8 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | CRUD org units and org types | Admin | [ ] |
-| Table shows Envelope, To Children, Pool Available, Used (files), File Space Left | Admin | [ ] |
+| Table shows Envelope, To Children, Pool Available, Used (files), Documents, File Space Left | Admin | [ ] |
+| Type filter (College / Department / Office) updates table and impact summary counts | Admin | [ ] |
 | Parent row: e.g. CISC 15 GB envelope, 5 GB to children, 10 GB pool available | Admin | [ ] |
 | Child row: quota shows "from {parent}"; To Children shows 0 MB; Pool Available shows full envelope | Admin | [ ] |
 | Parent Used shows subtree total with "includes child units" when files are in child | Admin | [ ] |

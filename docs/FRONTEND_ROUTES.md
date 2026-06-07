@@ -54,7 +54,10 @@ Wrapped by `ProtectedRoute` + `AppShell` layout.
 
 ### Org Units (`/org-units`) — Admin only
 
-Table columns: **Envelope**, **To Children**, **Pool Available**, **Used (files)**, **File Space Left**, **Hierarchy (Parent)**. Child quotas are part of the parent envelope, not additional system storage.
+Table columns: **Envelope**, **To Children**, **Pool Available**, **Used (files)**, **Documents**, **File Space Left**, **Hierarchy (Parent)**. Child quotas are part of the parent envelope, not additional system storage.
+
+- **Type filter:** dropdown filters by Org Type (College, Department, Office, etc.) via `GET /api/org-units/?org_type_id={id}`
+- **Impact summary:** toolbar shows filtered unit count plus total documents, folders, and users (`summary` on list response)
 
 ### Notifications (header bell)
 

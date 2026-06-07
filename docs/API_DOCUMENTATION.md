@@ -1168,9 +1168,27 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 | Parameter | Description |
 |-----------|-------------|
 | `search` | Matches name, type, org type name |
+| `org_type_id` | Filter by Org Type id; omit or `all` for no type filter |
 | `page`, `page_size` | Pagination |
 
 **Response includes:** `userCount`, `folderCount`, `documentCount`, `childCount`, `canDelete`, `deleteBlockReason`, `parentName`, `storageUsedDisplayMb`, `storageOwnUsedMb`, `storageRemainingMb`, `childrenAllocatedMb`, `availableForAllocationMb`, `allocationContext`.
+
+**Paginated list also includes `summary`** (totals for the full filtered queryset, not just the current page):
+
+```json
+{
+  "count": 3,
+  "next": null,
+  "previous": null,
+  "summary": {
+    "unit_count": 3,
+    "document_count": 12,
+    "folder_count": 8,
+    "user_count": 5
+  },
+  "results": [ ... ]
+}
+```
 
 ---
 
