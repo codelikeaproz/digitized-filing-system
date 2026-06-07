@@ -1,6 +1,6 @@
 # DigiFile — VPAA Presentation Guide
 
-**Digitized Filing System (DFS)**  
+**Digitized Filing System (DFS)** · **Central Mindanao University (CMU)**  
 Use this guide during your live demo. English script is for formal delivery; Taglish notes are optional shortcuts if the VPAA prefers a conversational tone.
 
 **Suggested demo time:** 10–15 minutes  
@@ -26,7 +26,7 @@ Use this guide during your live demo. English script is for formal delivery; Tag
 
 > Good [morning/afternoon], [Name]. Thank you for your time.
 >
-> Today I will show you **DigiFile** — our **Digitized Filing System**. Its purpose is simple: replace scattered paper files with one secure, searchable digital filing system for the institution.
+> Today I will show you **DigiFile** — Central Mindanao University’s **Digitized Filing System**. Its purpose is simple: replace scattered paper files with one secure, searchable digital filing system for all offices and academic units.
 >
 > With DigiFile, offices can upload PDF documents, organize them by folder and office unit, search quickly, and track who did what. Storage is controlled so we do not run out of server space unexpectedly.
 >
@@ -34,7 +34,7 @@ Use this guide during your live demo. English script is for formal delivery; Tag
 
 ### Taglish summary
 
-> Good [morning/afternoon], [Name]. Ipapakita ko po ang **DigiFile** — yung digitized filing system natin. Instead na naka-scatter ang paper files, nandito na lahat sa isang secure at searchable system. Makikita niyo po kung paano mag-upload, mag-organize, at ma-monitor ang storage per office unit.
+> Good [morning/afternoon], [Name]. Ipapakita ko po ang **DigiFile** — ang digitized filing system ng **CMU**. Instead na naka-scatter ang paper files, nandito na lahat sa isang secure at searchable system para sa lahat ng offices at academic units.
 
 ---
 
@@ -355,6 +355,8 @@ Each section has:
 
 | Display | Short explanation |
 |---------|-------------------|
+| **Hero headline** | Digitized Filing System |
+| **Hero subtitle** | The official document management system of Central Mindanao University |
 | **Login form** | Email and password fields |
 | **Forgot Password link** | Request password reset email |
 | **DFS Assistant (login page)** | General help — no file access |
@@ -507,13 +509,13 @@ Follow this order for a smooth presentation:
 
 ### What to say (English)
 
-> To summarize: **DigiFile** gives us one place to store, search, and manage institutional documents digitally. Each office unit has a clear storage allocation. Every action is logged for accountability. Files are stored safely on server disk, with the database serving as a fast searchable index.
+> To summarize: **DigiFile** gives Central Mindanao University one place to store, search, and manage documents digitally across all offices. Each office unit has a clear storage allocation. Every action is logged for accountability. Files are stored safely on server disk, with the database serving as a fast searchable index.
 >
 > We are ready for your feedback and for phased rollout to additional offices when approved. Thank you again for your time.
 
 ### Taglish summary
 
-> Yan po ang DigiFile — isang system para sa digital filing, may storage control per office, audit trail, at secure file storage sa media folder. Handa na po kami sa feedback niyo at sa rollout pag na-approve. Salamat po ulit.
+> Yan po ang DigiFile ng CMU — isang system para sa digital filing ng lahat ng offices, may storage control per office unit, audit trail, at secure file storage sa media folder. Handa na po kami sa feedback niyo at sa rollout pag na-approve. Salamat po ulit.
 
 ---
 

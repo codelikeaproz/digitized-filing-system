@@ -83,8 +83,9 @@ export default function LoginPage() {
               Digitized Filing System.
             </h1>
             <p className="text-xl text-white font-medium leading-relaxed">
-              The Official Document Management System of the Office of the 
-              Vice-President for Academic Affairs
+              The official document management system of
+              <br />
+              <span className="whitespace-nowrap">Central Mindanao University</span>
             </p>
           </div>
         </div>

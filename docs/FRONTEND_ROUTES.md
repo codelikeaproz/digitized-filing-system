@@ -15,6 +15,16 @@ Route map for the DFS React SPA. Defined in `frontend/src/App.tsx`.
 | `/error/429` | `Error429Page` | Rate limit exceeded (login throttle) |
 | `/error/500` | `Error500Page` | Server error fallback |
 
+### Auth pages — branding (Login, Forgot Password, Reset Password)
+
+Left hero panel copy (desktop):
+
+- **Headline:** Digitized Filing System
+- **Subtitle:** The official document management system of / **Central Mindanao University** (university name on its own line; `whitespace-nowrap` prevents mid-name breaks)
+- **Logo:** DigiFile (`/img/login_logo.png`), hero image `/img/login_hero.jpeg`
+
+> Previously scoped to VPAA only; updated for institution-wide rollout across all CMU offices and academic units.
+
 ---
 
 ## Protected routes (login required)

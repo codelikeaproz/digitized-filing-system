@@ -1,6 +1,6 @@
 # DFS Developer Guide
 
-Onboarding guide for the **Digitized Filing System (DFS)** — a Django REST + React/Vite application for OrgUnit-scoped PDF document management.
+Onboarding guide for the **Digitized Filing System (DFS)** — **DigiFile**, CMU’s institution-wide document management platform — a Django REST + React/Vite application for OrgUnit-scoped PDF document management.
 
 > **Related docs:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [FRONTEND_ROUTES.md](./FRONTEND_ROUTES.md) · [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md) · [DOCKER_SETUP.md](../DOCKER_SETUP.md) · [VESTA_DEPLOYMENT.md](./VESTA_DEPLOYMENT.md)
 

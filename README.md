@@ -1,5 +1,7 @@
 # Digitized Filing System (DFS)
 
+**DigiFile** — the official document management system of **Central Mindanao University (CMU)**.
+
 Django REST + React/Vite application for OrgUnit-scoped PDF document management.
 
 ## Developer documentation
@@ -11,6 +13,7 @@ Django REST + React/Vite application for OrgUnit-scoped PDF document management.
 | [docs/FRONTEND_ROUTES.md](docs/FRONTEND_ROUTES.md) | React route map and role guards |
 | [DOCKER_SETUP.md](DOCKER_SETUP.md) | Local / Docker setup |
 | [docs/VESTA_DEPLOYMENT.md](docs/VESTA_DEPLOYMENT.md) | Production deploy on Vesta CP + nginx |
+| [docs/VPAA_PRESENTATION_GUIDE.md](docs/VPAA_PRESENTATION_GUIDE.md) | CMU demo script and module walkthrough |
 | [CHATBOT_CAPABILITIES.md](CHATBOT_CAPABILITIES.md) | Document Assistant features |
 | Live API docs | `http://localhost:8000/api/docs/` (Swagger, after backend start) |
 

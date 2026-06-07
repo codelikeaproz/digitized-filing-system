@@ -26,6 +26,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | Login, logout, session refresh, protected route redirect | All | [ ] |
+| Login / forgot / reset hero shows CMU tagline (not VPAA-only text) | Public | [ ] |
 | Forgot / reset password flow works | All | [ ] |
 | New user activation via `/set-password/...` | Admin-created | [ ] |
 | Auto-logout after 10 min idle | All | [ ] |

@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-The **Digitized Filing System (DFS) API** is a Django REST Framework backend that powers a React + Vite frontend for managing PDF documents in an organization-scoped folder hierarchy.
+The **Digitized Filing System (DFS) API** is a Django REST Framework backend that powers **DigiFile** — the React + Vite frontend for **Central Mindanao University (CMU)** — managing PDF documents in an organization-scoped folder hierarchy across all offices and academic units.
 
 | Topic | Implementation |
 |--------|----------------|
