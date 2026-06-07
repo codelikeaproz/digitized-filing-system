@@ -4,7 +4,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from documents.models import Category, Document, Folder
 from documents.views import validate_pdf_upload
+from orgunits.models import OrgType, OrgUnit
 from system.models import SystemSettings
 from system.services import get_upload_limit_bytes, invalidate_system_settings_cache
 
@@ -73,3 +75,67 @@ class SystemSettingsAPITests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def _set_system_quota_mb(self, quota_mb):
+        settings = SystemSettings.load()
+        settings.storage_quota_mb = quota_mb
+        settings.save()
+        invalidate_system_settings_cache()
+
+    def _create_document_with_size_mb(self, org_unit, used_mb):
+        folder = Folder.objects.create(name="Storage", org_unit=org_unit)
+        category = Category.objects.create(name="General", code="GEN", org_unit=org_unit)
+        upload = SimpleUploadedFile("sample.pdf", b"%PDF-test", content_type="application/pdf")
+        Document.objects.create(
+            title="sample.pdf",
+            file=upload,
+            folder=folder,
+            category=category,
+            file_size=int(used_mb * 1024 * 1024),
+            mime_type="application/pdf",
+        )
+
+    def test_admin_cannot_reduce_quota_below_file_usage(self):
+        org_unit = OrgUnit.objects.create(name="HQ")
+        self._set_system_quota_mb(30000)
+        self._create_document_with_size_mb(org_unit, 20480)
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            "/api/system/settings/",
+            {"storage_quota_mb": 15360},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("storage_quota_mb", response.data)
+        self.assertIn("file usage", str(response.data["storage_quota_mb"][0]).lower())
+
+    def test_admin_cannot_reduce_quota_below_top_level_allocation(self):
+        org_type = OrgType.objects.create(name="College")
+        OrgUnit.objects.create(name="CISC", org_type=org_type, storage_quota_mb=15360)
+        self._set_system_quota_mb(30000)
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            "/api/system/settings/",
+            {"storage_quota_mb": 10240},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("storage_quota_mb", response.data)
+        self.assertIn("office unit", str(response.data["storage_quota_mb"][0]).lower())
+
+    def test_admin_can_set_quota_at_or_above_floor(self):
+        org_type = OrgType.objects.create(name="College")
+        org_unit = OrgUnit.objects.create(name="CISC", org_type=org_type, storage_quota_mb=15360)
+        self._set_system_quota_mb(30000)
+        self._create_document_with_size_mb(org_unit, 100)
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            "/api/system/settings/",
+            {"storage_quota_mb": 15360},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["storage_quota_mb"], 15360)

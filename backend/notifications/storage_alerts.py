@@ -1,4 +1,5 @@
 """Global storage threshold monitoring and notification generation."""
+import math
 from decimal import Decimal
 
 from django.db.models import Sum
@@ -69,6 +70,47 @@ def get_allocation_summary():
         "allocation_percentage": allocation_percentage,
         "allocation_exceeded": allocation_exceeded,
     }
+
+
+def format_quota_mb_label(mb):
+    """Human-readable MB label with GB when >= 1 GB."""
+    mb_int = int(mb)
+    if mb_int >= 1024:
+        gb = mb_int / 1024
+        if gb == int(gb):
+            return f"{mb_int} MB / {int(gb)} GB"
+        return f"{mb_int} MB / {gb:.2f} GB"
+    return f"{mb_int} MB"
+
+
+def get_minimum_system_storage_quota_mb():
+    """Lowest allowed system quota given current file usage and top-level allocations."""
+    used_mb = math.ceil(get_global_storage_summary()["used_mb"])
+    allocated_mb = int(get_allocation_summary()["allocated_mb"])
+    return max(used_mb, allocated_mb)
+
+
+def build_storage_quota_floor_error():
+    """Validation message when admin tries to set system quota below the allowed floor."""
+    used_mb = math.ceil(get_global_storage_summary()["used_mb"])
+    allocated_mb = int(get_allocation_summary()["allocated_mb"])
+    min_required = max(used_mb, allocated_mb)
+    reasons = []
+    if used_mb >= min_required and used_mb > 0:
+        reasons.append(f"current file usage ({format_quota_mb_label(used_mb)} used)")
+    if allocated_mb >= min_required and allocated_mb > 0:
+        reasons.append(
+            f"top-level Office Unit allocations ({format_quota_mb_label(allocated_mb)} allocated)"
+        )
+    if not reasons:
+        reasons.append(f"the current minimum ({format_quota_mb_label(min_required)})")
+    message = (
+        f"Storage quota cannot be set below {' and '.join(reasons)}. "
+        f"Minimum allowed: {format_quota_mb_label(min_required)}."
+    )
+    if allocated_mb >= min_required and allocated_mb >= used_mb:
+        message += " Reduce Office Unit quotas first."
+    return message
 
 
 def validate_global_storage_quota(additional_bytes):

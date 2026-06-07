@@ -1,9 +1,9 @@
 from rest_framework import serializers
 
-from .models import SystemSettings
-
-
-from rest_framework import serializers
+from notifications.storage_alerts import (
+    build_storage_quota_floor_error,
+    get_minimum_system_storage_quota_mb,
+)
 
 from .models import SystemSettings
 
@@ -30,19 +30,57 @@ class SystemStorageAllocationMixin(serializers.Serializer):
         return self._allocation_summary(obj)["allocation_percentage"]
 
 
-class SystemSettingsSerializer(SystemStorageAllocationMixin, serializers.ModelSerializer):
+class SystemStorageUsageMixin(serializers.Serializer):
+    storage_quota_exceeded = serializers.SerializerMethodField()
+    storage_used_mb = serializers.SerializerMethodField()
+    storage_remaining_mb = serializers.SerializerMethodField()
+    storage_usage_percentage = serializers.SerializerMethodField()
+
+    def _storage_summary(self, obj):
+        if not hasattr(self, "_storage_summary_cache"):
+            from notifications.storage_alerts import get_global_storage_summary
+
+            self._storage_summary_cache = get_global_storage_summary()
+        return self._storage_summary_cache
+
+    def get_storage_quota_exceeded(self, obj):
+        return self._storage_summary(obj)["quota_exceeded"]
+
+    def get_storage_used_mb(self, obj):
+        return self._storage_summary(obj)["used_mb"]
+
+    def get_storage_remaining_mb(self, obj):
+        return self._storage_summary(obj)["remaining_mb"]
+
+    def get_storage_usage_percentage(self, obj):
+        return self._storage_summary(obj)["usage_percentage"]
+
+
+class SystemSettingsSerializer(
+    SystemStorageUsageMixin,
+    SystemStorageAllocationMixin,
+    serializers.ModelSerializer,
+):
     class Meta:
         model = SystemSettings
         fields = [
             "upload_limit_mb",
             "storage_quota_mb",
             "updated_at",
+            "storage_quota_exceeded",
+            "storage_used_mb",
+            "storage_remaining_mb",
+            "storage_usage_percentage",
             "allocated_storage_mb",
             "allocation_remaining_mb",
             "allocation_percentage",
         ]
         read_only_fields = [
             "updated_at",
+            "storage_quota_exceeded",
+            "storage_used_mb",
+            "storage_remaining_mb",
+            "storage_usage_percentage",
             "allocated_storage_mb",
             "allocation_remaining_mb",
             "allocation_percentage",
@@ -59,16 +97,18 @@ class SystemSettingsSerializer(SystemStorageAllocationMixin, serializers.ModelSe
         max_quota_mb = 1048576  # 1 TB
         if value > max_quota_mb:
             raise serializers.ValidationError("Storage quota cannot exceed 1 TB (1048576 MB).")
+        min_required = get_minimum_system_storage_quota_mb()
+        if value < min_required:
+            raise serializers.ValidationError(build_storage_quota_floor_error())
         return value
 
 
-class SystemSettingsPublicSerializer(SystemStorageAllocationMixin, serializers.ModelSerializer):
+class SystemSettingsPublicSerializer(
+    SystemStorageUsageMixin,
+    SystemStorageAllocationMixin,
+    serializers.ModelSerializer,
+):
     """Read-only subset for all authenticated users."""
-
-    storage_quota_exceeded = serializers.SerializerMethodField()
-    storage_used_mb = serializers.SerializerMethodField()
-    storage_remaining_mb = serializers.SerializerMethodField()
-    storage_usage_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = SystemSettings
@@ -83,22 +123,3 @@ class SystemSettingsPublicSerializer(SystemStorageAllocationMixin, serializers.M
             "allocation_remaining_mb",
             "allocation_percentage",
         ]
-
-    def _summary(self, obj):
-        if not hasattr(self, "_storage_summary"):
-            from notifications.storage_alerts import get_global_storage_summary
-
-            self._storage_summary = get_global_storage_summary()
-        return self._storage_summary
-
-    def get_storage_quota_exceeded(self, obj):
-        return self._summary(obj)["quota_exceeded"]
-
-    def get_storage_used_mb(self, obj):
-        return self._summary(obj)["used_mb"]
-
-    def get_storage_remaining_mb(self, obj):
-        return self._summary(obj)["remaining_mb"]
-
-    def get_storage_usage_percentage(self, obj):
-        return self._summary(obj)["usage_percentage"]

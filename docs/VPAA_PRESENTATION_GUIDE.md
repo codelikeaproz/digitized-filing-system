@@ -305,10 +305,11 @@ Each section has:
 | **Security tab** | Change password (requires re-login after) |
 | **System tab (Admin)** | Max upload size per file (MB) |
 | **System tab (Admin)** | System-wide storage quota preset |
+| **Minimum allowed quota** | Cannot set quota below current file usage or top-level Office Unit allocations |
 
 #### Taglish summary
 
-> Dito po ang profile at password ng user. Sa System tab naman, si Admin ang nagse-set ng upload limit at total storage ng buong system.
+> Dito po ang profile at password ng user. Sa System tab naman, si Admin ang nagse-set ng upload limit at total storage ng buong system — hindi pwedeng ibaba ang quota kaysa sa nagamit na storage o sa naka-allocate na sa offices.
 
 ---
 

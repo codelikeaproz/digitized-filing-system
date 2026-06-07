@@ -1716,7 +1716,7 @@ Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) are allocation envelopes: 
 - `storage_*` fields — physical file usage vs system quota
 - `allocated_storage_mb` / `allocation_remaining_mb` / `allocation_percentage` — sum of **top-level** Office Unit quota allocations vs system quota (excludes child units counted under parents)
 
-**GET (admin):** Also includes `updated_at`.
+**GET (admin):** Also includes `updated_at`, plus the same live `storage_*` and `allocated_*` fields as the public response.
 
 **PATCH (admin only):**
 
@@ -1728,6 +1728,16 @@ Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) are allocation envelopes: 
 ```
 
 `storage_quota_mb` must be between 1 and 1048576 (1 TB).
+
+**Lower bound:** `storage_quota_mb` cannot be set below `max(ceil(storage_used_mb), allocated_storage_mb)` — current file usage and top-level Office Unit allocations. Example `400`:
+
+```json
+{
+  "storage_quota_mb": [
+    "Storage quota cannot be set below current file usage (20480 MB / 20 GB used). Minimum allowed: 20480 MB / 20 GB."
+  ]
+}
+```
 
 Increasing `storage_quota_mb` resets storage threshold notification flags (physical usage and allocation) for thresholds no longer crossed.
 
