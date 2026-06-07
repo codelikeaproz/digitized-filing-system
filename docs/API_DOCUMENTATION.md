@@ -311,7 +311,7 @@ For file uploads, omit `Content-Type` so the browser sets the multipart boundary
 - Recycle Bin: global view of deleted items
 - Audit logs: full view and export
 - Can delete documents and any folder (including non-empty)
-- Dashboard stats: **global** for admin; **subtree aggregated** for parent dept_head; **own unit** for staff and child-only dept_head
+- Dashboard stats: **global** for admin (`office_unit=all`); **subtree aggregated** when admin or parent dept_head views a parent unit with children; **single unit** for leaf filters; **own unit** for staff and child-only dept_head
 
 ### Department Head (`dept_head`)
 
@@ -479,7 +479,16 @@ Or custom:
 - **Staff** — always scoped to assigned Office Unit; filter param ignored
 
 **Response fields:**
-- `aggregates_subtree` — `true` when document counts and storage usage include descendant Office Units (parent dept_head default, admin filtering to a parent with children)
+
+| Field | Description |
+|-------|-------------|
+| `aggregates_subtree` | `true` when document counts and file usage include descendant Office Units |
+| `can_filter_office_units` | Whether the client may show an Office Unit filter dropdown |
+| `storage.org_units_quota_mb` | Global view only: sum of top-level unit quotas |
+| `storage.org_units_allocation_remaining_mb` | Global view only: system pool not yet assigned to top-level units |
+| `storage.children_allocated_mb` | Subtree view only: sum of direct child quotas under the selected parent |
+| `storage.available_for_allocation_mb` | Subtree view only: parent envelope minus `children_allocated_mb` |
+| `storage_by_office_unit[]` | Comparison chart rows: `org_unit_id`, `org_unit_name`, `quota_mb`, `used_mb`, `remaining_mb`, `usage_percentage` |
 
 **Success `200` (global):**
 
@@ -489,6 +498,7 @@ Or custom:
   "office_unit_name": "All Office Units",
   "office_unit_filter": "all",
   "can_filter_office_units": true,
+  "aggregates_subtree": false,
   "total_documents": 42,
   "uploaded_files": 42,
   "total_org_units": 5,
@@ -497,57 +507,130 @@ Or custom:
   "storage": {
     "org_unit_name": "All Office Units",
     "quota_mb": 15360,
-    "org_units_quota_mb": 7168,
-    "used_mb": 3200.5,
-    "remaining_mb": 12159.5,
-    "usage_percentage": 20.8,
-    "percent_used": 20.8
+    "org_units_quota_mb": 15360,
+    "org_units_allocation_remaining_mb": 0,
+    "used_mb": 9.68,
+    "remaining_mb": 15350.32,
+    "usage_percentage": 0.1,
+    "percent_used": 0.1
   },
   "storage_by_office_unit": [
     {
       "org_unit_id": "1",
-      "org_unit_name": "College of Engineering",
+      "org_unit_name": "CISC",
+      "quota_mb": 15360,
+      "used_mb": 9.68,
+      "remaining_mb": 15350.32,
+      "usage_percentage": 0.1
+    },
+    {
+      "org_unit_id": "2",
+      "org_unit_name": "SDO",
       "quota_mb": 5120,
-      "used_mb": 2000,
-      "remaining_mb": 3120,
-      "usage_percentage": 39.1
+      "used_mb": 9.68,
+      "remaining_mb": 5110.32,
+      "usage_percentage": 0.2
     }
   ]
 }
 ```
 
-**Success `200` (specific Office Unit):**
+**Success `200` (leaf Office Unit — single unit, no descendants):**
 
 ```json
 {
   "scope": "office_unit",
-  "office_unit_id": "5",
-  "office_unit_name": "College of Engineering",
-  "office_unit_filter": "5",
-  "can_filter_office_units": true,
-  "total_documents": 10,
-  "uploaded_files": 10,
+  "office_unit_id": "2",
+  "office_unit_name": "SDO",
+  "office_unit_filter": "2",
+  "can_filter_office_units": false,
+  "aggregates_subtree": false,
+  "total_documents": 2,
+  "uploaded_files": 2,
   "total_org_units": null,
-  "total_users": 3,
-  "deleted_files": 1,
+  "total_users": 1,
+  "deleted_files": 0,
   "storage": {
-    "quota_mb": 500,
-    "used_mb": 400,
-    "remaining_mb": 100,
-    "usage_percentage": 80,
-    "percent_used": 80
+    "org_unit_id": "2",
+    "org_unit_name": "SDO",
+    "quota_mb": 5120,
+    "used_mb": 9.68,
+    "remaining_mb": 5110.32,
+    "usage_percentage": 0.2,
+    "percent_used": 0.2
   },
   "storage_by_office_unit": []
+}
+```
+
+**Success `200` (parent Office Unit with children — admin filter or parent dept_head default):**
+
+When the selected unit has active child Office Units, document counts and file usage aggregate across the subtree. `storage.quota_mb` is the **parent envelope** (not the sum of parent + child quotas).
+
+```json
+{
+  "scope": "office_unit",
+  "office_unit_id": "1",
+  "office_unit_name": "CISC",
+  "office_unit_filter": "1",
+  "can_filter_office_units": true,
+  "aggregates_subtree": true,
+  "total_documents": 2,
+  "uploaded_files": 2,
+  "total_org_units": 2,
+  "total_users": 2,
+  "deleted_files": 0,
+  "storage": {
+    "org_unit_id": "1",
+    "org_unit_name": "CISC",
+    "quota_mb": 15360,
+    "used_mb": 9.68,
+    "remaining_mb": 15350.32,
+    "usage_percentage": 0.1,
+    "percent_used": 0.1,
+    "children_allocated_mb": 5120,
+    "available_for_allocation_mb": 10240
+  },
+  "storage_by_office_unit": [
+    {
+      "org_unit_id": "1",
+      "org_unit_name": "CISC",
+      "quota_mb": 15360,
+      "used_mb": 9.68,
+      "remaining_mb": 15350.32,
+      "usage_percentage": 0.1
+    },
+    {
+      "org_unit_id": "2",
+      "org_unit_name": "SDO",
+      "quota_mb": 5120,
+      "used_mb": 9.68,
+      "remaining_mb": 5110.32,
+      "usage_percentage": 0.2
+    }
+  ]
 }
 ```
 
 **Storage calculations (global admin view):**
 
 - `storage.quota_mb` — system-wide cap from Settings → System (`SystemSettings.storage_quota_mb`); drives utilization percentage, notifications, and upload blocking
-- `storage.org_units_quota_mb` — sum of **top-level** Office Unit `storage_quota_mb` values (system pool consumption; child quotas are drawn from their parent)
-- `storage.used_mb`, `storage.remaining_mb`, `storage.usage_percentage` — computed from `Document.file_size` vs system `quota_mb`
+- `storage.org_units_quota_mb` — sum of **top-level** (root) Office Unit `storage_quota_mb` values only; child quotas are drawn from their parent envelope and are **not** added here
+- `storage.org_units_allocation_remaining_mb` — unassigned top-level pool: `storage.quota_mb - org_units_quota_mb`
+- `storage.used_mb`, `storage.remaining_mb`, `storage.usage_percentage` — computed from sum of all `Document.file_size` vs system `quota_mb` (file usage, not allocation)
+- `storage_by_office_unit` — per-unit breakdown; parent rows use subtree file rollup in `used_mb`
 
-**Storage calculations (Office Unit scope):** `used_mb`, `remaining_mb`, and `usage_percentage` use that unit's `OrgUnit.storage_quota_mb`. Parent Office Units with children include descendant document usage in `used_mb` for display and upload validation.
+**Storage calculations (Office Unit scope):**
+
+| Field | Leaf unit | Parent with children (`aggregates_subtree: true`) |
+|-------|-----------|---------------------------------------------------|
+| `storage.quota_mb` | Unit's own quota | Parent **envelope** only (e.g. 15 GB, not 15 + 5 GB) |
+| `storage.used_mb` | Own folder file sizes | Subtree rollup (own + all descendants) |
+| `storage.remaining_mb` | `quota_mb - used_mb` (file space left) | Same, based on parent envelope |
+| `storage.children_allocated_mb` | — | Sum of direct children's quotas |
+| `storage.available_for_allocation_mb` | — | `quota_mb - children_allocated_mb` (pool still assignable to children) |
+
+**Display note:** When file usage is tiny relative to system quota (e.g. 9.68 MB vs 15 GB), `usage_percentage` may round to `0.0` or `0.1`. The frontend shows `< 0.1%` when usage is non-zero but below one decimal place.
 
 ---
 
@@ -1602,9 +1685,9 @@ Singleton configuration for upload limits and **system-wide total storage quota*
 `storage_quota_mb` serves two roles:
 
 1. **Physical usage cap** — compared against the sum of all document file sizes; drives upload blocking at 100% and physical-usage notification thresholds.
-2. **Allocation pool** — the sum of all Office Unit `storage_quota_mb` values cannot exceed this limit when creating or updating Office Units.
+2. **Top-level allocation pool** — the sum of **top-level** (root) Office Unit `storage_quota_mb` values cannot exceed this limit. Child unit quotas are validated against their **parent's envelope**, not this system pool directly.
 
-Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) remain separate sub-limits configured under Office Units.
+Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) are allocation envelopes: a parent with 15 GB may assign 5 GB to a child, leaving 10 GB in the parent's pool (`availableForAllocationMb` on list responses).
 
 **Admin UI presets:** 5 GB, 15 GB, 100 GB, 500 GB, 1 TB, or Custom (any value from 1 MB up to 1 TB / 1048576 MB).
 
@@ -1631,7 +1714,7 @@ Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) remain separate sub-limits
 ```
 
 - `storage_*` fields — physical file usage vs system quota
-- `allocated_storage_mb` / `allocation_remaining_mb` / `allocation_percentage` — sum of Office Unit quota allocations vs system quota
+- `allocated_storage_mb` / `allocation_remaining_mb` / `allocation_percentage` — sum of **top-level** Office Unit quota allocations vs system quota (excludes child units counted under parents)
 
 **GET (admin):** Also includes `updated_at`.
 
@@ -1689,9 +1772,36 @@ Returns notifications where `audience=all`, plus `audience=admin` for admin user
 
 **Success `200`:** `{ "count": 3 }`
 
-**Threshold notifications:** Generated automatically at 80%, 90%, 95%, and 100% of global system storage (`SystemSettings.storage_quota_mb`). Each threshold fires once until quota is increased.
+#### Clear notifications
 
-**Audit actions:** `STORAGE_WARNING_GENERATED`, `STORAGE_ALERT_GENERATED`, `STORAGE_CRITICAL_ALERT_GENERATED`, `STORAGE_QUOTA_EXCEEDED`, `UPLOAD_BLOCKED_STORAGE_QUOTA`
+| | |
+|---|---|
+| **Method** | `POST` |
+| **Path** | `/api/notifications/clear/` |
+| **Auth** | Bearer JWT |
+
+Deletes all notifications visible to the current user (same audience filter as list: `all` for everyone; admins also see `admin` audience).
+
+**Success `200`:**
+
+```json
+{
+  "deleted": 2
+}
+```
+
+Clearing notifications does not reset storage threshold state; alerts will not regenerate until thresholds fire again (e.g. after quota changes).
+
+**Threshold notifications:**
+
+- **Physical usage** — generated at 80%, 90%, 95%, and 100% of global file usage vs `SystemSettings.storage_quota_mb`. Audience: `all` (and `admin` duplicate at 90%).
+- **Allocation pool** — generated at 90% and 100% of **top-level** Office Unit quota allocation vs system quota. Audience: `admin` only.
+
+Each threshold fires once until system quota is increased (resets threshold flags).
+
+**Notification levels:** `warning`, `alert`, `critical`, `exceeded`
+
+**Audit actions:** `STORAGE_WARNING_GENERATED`, `STORAGE_ALERT_GENERATED`, `STORAGE_CRITICAL_ALERT_GENERATED`, `STORAGE_QUOTA_EXCEEDED`, `STORAGE_ALLOCATION_ALERT_GENERATED`, `STORAGE_ALLOCATION_EXCEEDED`, `UPLOAD_BLOCKED_STORAGE_QUOTA`
 
 ---
 
@@ -1709,6 +1819,7 @@ Returns notifications where `audience=all`, plus `audience=admin` for admin user
 | `action` | `/api/audit-logs/` |
 | `orgUnit`, `org_unit` | `/api/audit-logs/` |
 | `start_date`, `end_date` | `/api/audit-logs/` |
+| `office_unit`, `officeUnit`, `org_unit` | `/api/dashboard/` |
 | `type` | `/api/recycle-bin` |
 | `includeInactive` | `/api/org-types/` |
 | `q` | `/api/ai/search-preview/` |
@@ -1909,7 +2020,7 @@ curl -X POST http://localhost:8000/api/ai/chat/ \
 
 | Item | Details |
 |------|---------|
-| Dashboard stats | Role-scoped: admin global; dept_head subtree or selected child; staff own unit |
+| Dashboard stats | Role-scoped with subtree aggregation for parent units; admin global or per-unit filter; see §7.2 |
 | OrgUnit CRUD permissions | No Admin-only guard in backend; relies on frontend |
 | Category/Folder create permissions | No explicit role checks beyond OrgUnit scope |
 | AuditLog ViewSet | Full ModelViewSet — verify UPDATE/DELETE exposure |
@@ -1991,8 +2102,7 @@ Use JWT **Authorize** in Swagger with: `Bearer <access_token>` from login.
 ### Suggested next improvements
 
 1. Centralize permissions (`IsAdmin`, `IsDeptHeadOrAdmin`, `OrgUnitScopedPermission`) — partial: see `documents/permissions.py`
-2. Scope dashboard stats by role
-3. Add server-side logout / token denylist (optional)
-4. Wire JWT refresh in frontend before access token expiry
-5. Restrict AuditLog ViewSet to `GET` + export actions only
-6. Add Admin-only permission to OrgUnit create/update/delete
+2. Add server-side logout / token denylist (optional)
+3. Wire JWT refresh in frontend before access token expiry
+4. Restrict AuditLog ViewSet to `GET` + export actions only
+5. Add Admin-only permission to OrgUnit create/update/delete
