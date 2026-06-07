@@ -239,7 +239,7 @@ class FolderSerializer(serializers.ModelSerializer):
 
 
 class DocumentRequisitionerSerializer(serializers.ModelSerializer):
-    employeeNumber = serializers.CharField(source="employee_number")
+    employeeNumber = serializers.CharField(source="employee_number", required=False, allow_blank=True)
     firstName = serializers.CharField(source="first_name")
     lastName = serializers.CharField(source="last_name")
     suffix = serializers.CharField(required=False, allow_blank=True)

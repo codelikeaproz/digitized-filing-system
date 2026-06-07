@@ -92,6 +92,8 @@ def normalize_requisitioner_item(raw_item):
         raise ValidationError("Each requisitioner must be an object.")
 
     employee_number = str(raw_item.get("employeeNumber", raw_item.get("employee_number", "")) or "").strip()
+    if not employee_number:
+        employee_number = None
     first_name = normalize_name_part(raw_item.get("firstName", raw_item.get("first_name", "")))
     last_name = normalize_name_part(raw_item.get("lastName", raw_item.get("last_name", "")))
     suffix = (raw_item.get("suffix") or "").strip()
@@ -102,9 +104,7 @@ def normalize_requisitioner_item(raw_item):
         if not suffix:
             suffix = parsed_suffix
 
-    if not employee_number:
-        raise ValidationError("Employee Number is required for each requisitioner.")
-    if not EMPLOYEE_NUMBER_PATTERN.fullmatch(employee_number):
+    if employee_number and not EMPLOYEE_NUMBER_PATTERN.fullmatch(employee_number):
         raise ValidationError("Employee Number must contain digits only.")
     if not first_name:
         raise ValidationError("First Name is required for each requisitioner.")
@@ -131,11 +131,13 @@ def validate_requisitioners_list(items, *, require_at_least_one=True):
     seen_numbers = set()
     for raw_item in items:
         item = normalize_requisitioner_item(raw_item)
-        if item["employee_number"] in seen_numbers:
-            raise ValidationError(
-                "Duplicate Employee Numbers are not allowed within the same document."
-            )
-        seen_numbers.add(item["employee_number"])
+        employee_number = item["employee_number"]
+        if employee_number:
+            if employee_number in seen_numbers:
+                raise ValidationError(
+                    "Duplicate Employee Numbers are not allowed within the same document."
+                )
+            seen_numbers.add(employee_number)
         normalized.append(item)
     return normalized
 

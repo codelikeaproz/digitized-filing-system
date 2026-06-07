@@ -157,7 +157,7 @@ class DocumentRequisitioner(models.Model):
         on_delete=models.CASCADE,
         related_name="requisitioners",
     )
-    employee_number = models.CharField(max_length=50)
+    employee_number = models.CharField(max_length=50, blank=True, null=True, default=None)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     suffix = models.CharField(max_length=20, blank=True, default="")
@@ -179,4 +179,7 @@ class DocumentRequisitioner(models.Model):
         return " ".join(part for part in parts if part).strip()
 
     def __str__(self):
-        return f"{self.employee_number} - {self.get_full_name()}"
+        full_name = self.get_full_name()
+        if self.employee_number:
+            return f"{self.employee_number} - {full_name}"
+        return full_name

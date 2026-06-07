@@ -1,5 +1,5 @@
 import { formatPersonName } from "@/lib/utils";
-import { validateEmployeeNumber } from "@/lib/employee-number";
+import { validateOptionalEmployeeNumber } from "@/lib/employee-number";
 import type { DocumentRequisitioner } from "@/types";
 
 export const REQUISITIONER_SUFFIX_OPTIONS = [
@@ -221,11 +221,12 @@ export function validateSingleRequisitioner(
   const firstName = formatPersonName(item.firstName.trim());
   const lastName = formatPersonName(item.lastName.trim());
   const suffix = item.suffix.trim();
-  const employeeError = validateEmployeeNumber(employeeNumber);
+  const employeeError = validateOptionalEmployeeNumber(employeeNumber);
 
   if (employeeError) {
     errors.employeeNumber = employeeError;
   } else if (
+    employeeNumber &&
     existing.some(
       (row, index) => index !== excludeIndex && row.employeeNumber.trim() === employeeNumber
     )
@@ -272,11 +273,13 @@ export function validateRequisitioners(items: RequisitionerInput[]): Requisition
     }
 
     const employeeNumber = item.employeeNumber.trim();
-    if (seenEmployeeNumbers.has(employeeNumber)) {
-      rowErrors[index].employeeNumber = "Duplicate employee numbers are not allowed.";
-      isValid = false;
-    } else {
-      seenEmployeeNumbers.add(employeeNumber);
+    if (employeeNumber) {
+      if (seenEmployeeNumbers.has(employeeNumber)) {
+        rowErrors[index].employeeNumber = "Duplicate employee numbers are not allowed.";
+        isValid = false;
+      } else {
+        seenEmployeeNumbers.add(employeeNumber);
+      }
     }
   });
 

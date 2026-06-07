@@ -642,7 +642,7 @@ Or custom:
 | `folderId` | Yes | Target folder ID |
 | `categoryId` | Yes | Category ID (must match folder OrgUnit if category is scoped; category must have a `code`) |
 | `title` | No | Defaults to uploaded filename |
-| `requisitioners` | Yes | JSON array string, e.g. `[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; digits-only employee numbers; no duplicates per document) |
+| `requisitioners` | Yes | JSON array string, e.g. `[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; `employeeNumber` optional — digits only when provided; no duplicate non-empty employee numbers per document) |
 | `requestor` | No | Legacy derived display string (synced server-side from `requisitioners`; do not send on manual upload) |
 | `description` | Yes | Required; max 50 characters |
 | `keywords` | No | JSON array string, e.g. `["keyword1","keyword2"]` |
@@ -737,7 +737,7 @@ Uses `DocumentSerializer` — document `code` is read-only in the serializer; pr
 - Replaces the full requisitioner list (add/update/remove sync)
 - Document `code` is not sent in the body; when `categoryId` changes, auto-generated codes swap prefix only (`MEM-2026-000001` → `REP-2026-000001`). Legacy codes are unchanged.
 - `requestor` in responses is derived as `"emp - name, emp - name"` for backward compatibility
-- At least one requisitioner required; employee numbers must be digits only and unique per document
+- At least one requisitioner required; `employeeNumber` is optional (leave blank for non-employees). When provided, employee numbers must be digits only and unique per document among non-empty values
 
 **Success `200`:** Full `DocumentSerializer` object.
 

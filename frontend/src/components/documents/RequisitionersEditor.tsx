@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatPersonName } from "@/lib/utils";
-import { formatEmployeeNumberDisplay, sanitizeEmployeeNumberInput } from "@/lib/employee-number";
+import { formatRequisitionerEmployeeNumberDisplay, sanitizeEmployeeNumberInput } from "@/lib/employee-number";
 import {
   buildRequisitionerFullName,
   createEmptyRequisitioner,
@@ -126,8 +126,7 @@ export function RequisitionersEditor({
           value.map((row, index) => {
             const errors = rowErrors[index] || {};
             const displayName = buildRequisitionerFullName(row) || "—";
-            const displayEmployeeNumber =
-              formatEmployeeNumberDisplay(row.employeeNumber) ?? "—";
+            const displayEmployeeNumber = formatRequisitionerEmployeeNumberDisplay(row.employeeNumber);
 
             return (
               <div
@@ -203,7 +202,7 @@ export function RequisitionersEditor({
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="requisitioner-employee" className="text-sm font-medium">
-                Employee Number
+                Employee Number (optional)
               </Label>
               <Input
                 id="requisitioner-employee"
@@ -223,6 +222,9 @@ export function RequisitionersEditor({
                   draftErrors.employeeNumber && "border-destructive focus-visible:ring-destructive"
                 )}
               />
+              <p className="text-xs text-muted-foreground">
+                Leave blank if the requisitioner is not an employee.
+              </p>
               {draftErrors.employeeNumber && (
                 <p className="text-sm text-destructive">{draftErrors.employeeNumber}</p>
               )}

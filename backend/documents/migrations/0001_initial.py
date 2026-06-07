@@ -182,7 +182,7 @@ class Migration(migrations.Migration):
             name="DocumentRequisitioner",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("employee_number", models.CharField(max_length=50)),
+                ("employee_number", models.CharField(blank=True, default=None, max_length=50, null=True)),
                 ("first_name", models.CharField(max_length=100)),
                 ("last_name", models.CharField(max_length=100)),
                 ("suffix", models.CharField(blank=True, default="", max_length=20)),
