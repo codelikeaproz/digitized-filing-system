@@ -88,7 +88,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | **Clear** removes notifications and resets badge count | All | [ ] |
 | Threshold notifications do not duplicate on refresh | All | [ ] |
 | Admin can configure upload limit and system storage quota (Settings → System) | Admin | [ ] |
-| System storage quota preset dropdown (5/15/100/500 GB, 1 TB, Custom) saves correct MB value | Admin | [ ] |
+| System storage quota preset dropdown (5/15/100/500 GB, 1/3/5 TB, Custom) saves correct MB value | Admin | [ ] |
 | Non-preset system quota (e.g. 400 MB) loads as Custom with MB input | Admin | [ ] |
 | Upload button disabled when global quota exceeded | All | [ ] |
 
@@ -187,11 +187,18 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | List; filter documents / folders | Admin, Dept Head | [ ] |
+| Deleted document/folder shows correct folder path in Location column | Admin, Dept Head | [ ] |
 | Restore item | Admin, Dept Head | [ ] |
 | Permanent delete requires typing `DELETE <filename>` exactly; button disabled until match | Admin, Dept Head | [ ] |
 | Wrong confirmation shows inline error; API returns 400; failed attempt in Audit Logs | Admin, Dept Head | [ ] |
 | Raw `DELETE /api/recycle-bin/delete` without confirmation returns 400 | Admin | [ ] |
 | Dept Head scoped to org; Staff blocked | All roles | [ ] |
+| Row checkboxes and Select All (current page only) | Admin, Dept Head | [ ] |
+| Bulk toolbar appears when items selected; hidden when none | Admin, Dept Head | [ ] |
+| Bulk restore mixed docs/folders; toast shows total restored | Admin, Dept Head | [ ] |
+| Bulk delete requires `DELETE N ITEM(S)`; shows storage summary | Admin, Dept Head | [ ] |
+| Selecting parent folder + child doc dedupes without error | Admin, Dept Head | [ ] |
+| Per-row Restore/Delete still works alongside bulk actions | Admin, Dept Head | [ ] |
 
 ---
 

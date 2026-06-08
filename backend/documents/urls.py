@@ -17,6 +17,9 @@ from .views import (
     DocumentViewSet,
     FolderViewSet,
     RecycleBinAPIView,
+    RecycleBinBulkDeleteAPIView,
+    RecycleBinBulkRestoreAPIView,
+    RecycleBinBulkSummaryAPIView,
     RecycleBinDeleteAPIView,
     RecycleBinRestoreAPIView,
 )
@@ -39,6 +42,9 @@ urlpatterns = [
     path("recycle-bin", RecycleBinAPIView.as_view(), name="recycle-bin"),
     path("recycle-bin/restore", RecycleBinRestoreAPIView.as_view(), name="recycle-bin-restore"),
     path("recycle-bin/delete", RecycleBinDeleteAPIView.as_view(), name="recycle-bin-delete"),
+    path("recycle-bin/bulk-summary", RecycleBinBulkSummaryAPIView.as_view(), name="recycle-bin-bulk-summary"),
+    path("recycle-bin/bulk-restore", RecycleBinBulkRestoreAPIView.as_view(), name="recycle-bin-bulk-restore"),
+    path("recycle-bin/bulk-delete", RecycleBinBulkDeleteAPIView.as_view(), name="recycle-bin-bulk-delete"),
 ]
 
 urlpatterns += router.urls

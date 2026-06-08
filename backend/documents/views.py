@@ -80,8 +80,24 @@ from .permissions import (
     org_unit_scope_ids,
     scoped_categories_queryset,
 )
-from .confirmation import build_permanent_delete_confirmation, validate_permanent_delete_confirmation
-from .services import permanently_delete_folder, restore_folder, soft_delete_folder
+from .confirmation import (
+    build_bulk_permanent_delete_confirmation,
+    build_permanent_delete_confirmation,
+    validate_permanent_delete_confirmation,
+)
+from .services import (
+    build_folder_path_map,
+    bulk_normalize_selection,
+    bulk_permanent_delete_items,
+    bulk_restore_items,
+    build_bulk_summary_metrics,
+    permanently_delete_folder,
+    resolve_document_location_path,
+    resolve_folder_location_path,
+    restore_folder,
+    soft_delete_folder,
+    validate_bulk_restore_selection,
+)
 from accounts.models import User
 from config.pagination import StandardResultsSetPagination
 from config.timezone_utils import format_local_datetime, local_datetime
@@ -1031,9 +1047,19 @@ class RecycleBinAPIView(APIView):
 
     def get(self, request):
         try:
-            documents = self._scope_deleted_documents(request)
-            folders = self._scope_deleted_folders(request).order_by("-deleted_at")
+            documents = list(self._scope_deleted_documents(request))
+            folders = list(self._scope_deleted_folders(request).order_by("-deleted_at"))
             item_type = (request.query_params.get("type") or "all").lower()
+            include_documents = item_type in {"all", "documents", "document"}
+            include_folders = item_type in {"all", "folders", "folder"}
+
+            folder_ids = set()
+            if include_documents:
+                folder_ids.update(doc.folder_id for doc in documents if doc.folder_id)
+            if include_folders:
+                folder_ids.update(folder.id for folder in folders)
+            path_map = build_folder_path_map(folder_ids)
+
             doc_items = [
                 {
                     **DocumentSerializer(doc, context={"request": request}).data,
@@ -1041,12 +1067,13 @@ class RecycleBinAPIView(APIView):
                     "deletedByRole": getattr(doc.deleted_by, "role", "System") if doc.deleted_by else "System",
                     "deletedByFullName": doc.deleted_by.get_full_name() if doc.deleted_by else "System",
                     "orgUnitName": doc.folder.org_unit.name if doc.folder and doc.folder.org_unit else "Global Access",
+                    "locationPath": resolve_document_location_path(doc, path_map),
                     "deletedAt": self._format_deleted_at(doc.deleted_at),
                     "deleted_at": self._format_deleted_at(doc.deleted_at),
                     "deleted_at_sort": self._deleted_at_sort_value(doc.deleted_at),
                 }
                 for doc in documents
-            ] if item_type in {"all", "documents", "document"} else []
+            ] if include_documents else []
             folder_items = [
                 {
                     **FolderSerializer(folder).data,
@@ -1054,12 +1081,13 @@ class RecycleBinAPIView(APIView):
                     "deletedByRole": getattr(folder.deleted_by, "role", "System") if folder.deleted_by else "System",
                     "deletedByFullName": folder.deleted_by.get_full_name() if folder.deleted_by else "System",
                     "orgUnitName": folder.org_unit.name if folder.org_unit else "Global Access",
+                    "locationPath": resolve_folder_location_path(folder, path_map),
                     "deletedAt": self._format_deleted_at(folder.deleted_at),
                     "deleted_at": self._format_deleted_at(folder.deleted_at),
                     "deleted_at_sort": self._deleted_at_sort_value(folder.deleted_at),
                 }
                 for folder in folders
-            ] if item_type in {"all", "folders", "folder"} else []
+            ] if include_folders else []
             items = sorted(
                 [*doc_items, *folder_items],
                 key=lambda item: item["deleted_at_sort"],
@@ -1255,6 +1283,153 @@ class RecycleBinDeleteAPIView(APIView):
         return Response(
             {"message": self.INVALID_CONFIRMATION_MESSAGE},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class RecycleBinBulkMixin:
+    def _count_selected_items(self, items):
+        document_count = 0
+        folder_count = 0
+        for row in items or []:
+            item_type = (row.get("type") or "").lower()
+            if item_type == "document":
+                document_count += 1
+            elif item_type == "folder":
+                folder_count += 1
+        return document_count, folder_count
+
+    def _assert_bulk_access(self, user, root_folders, standalone_documents):
+        for folder in root_folders:
+            assert_recycle_bin_access(user, folder)
+        for document in standalone_documents:
+            assert_recycle_bin_access(user, document)
+
+    def _collect_org_unit_names(self, root_folders, standalone_documents):
+        names = set()
+        for folder in root_folders:
+            if folder.org_unit and folder.org_unit.name:
+                names.add(folder.org_unit.name)
+        for document in standalone_documents:
+            org_unit = document.folder.org_unit if document.folder else None
+            if org_unit and org_unit.name:
+                names.add(org_unit.name)
+        return sorted(names)
+
+    def _bulk_validation_response(self, exc):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            return Response(detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": str(detail)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class RecycleBinBulkSummaryAPIView(RecycleBinBulkMixin, APIView):
+    def post(self, request):
+        items = request.data.get("items") or []
+        try:
+            document_count, folder_count = self._count_selected_items(items)
+            root_folders, standalone_documents = bulk_normalize_selection(items)
+            self._assert_bulk_access(request.user, root_folders, standalone_documents)
+            metrics = build_bulk_summary_metrics(root_folders, standalone_documents)
+        except ValidationError as exc:
+            return self._bulk_validation_response(exc)
+        return Response(
+            {
+                "document_count": document_count,
+                "folder_count": folder_count,
+                "total_items": document_count + folder_count,
+                "total_bytes": metrics["total_bytes"],
+                "total_storage_mb": metrics["total_storage_mb"],
+                "org_unit_names": self._collect_org_unit_names(root_folders, standalone_documents),
+            }
+        )
+
+
+class RecycleBinBulkRestoreAPIView(RecycleBinBulkMixin, APIView):
+    @transaction.atomic
+    def post(self, request):
+        items = request.data.get("items") or []
+        try:
+            document_count, folder_count = self._count_selected_items(items)
+            root_folders, standalone_documents = bulk_normalize_selection(items)
+            self._assert_bulk_access(request.user, root_folders, standalone_documents)
+            validate_bulk_restore_selection(root_folders, standalone_documents)
+            result = bulk_restore_items(request.user, root_folders, standalone_documents)
+        except ValidationError as exc:
+            return self._bulk_validation_response(exc)
+        org_units = self._collect_org_unit_names(root_folders, standalone_documents)
+        log_audit(
+            request.user,
+            "BULK_ITEM_RESTORE",
+            (
+                f"Bulk restore completed. Documents: {result['documents_restored']}, "
+                f"Folders: {result['folders_restored']}, Total selected: "
+                f"{document_count + folder_count}, Office Units: {', '.join(org_units) or 'N/A'}"
+            ),
+            target_type="RecycleBin",
+            target_name="Bulk Restore",
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(
+            {
+                "message": f"{result['total_restored']} items restored successfully.",
+                **result,
+            }
+        )
+
+
+class RecycleBinBulkDeleteAPIView(RecycleBinBulkMixin, APIView):
+    INVALID_CONFIRMATION_MESSAGE = "Invalid deletion confirmation."
+
+    @transaction.atomic
+    def post(self, request):
+        items = request.data.get("items") or []
+        confirmation = request.data.get("confirmation")
+        document_count, folder_count = self._count_selected_items(items)
+        total_selected = document_count + folder_count
+        expected = build_bulk_permanent_delete_confirmation(total_selected)
+
+        if not validate_permanent_delete_confirmation(confirmation, expected):
+            log_audit(
+                request.user,
+                "PERMANENT_DELETE_FAILED",
+                (
+                    f"Bulk permanent delete failed (confirmation_failed). "
+                    f"Selected: {total_selected}, Role: {getattr(request.user, 'role', 'unknown')}, "
+                    f"Status: failed"
+                ),
+                target_type="RecycleBin",
+                target_name="Bulk Delete",
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
+            return Response(
+                {"message": self.INVALID_CONFIRMATION_MESSAGE},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            root_folders, standalone_documents = bulk_normalize_selection(items)
+            self._assert_bulk_access(request.user, root_folders, standalone_documents)
+            result = bulk_permanent_delete_items(request.user, root_folders, standalone_documents)
+        except ValidationError as exc:
+            return self._bulk_validation_response(exc)
+        org_units = self._collect_org_unit_names(root_folders, standalone_documents)
+        log_audit(
+            request.user,
+            "BULK_ITEM_DELETION",
+            (
+                f"Bulk permanent delete completed. Documents deleted: {result['documents_deleted']}, "
+                f"Folders deleted: {result['folders_deleted']}, Storage released: "
+                f"{result['storage_released_mb']} MB, Office Units: {', '.join(org_units) or 'N/A'}"
+            ),
+            target_type="RecycleBin",
+            target_name="Bulk Delete",
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(
+            {
+                "message": f"{result['total_deleted']} items permanently deleted.",
+                **result,
+            }
         )
 
 

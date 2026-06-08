@@ -1530,7 +1530,7 @@ Same query filters as list endpoint (`search`, `action`, `role`, `orgUnit`, `sta
 | `type` | `all` (default), `documents`, `document`, `folders`, `folder` |
 | `page`, `page_size` | Pagination |
 
-**Response:** Paginated merged list of documents and folders with `deletedAt`, `deletedByFullName`, `orgUnitName`.
+**Response:** Paginated merged list of documents and folders with `deletedAt`, `deletedByFullName`, `orgUnitName`, and `locationPath` (original folder path within the Office Unit, e.g. `Parent > Child`). Documents may also include legacy `filePath`; folders may include `location` — prefer `locationPath` when present.
 
 ---
 
@@ -1603,6 +1603,73 @@ Failed confirmation attempts are audit-logged as `PERMANENT_DELETE_FAILED`. Succ
 |------|----------|
 | `folder` | Hard-deletes folder tree and files |
 | `document` | Hard-deletes DB record and media file; storage usage recalculated |
+
+---
+
+#### Bulk summary (pre-delete impact)
+
+| | |
+|---|---|
+| **Method** | `POST` |
+| **Path** | `/api/recycle-bin/bulk-summary` |
+| **Roles** | Admin (global), Dept Head (scoped) |
+
+**Request body:**
+
+```json
+{
+  "items": [
+    { "type": "document", "id": "12" },
+    { "type": "folder", "id": "4" }
+  ]
+}
+```
+
+**Response `200`:** `document_count`, `folder_count`, `total_items`, `total_bytes`, `total_storage_mb`, `org_unit_names`.
+
+Folder selections include subtree document bytes in `total_bytes`. Overlapping folder/document selections are deduplicated server-side.
+
+---
+
+#### Bulk restore
+
+| | |
+|---|---|
+| **Method** | `POST` |
+| **Path** | `/api/recycle-bin/bulk-restore` |
+| **Roles** | Admin (global), Dept Head (scoped) |
+
+**Request body:** same `items` array as bulk summary.
+
+**Success `200`:** `message`, `documents_restored`, `folders_restored`, `total_restored`. Audit action: `BULK_ITEM_RESTORE`.
+
+---
+
+#### Bulk permanent delete
+
+| | |
+|---|---|
+| **Method** | `POST` |
+| **Path** | `/api/recycle-bin/bulk-delete` |
+| **Roles** | Admin (global), Dept Head (scoped) |
+
+**Request body:**
+
+```json
+{
+  "items": [
+    { "type": "document", "id": "12" },
+    { "type": "folder", "id": "4" }
+  ],
+  "confirmation": "DELETE 2 ITEMS"
+}
+```
+
+**Bulk confirmation rules:**
+- Required text: `DELETE 1 ITEM` (singular) or `DELETE N ITEMS` (plural), where `N` is the number of selected rows in `items`.
+- Case-sensitive exact match.
+- Invalid confirmation returns `400` and logs `PERMANENT_DELETE_FAILED`.
+- Success logs `BULK_ITEM_DELETION` with storage released.
 
 ---
 
@@ -1742,7 +1809,7 @@ Singleton configuration for upload limits and **system-wide total storage quota*
 
 Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) are allocation envelopes: a parent with 15 GB may assign 5 GB to a child, leaving 10 GB in the parent's pool (`availableForAllocationMb` on list responses).
 
-**Admin UI presets:** 5 GB, 15 GB, 100 GB, 500 GB, 1 TB, or Custom (any value from 1 MB up to 1 TB / 1048576 MB).
+**Admin UI presets:** 5 GB, 15 GB, 100 GB, 500 GB, 1 TB, 3 TB, 5 TB, or Custom (any value from 1 MB up to 5 TB / 5242880 MB).
 
 | | |
 |---|---|
@@ -1780,7 +1847,7 @@ Per–Office Unit quotas (`OrgUnit.storage_quota_mb`) are allocation envelopes: 
 }
 ```
 
-`storage_quota_mb` must be between 1 and 1048576 (1 TB).
+`storage_quota_mb` must be between 1 and 5242880 (5 TB).
 
 **Lower bound:** `storage_quota_mb` cannot be set below `max(ceil(storage_used_mb), allocated_storage_mb)` — current file usage and top-level Office Unit allocations. Example `400`:
 

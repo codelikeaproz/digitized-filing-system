@@ -9,6 +9,7 @@ import { formatStorageMbWithGb } from "@/lib/storage";
 import {
   getPresetForQuotaMb,
   getQuotaMbForPreset,
+  formatStorageQuotaMb,
   MAX_SYSTEM_STORAGE_QUOTA_MB,
   SYSTEM_STORAGE_QUOTA_PRESETS,
   type SystemStorageQuotaPreset,
@@ -78,7 +79,9 @@ export function SystemSettingsForm() {
       return;
     }
     if (quotaValue > MAX_SYSTEM_STORAGE_QUOTA_MB) {
-      toast.error("Storage quota cannot exceed 1 TB.");
+      toast.error(
+        `Storage quota cannot exceed ${formatStorageQuotaMb(MAX_SYSTEM_STORAGE_QUOTA_MB)}.`
+      );
       return;
     }
     if (quotaValue < minQuotaMb) {

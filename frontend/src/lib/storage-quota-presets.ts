@@ -10,6 +10,8 @@ export const SYSTEM_STORAGE_QUOTA_PRESETS = [
   { value: "102400", label: "100 GB", mb: 102400 },
   { value: "512000", label: "500 GB", mb: 512000 },
   { value: "1048576", label: "1 TB", mb: 1048576 },
+  { value: "3145728", label: "3 TB", mb: 3145728 },
+  { value: "5242880", label: "5 TB", mb: 5242880 },
   { value: "custom", label: "Custom", mb: null },
 ] as const satisfies readonly StorageQuotaPresetOption[];
 
@@ -52,8 +54,8 @@ export function getQuotaMbForPreset(
   return matchedPreset?.mb != null ? String(matchedPreset.mb) : currentMb;
 }
 
-/** Maximum system storage quota accepted by the API (1 TB). */
-export const MAX_SYSTEM_STORAGE_QUOTA_MB = 1048576;
+/** Maximum system storage quota accepted by the API (5 TB). */
+export const MAX_SYSTEM_STORAGE_QUOTA_MB = 5242880;
 
 const QUOTA_LABEL_PRESETS = [...ORG_UNIT_STORAGE_QUOTA_PRESETS, ...SYSTEM_STORAGE_QUOTA_PRESETS];
 
@@ -62,11 +64,19 @@ export function formatStorageQuotaMb(mb: number): string {
   return matched?.label ?? `${mb} MB`;
 }
 
-/** Human-readable MB + GB pair for allocation displays (e.g. 13836 → 13.5 GB / 13,836 MB). */
+const TB_MB = 1048576;
+
+/** Human-readable MB + GB/TB pair for allocation displays (e.g. 13836 → 13.5 GB / 13,836 MB). */
 export function formatStorageQuotaDual(mb: number): { primary: string; secondary: string | null } {
   const mbLabel = `${mb.toLocaleString()} MB`;
   if (mb < 1024) {
     return { primary: mbLabel, secondary: null };
+  }
+  if (mb >= TB_MB) {
+    const tb = mb / TB_MB;
+    const tbLabel =
+      tb >= 10 ? `${Math.round(tb)} TB` : `${Math.round(tb * 10) / 10} TB`.replace(/\.0 TB$/, " TB");
+    return { primary: tbLabel, secondary: mbLabel };
   }
   const gb = mb / 1024;
   const gbLabel =

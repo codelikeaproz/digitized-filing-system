@@ -7,7 +7,7 @@ from accounts.models import User
 from documents.models import Category, Document, Folder
 from documents.views import validate_pdf_upload
 from orgunits.models import OrgType, OrgUnit
-from system.models import SystemSettings
+from system.models import MAX_SYSTEM_STORAGE_QUOTA_MB, SystemSettings
 from system.services import get_upload_limit_bytes, invalidate_system_settings_cache
 
 
@@ -139,3 +139,24 @@ class SystemSettingsAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["storage_quota_mb"], 15360)
+
+    def test_admin_can_set_quota_up_to_5tb(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            "/api/system/settings/",
+            {"storage_quota_mb": MAX_SYSTEM_STORAGE_QUOTA_MB},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["storage_quota_mb"], MAX_SYSTEM_STORAGE_QUOTA_MB)
+
+    def test_admin_cannot_set_quota_above_5tb(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            "/api/system/settings/",
+            {"storage_quota_mb": MAX_SYSTEM_STORAGE_QUOTA_MB + 1},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("storage_quota_mb", response.data)
+        self.assertIn("5 TB", str(response.data["storage_quota_mb"][0]))

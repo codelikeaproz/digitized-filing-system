@@ -5,7 +5,7 @@ from notifications.storage_alerts import (
     get_minimum_system_storage_quota_mb,
 )
 
-from .models import SystemSettings
+from .models import MAX_SYSTEM_STORAGE_QUOTA_MB, SystemSettings
 
 
 class SystemStorageAllocationMixin(serializers.Serializer):
@@ -94,9 +94,10 @@ class SystemSettingsSerializer(
     def validate_storage_quota_mb(self, value):
         if value < 1:
             raise serializers.ValidationError("Storage quota must be at least 1 MB.")
-        max_quota_mb = 1048576  # 1 TB
-        if value > max_quota_mb:
-            raise serializers.ValidationError("Storage quota cannot exceed 1 TB (1048576 MB).")
+        if value > MAX_SYSTEM_STORAGE_QUOTA_MB:
+            raise serializers.ValidationError(
+                f"Storage quota cannot exceed 5 TB ({MAX_SYSTEM_STORAGE_QUOTA_MB} MB)."
+            )
         min_required = get_minimum_system_storage_quota_mb()
         if value < min_required:
             raise serializers.ValidationError(build_storage_quota_floor_error())

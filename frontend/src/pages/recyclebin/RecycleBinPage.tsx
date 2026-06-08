@@ -2,9 +2,10 @@
  * RecycleBinPage — soft-deleted folders and documents (Admin, Dept Head).
  *
  * Staff cannot access this page. Supports restore and permanent delete.
- * APIs: GET /api/recycle-bin, POST restore, POST permanent delete with typed confirmation.
+ * APIs: GET /api/recycle-bin, POST restore, POST permanent delete with typed confirmation,
+ * POST bulk-summary, bulk-restore, bulk-delete.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -17,8 +18,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { FileText, Folder, RefreshCcw, Trash } from 'lucide-react';
 import { PermanentDeleteConfirmDialog } from '@/components/recyclebin/PermanentDeleteConfirmDialog';
+import { BulkRestoreConfirmDialog } from '@/components/recyclebin/BulkRestoreConfirmDialog';
+import { BulkPermanentDeleteConfirmDialog } from '@/components/recyclebin/BulkPermanentDeleteConfirmDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { logAudit } from '@/lib/audit';
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatManilaDateTime } from '@/lib/time';
 
@@ -45,11 +48,27 @@ interface RecycleBinItem {
   type: 'document' | 'folder';
   name?: string;
   title?: string;
+  file_size?: number;
   deletedAt?: string;
   deletedBy?: string;
   deletedByFullName?: string;
   deletedByRole?: string;
   orgUnitName?: string;
+  locationPath?: string;
+  filePath?: string;
+  location?: string;
+}
+
+function getRecycleBinLocation(item: RecycleBinItem): string {
+  return item.locationPath || item.filePath || item.location || '—';
+}
+
+function getItemKey(item: Pick<RecycleBinItem, 'type' | 'id'>) {
+  return `${item.type}:${item.id}`;
+}
+
+function itemToPayload(item: RecycleBinItem) {
+  return { type: item.type, id: item.id };
 }
 
 export default function RecycleBinPage() {
@@ -59,10 +78,22 @@ export default function RecycleBinPage() {
   const [filter, setFilter] = useState<'all' | 'documents' | 'folders'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  
+  const [selectedItemsMap, setSelectedItemsMap] = useState<Map<string, RecycleBinItem>>(new Map());
+
   const [itemToRestore, setItemToRestore] = useState<RecycleBinItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RecycleBinItem | null>(null);
+  const [showBulkRestore, setShowBulkRestore] = useState(false);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const selectedItems = useMemo(() => Array.from(selectedItemsMap.values()), [selectedItemsMap]);
+
+  const selectedOnPageCount = items.filter((item) => selectedItemsMap.has(getItemKey(item))).length;
+  const allOnPageSelected = items.length > 0 && selectedOnPageCount === items.length;
+  const someOnPageSelected = selectedOnPageCount > 0 && !allOnPageSelected;
+
+  const selectedDocumentCount = selectedItems.filter((item) => item.type === 'document').length;
+  const selectedFolderCount = selectedItems.filter((item) => item.type === 'folder').length;
 
   const fetchRecycleBin = async () => {
     setIsLoading(true);
@@ -86,15 +117,44 @@ export default function RecycleBinPage() {
     fetchRecycleBin();
   }, [currentPage, pageSize, filter]);
 
+  const clearSelection = () => setSelectedItemsMap(new Map());
+
   const handlePageSizeChange = (nextPageSize: number) => {
     setPageSize(nextPageSize);
     setCurrentPage(1);
+    clearSelection();
   };
 
   const handleFilterChange = (value: 'all' | 'documents' | 'folders' | null) => {
     if (!value) return;
     setFilter(value);
     setCurrentPage(1);
+    clearSelection();
+  };
+
+  const toggleItemSelection = (item: RecycleBinItem, checked: boolean) => {
+    setSelectedItemsMap((prev) => {
+      const next = new Map(prev);
+      const key = getItemKey(item);
+      if (checked) {
+        next.set(key, item);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllOnPage = (checked: boolean) => {
+    setSelectedItemsMap((prev) => {
+      const next = new Map(prev);
+      if (checked) {
+        items.forEach((item) => next.set(getItemKey(item), item));
+      } else {
+        items.forEach((item) => next.delete(getItemKey(item)));
+      }
+      return next;
+    });
   };
 
   const handleRestore = async () => {
@@ -106,7 +166,6 @@ export default function RecycleBinPage() {
         id: itemToRestore.id
       });
       toast.success(`${itemToRestore.type === 'folder' ? 'Folder' : 'Document'} restored successfully`);
-      await logAudit('RESTORE', `Restored ${itemToRestore.type}: ${itemToRestore.name || itemToRestore.title}`);
       await fetchRecycleBin();
     } catch (error: any) {
       toast.error(error.message || 'Failed to restore item');
@@ -135,6 +194,47 @@ export default function RecycleBinPage() {
     }
   };
 
+  const handleBulkRestore = async () => {
+    if (selectedItems.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const response = await api.post<{ message: string; total_restored: number }>(
+        '/api/recycle-bin/bulk-restore',
+        { items: selectedItems.map(itemToPayload) }
+      );
+      toast.success(response.message || `${response.total_restored} items restored successfully.`);
+      clearSelection();
+      await fetchRecycleBin();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to restore selected items');
+    } finally {
+      setIsProcessing(false);
+      setShowBulkRestore(false);
+    }
+  };
+
+  const handleBulkDelete = async (confirmation: string) => {
+    if (selectedItems.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const response = await api.post<{ message: string; total_deleted: number }>(
+        '/api/recycle-bin/bulk-delete',
+        {
+          items: selectedItems.map(itemToPayload),
+          confirmation,
+        }
+      );
+      toast.success(response.message || `${response.total_deleted} items permanently deleted.`);
+      clearSelection();
+      await fetchRecycleBin();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete selected items permanently');
+    } finally {
+      setIsProcessing(false);
+      setShowBulkDelete(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -145,7 +245,7 @@ export default function RecycleBinPage() {
           </div>
           <p className="text-muted-foreground">Manage and restore deleted documents and folders.</p>
         </div>
-        
+
         <div className="flex items-center gap-4">
           <Select value={filter} onValueChange={handleFilterChange}>
             <SelectTrigger className="w-[180px]">
@@ -163,13 +263,46 @@ export default function RecycleBinPage() {
         </div>
       </div>
 
+      {selectedItemsMap.size > 0 ? (
+        <div className="flex flex-col gap-3 rounded-md border bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-medium">
+            {selectedItemsMap.size} item{selectedItemsMap.size === 1 ? '' : 's'} selected
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowBulkRestore(true)}
+              disabled={isProcessing}
+            >
+              Restore Selected
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setShowBulkDelete(true)}
+              disabled={isProcessing}
+            >
+              Delete Permanently
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={allOnPageSelected ? true : someOnPageSelected ? "indeterminate" : false}
+                  onCheckedChange={(checked) => toggleSelectAllOnPage(checked === true)}
+                  aria-label="Select all on page"
+                  disabled={isLoading || items.length === 0}
+                />
+              </TableHead>
               <TableHead>Type</TableHead>
               <TableHead className="w-[30%]">File Name</TableHead>
               <TableHead>Office Unit</TableHead>
+              <TableHead>Location</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Date Deleted</TableHead>
@@ -179,15 +312,22 @@ export default function RecycleBinPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center">Loading recycle bin...</TableCell>
+                <TableCell colSpan={9} className="h-32 text-center">Loading recycle bin...</TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">Recycle bin is empty.</TableCell>
+                <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">Recycle bin is empty.</TableCell>
               </TableRow>
             ) : (
               items.map(item => (
-                <TableRow key={`${item.type}-${item.id}`}>
+                <TableRow key={getItemKey(item)} data-state={selectedItemsMap.has(getItemKey(item)) ? 'selected' : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedItemsMap.has(getItemKey(item))}
+                      onCheckedChange={(checked) => toggleItemSelection(item, checked === true)}
+                      aria-label={`Select ${item.name || item.title}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="flex w-fit items-center gap-1.5 capitalize">
                       {item.type === 'folder' ? <Folder className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
@@ -196,6 +336,12 @@ export default function RecycleBinPage() {
                   </TableCell>
                   <TableCell className="font-medium">{item.name || item.title}</TableCell>
                   <TableCell className="text-sm font-medium text-muted-foreground">{item.orgUnitName || 'Global Access'}</TableCell>
+                  <TableCell
+                    className="max-w-[220px] truncate text-sm text-muted-foreground"
+                    title={getRecycleBinLocation(item)}
+                  >
+                    {getRecycleBinLocation(item)}
+                  </TableCell>
                   <TableCell className="text-sm">
                     {item.deletedByFullName || "System"}
                   </TableCell>
@@ -258,6 +404,24 @@ export default function RecycleBinPage() {
         isProcessing={isProcessing}
         onCancel={() => setItemToDelete(null)}
         onConfirm={handleDelete}
+      />
+
+      <BulkRestoreConfirmDialog
+        open={showBulkRestore}
+        documentCount={selectedDocumentCount}
+        folderCount={selectedFolderCount}
+        totalItems={selectedItemsMap.size}
+        isProcessing={isProcessing}
+        onCancel={() => setShowBulkRestore(false)}
+        onConfirm={handleBulkRestore}
+      />
+
+      <BulkPermanentDeleteConfirmDialog
+        open={showBulkDelete}
+        items={selectedItems.map(itemToPayload)}
+        isProcessing={isProcessing}
+        onCancel={() => setShowBulkDelete(false)}
+        onConfirm={handleBulkDelete}
       />
     </div>
   );
