@@ -56,12 +56,33 @@ def build_folder_path_map(folder_ids):
     return {folder_id: path_for(folder_id) for folder_id in normalized_ids if folder_id in folders_by_id}
 
 
-def resolve_document_location_path(document, path_map):
-    if document.file_path:
-        return document.file_path
+def resolve_document_file_path(document, path_map=None):
+    """Return the live folder path for a document; folder FK is authoritative."""
     if document.folder_id:
-        return path_map.get(document.folder_id, "")
-    return ""
+        if path_map is not None:
+            return path_map.get(document.folder_id, "")
+        return document.folder.get_full_path()
+    return document.file_path or ""
+
+
+def resolve_document_location_path(document, path_map):
+    return resolve_document_file_path(document, path_map=path_map)
+
+
+def refresh_document_file_paths_for_folder_tree(root_folder):
+    """Recompute and persist file_path for all documents in a folder subtree."""
+    folder_ids = _folder_tree_ids(root_folder)
+    path_map = build_folder_path_map(folder_ids)
+    documents = list(Document.objects.filter(folder_id__in=folder_ids))
+    to_update = []
+    for document in documents:
+        new_path = path_map.get(document.folder_id, "")
+        if document.file_path != new_path:
+            document.file_path = new_path
+            to_update.append(document)
+    if to_update:
+        Document.objects.bulk_update(to_update, ["file_path"])
+    return len(to_update)
 
 
 def resolve_folder_location_path(folder, path_map):

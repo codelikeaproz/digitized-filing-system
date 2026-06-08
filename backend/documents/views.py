@@ -92,6 +92,8 @@ from .services import (
     bulk_restore_items,
     build_bulk_summary_metrics,
     permanently_delete_folder,
+    refresh_document_file_paths_for_folder_tree,
+    resolve_document_file_path,
     resolve_document_location_path,
     resolve_folder_location_path,
     restore_folder,
@@ -386,6 +388,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             folder.name = new_name
             folder.save(update_fields=["name"])
+            refresh_document_file_paths_for_folder_tree(folder)
             log_audit(
                 request.user,
                 "RENAME_FOLDER",
@@ -740,7 +743,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if duplicate_exists:
             raise ValidationError({"file_name": "A document with this file name already exists in this folder."})
 
-        old_folder_path = document.file_path or (document.folder.get_full_path() if document.folder else "")
+        old_folder_path = resolve_document_file_path(document)
         old_name = document.file.name.rsplit("/", 1)[-1] if document.file else document.title
         changes = []
 
@@ -936,7 +939,7 @@ class DocumentUploadView(APIView):
                 document = Document.objects.create(
                     title=title,
                     file=upload,
-                    file_path=request.data.get("filePath", folder.get_full_path()),
+                    file_path=folder.get_full_path(),
                     folder=folder,
                     category=category,
                     uploader=request.user if request.user.is_authenticated else None,

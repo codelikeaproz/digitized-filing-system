@@ -62,6 +62,8 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 |-----------|------|------|
 | Tree loads; folder selection filters table and breadcrumbs | All | [ ] |
 | Create, rename, delete empty folder | All | [ ] |
+| Rename folder updates document Location column and stored path for docs in subtree | Admin, Dept Head | [ ] |
+| Edit Details header location matches selected folder dropdown | Admin, Dept Head | [ ] |
 | Delete non-empty folder: blocked (Staff), allowed (Admin / Dept Head) | All | [ ] |
 | Folders scoped to user's Org Unit | Staff, Dept Head | [ ] |
 

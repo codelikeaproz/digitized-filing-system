@@ -760,6 +760,8 @@ Parent reduction blocked:
 }
 ```
 
+`filePath` in list/detail responses is derived from the document's current folder hierarchy (`folderId`). The stored `file_path` column is a maintained cache updated on upload, document move, and folder rename (including ancestor renames in the subtree). Run `python manage.py recompute_document_file_paths` to backfill legacy rows.
+
 ---
 
 #### Retrieve document
@@ -794,7 +796,7 @@ Parent reduction blocked:
 | `requestor` | No | Legacy derived display string (synced server-side from `requisitioners`; do not send on manual upload) |
 | `description` | Yes | Required; max 50 characters |
 | `keywords` | No | JSON array string, e.g. `["keyword1","keyword2"]` |
-| `filePath` | No | Display path; defaults to folder full path |
+| `filePath` | No | Ignored on upload; server sets path from target folder hierarchy |
 | `source` | No | `Uploaded` (default; legacy rows may show `Scanned`) |
 
 **Success `201`:** Full `DocumentSerializer` object.
@@ -1530,7 +1532,7 @@ Same query filters as list endpoint (`search`, `action`, `role`, `orgUnit`, `sta
 | `type` | `all` (default), `documents`, `document`, `folders`, `folder` |
 | `page`, `page_size` | Pagination |
 
-**Response:** Paginated merged list of documents and folders with `deletedAt`, `deletedByFullName`, `orgUnitName`, and `locationPath` (original folder path within the Office Unit, e.g. `Parent > Child`). Documents may also include legacy `filePath`; folders may include `location` — prefer `locationPath` when present.
+**Response:** Paginated merged list of documents and folders with `deletedAt`, `deletedByFullName`, `orgUnitName`, and `locationPath` (live folder path within the Office Unit from the document/folder hierarchy, e.g. `Parent > Child`). Documents may also include `filePath`; folders may include `location` — prefer `locationPath` when present.
 
 ---
 

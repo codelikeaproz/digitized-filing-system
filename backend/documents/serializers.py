@@ -6,6 +6,7 @@ import re
 from config.timezone_utils import format_local_datetime
 from .document_code import derive_category_code, normalize_category_code
 from .models import Category, Document, DocumentRequisitioner, Folder
+from .services import resolve_document_file_path
 from .requisitioners import build_requisitioner_full_name, validate_requisitioners_list
 from .permissions import resolve_category_org_unit_for_create
 
@@ -308,7 +309,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         return DocumentRequisitionerSerializer(requisitioners, many=True).data
 
     def get_filePath(self, obj):
-        return obj.file_path or obj.folder.get_full_path()
+        return resolve_document_file_path(obj)
 
     def get_file_name(self, obj):
         if obj.file:

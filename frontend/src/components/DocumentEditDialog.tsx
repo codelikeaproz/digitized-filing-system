@@ -77,6 +77,11 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       .sort((a, b) => compareByNaturalName(a.path, b.path));
   }, [folders]);
 
+  const currentLocationPath = useMemo(() => {
+    if (!targetFolderId) return "";
+    return folderPaths.find((folder) => folder.id === targetFolderId)?.path || "";
+  }, [folderPaths, targetFolderId]);
+
   useEffect(() => {
     if (!open) return;
     api.get<Folder[]>("/api/folders").then(setFolders).catch(() => {
@@ -191,7 +196,9 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
                   Current Document
                 </Label>
                 <p className="text-sm font-semibold truncate">{document.title || document.file_name}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">{document.filePath}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">
+                  {currentLocationPath || document.filePath || "—"}
+                </p>
               </div>
             </div>
 
