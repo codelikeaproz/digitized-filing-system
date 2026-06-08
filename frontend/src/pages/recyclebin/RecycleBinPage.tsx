@@ -2,7 +2,7 @@
  * RecycleBinPage — soft-deleted folders and documents (Admin, Dept Head).
  *
  * Staff cannot access this page. Supports restore and permanent delete.
- * APIs: GET /api/recycle-bin, POST restore, DELETE permanent delete.
+ * APIs: GET /api/recycle-bin, POST restore, POST permanent delete with typed confirmation.
  */
 import React, { useState, useEffect } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
-import { FileText, Folder, RefreshCcw, Trash2, Trash } from 'lucide-react';
+import { FileText, Folder, RefreshCcw, Trash } from 'lucide-react';
+import { PermanentDeleteConfirmDialog } from '@/components/recyclebin/PermanentDeleteConfirmDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -115,13 +116,16 @@ export default function RecycleBinPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (confirmation: string) => {
     if (!itemToDelete) return;
     setIsProcessing(true);
     try {
-      await api.delete(`/api/recycle-bin/delete?type=${itemToDelete.type}&id=${itemToDelete.id}`);
+      await api.post('/api/recycle-bin/delete', {
+        type: itemToDelete.type,
+        id: itemToDelete.id,
+        confirmation,
+      });
       toast.success(`${itemToDelete.type === 'folder' ? 'Folder' : 'Document'} permanently deleted`);
-      await logAudit('PERMANENT_DELETE', `Permanently deleted ${itemToDelete.type}: ${itemToDelete.name || itemToDelete.title}`);
       await fetchRecycleBin();
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete item permanently');
@@ -248,33 +252,13 @@ export default function RecycleBinPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive flex items-center gap-2">
-              <Trash2 className="h-5 w-5" />
-              Permanently Delete?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to permanently delete <strong>{itemToDelete?.name || itemToDelete?.title}</strong>?
-              <span className="block mt-2 text-destructive font-bold">
-                This action cannot be undone. Files will be permanently removed from storage.
-              </span>
-              {itemToDelete?.type === 'folder' && (
-                <span className="block mt-2 font-medium">
-                  All documents inside this folder will also be permanently deleted!
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={isProcessing} className="bg-red-600 hover:bg-red-700 text-white hover:text-white focus:ring-red-600">
-              {isProcessing ? "Deleting..." : "Delete Permanently"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PermanentDeleteConfirmDialog
+        open={!!itemToDelete}
+        item={itemToDelete}
+        isProcessing={isProcessing}
+        onCancel={() => setItemToDelete(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

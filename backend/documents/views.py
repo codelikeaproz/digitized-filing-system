@@ -80,6 +80,7 @@ from .permissions import (
     org_unit_scope_ids,
     scoped_categories_queryset,
 )
+from .confirmation import build_permanent_delete_confirmation, validate_permanent_delete_confirmation
 from .services import permanently_delete_folder, restore_folder, soft_delete_folder
 from accounts.models import User
 from config.pagination import StandardResultsSetPagination
@@ -1116,23 +1117,61 @@ class RecycleBinRestoreAPIView(APIView):
 
 
 class RecycleBinDeleteAPIView(APIView):
+    INVALID_CONFIRMATION_MESSAGE = "Invalid deletion confirmation."
+
+    def _log_failed_permanent_delete(
+        self,
+        request,
+        item_type,
+        item_id,
+        display_name,
+        org_unit_name=None,
+        reason="confirmation_failed",
+    ):
+        role = getattr(request.user, "role", "unknown")
+        log_audit(
+            request.user,
+            "PERMANENT_DELETE_FAILED",
+            (
+                f"Permanent delete failed ({reason}). "
+                f"Type: {item_type}, ID: {item_id}, Name: {display_name}, "
+                f"Role: {role}, Status: failed"
+            ),
+            target_type=item_type,
+            target_name=display_name,
+            target_org_unit=org_unit_name,
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+
     @transaction.atomic
-    def delete(self, request):
-        item_type = (request.query_params.get("type") or "").lower()
-        item_id = request.query_params.get("id")
+    def _validate_and_permanent_delete(self, request, item_type, item_id, confirmation):
+        item_type = (item_type or "").lower()
         if item_type == "folder":
             folder = Folder.objects.get(pk=item_id)
             assert_recycle_bin_access(request.user, folder)
             folder_name = folder.name
             org_unit_name = folder.org_unit.name if folder.org_unit else None
+            expected = build_permanent_delete_confirmation(folder_name)
+            if not validate_permanent_delete_confirmation(confirmation, expected):
+                self._log_failed_permanent_delete(
+                    request, item_type, item_id, folder_name, org_unit_name
+                )
+                return Response(
+                    {"message": self.INVALID_CONFIRMATION_MESSAGE},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             document_count = permanently_delete_folder(folder, request.user)
             log_audit(
                 request.user,
                 "PERMANENT_DELETE_FOLDER",
-                f"Permanently deleted folder: {folder_name} and {document_count} document(s)",
+                (
+                    f"Permanently deleted folder: {folder_name} and {document_count} document(s) "
+                    f"(id={item_id}, status=success)"
+                ),
                 target_type="folder",
                 target_name=folder_name,
                 target_org_unit=org_unit_name,
+                ip_address=request.META.get("REMOTE_ADDR"),
             )
             return Response(
                 {
@@ -1147,6 +1186,15 @@ class RecycleBinDeleteAPIView(APIView):
             file_size = doc.file_size or 0
             doc_title = doc.title
             org_unit_name = org_unit.name if org_unit else None
+            expected = build_permanent_delete_confirmation(doc_title)
+            if not validate_permanent_delete_confirmation(confirmation, expected):
+                self._log_failed_permanent_delete(
+                    request, item_type, item_id, doc_title, org_unit_name
+                )
+                return Response(
+                    {"message": self.INVALID_CONFIRMATION_MESSAGE},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if doc.file:
                 doc.file.delete(save=False)
             doc.delete()
@@ -1158,13 +1206,56 @@ class RecycleBinDeleteAPIView(APIView):
             log_audit(
                 request.user,
                 "PERMANENT_DELETE_DOCUMENT",
-                f"Permanently deleted document: {doc_title}",
+                (
+                    f"Permanently deleted document: {doc_title} "
+                    f"(id={item_id}, size={file_size} bytes, status=success)"
+                ),
                 target_type="document",
                 target_name=doc_title,
                 target_org_unit=org_unit_name,
+                ip_address=request.META.get("REMOTE_ADDR"),
             )
             return Response({"message": "Document permanently deleted"})
-        return Response({"error": "Invalid type"}, status=400)
+        return Response({"error": "Invalid type"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @transaction.atomic
+    def post(self, request):
+        return self._validate_and_permanent_delete(
+            request,
+            request.data.get("type"),
+            request.data.get("id"),
+            request.data.get("confirmation"),
+        )
+
+    def delete(self, request):
+        item_type = (request.query_params.get("type") or "").lower()
+        item_id = request.query_params.get("id")
+        display_name = "unknown"
+        org_unit_name = None
+        try:
+            if item_type == "folder" and item_id:
+                folder = Folder.objects.select_related("org_unit").get(pk=item_id)
+                display_name = folder.name
+                org_unit_name = folder.org_unit.name if folder.org_unit else None
+            elif item_type == "document" and item_id:
+                doc = Document.objects.select_related("folder__org_unit").get(pk=item_id)
+                display_name = doc.title
+                org_unit = doc.folder.org_unit if doc.folder else None
+                org_unit_name = org_unit.name if org_unit else None
+        except (Folder.DoesNotExist, Document.DoesNotExist):
+            pass
+        self._log_failed_permanent_delete(
+            request,
+            item_type or "unknown",
+            item_id or "unknown",
+            display_name,
+            org_unit_name,
+            reason="missing_confirmation",
+        )
+        return Response(
+            {"message": self.INVALID_CONFIRMATION_MESSAGE},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class DashboardStatsAPIView(APIView):

@@ -40,7 +40,7 @@ Wrapped by `ProtectedRoute` + `AppShell` layout.
 | `/audit-logs` | `AuditLogsPage` | `admin` only | `/api/audit-logs/` |
 | `/org-units` | `OrgUnitsPage` | `admin` only | `/api/org-units/`, `/api/org-types/` |
 | `/backup` | `BackupManagementPage` | `admin` only | `/api/backups/database`, `/api/backups/media` |
-| `/recycle-bin` | `RecycleBinPage` | `admin`, `dept_head` | `/api/recycle-bin` |
+| `/recycle-bin` | `RecycleBinPage` | `admin`, `dept_head` | `/api/recycle-bin`; permanent delete uses typed `DELETE <name>` confirmation (`POST /api/recycle-bin/delete`) |
 
 > **Staff** see Dashboard, Documents, and Settings only (sidebar + route guards must stay in sync).
 

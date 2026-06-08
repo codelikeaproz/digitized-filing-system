@@ -187,7 +187,10 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | List; filter documents / folders | Admin, Dept Head | [ ] |
-| Restore and permanent delete | Admin, Dept Head | [ ] |
+| Restore item | Admin, Dept Head | [ ] |
+| Permanent delete requires typing `DELETE <filename>` exactly; button disabled until match | Admin, Dept Head | [ ] |
+| Wrong confirmation shows inline error; API returns 400; failed attempt in Audit Logs | Admin, Dept Head | [ ] |
+| Raw `DELETE /api/recycle-bin/delete` without confirmation returns 400 | Admin | [ ] |
 | Dept Head scoped to org; Staff blocked | All roles | [ ] |
 
 ---

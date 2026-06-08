@@ -1,0 +1,11 @@
+"""Typed confirmation helpers for irreversible recycle-bin deletions."""
+
+
+def build_permanent_delete_confirmation(display_name: str) -> str:
+    return f"DELETE {display_name.strip()}"
+
+
+def validate_permanent_delete_confirmation(provided: str | None, expected: str) -> bool:
+    if provided is None:
+        return False
+    return provided == expected

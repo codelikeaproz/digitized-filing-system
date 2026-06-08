@@ -1561,13 +1561,48 @@ Same query filters as list endpoint (`search`, `action`, `role`, `orgUnit`, `sta
 
 | | |
 |---|---|
-| **Method** | `DELETE` |
-| **Path** | `/api/recycle-bin/delete?type=document&id=15` |
+| **Method** | `POST` (required) |
+| **Path** | `/api/recycle-bin/delete` |
+| **Roles** | Admin (global), Dept Head (scoped) |
+
+**Request body:**
+
+```json
+{
+  "type": "document",
+  "id": "15",
+  "confirmation": "DELETE SampleData.pdf"
+}
+```
+
+**Confirmation rules:**
+- User must type exactly `DELETE <display_name>` (case-sensitive).
+- **Document** display name = `title`.
+- **Folder** display name = `name`.
+- `DELETE` without a JSON body (legacy query-string delete) always returns `400` to prevent API bypass.
+
+**Success `200`:**
+
+```json
+{
+  "message": "Document permanently deleted"
+}
+```
+
+**Invalid confirmation `400`:**
+
+```json
+{
+  "message": "Invalid deletion confirmation."
+}
+```
+
+Failed confirmation attempts are audit-logged as `PERMANENT_DELETE_FAILED`. Successful deletes log `PERMANENT_DELETE_DOCUMENT` or `PERMANENT_DELETE_FOLDER`.
 
 | type | Behavior |
 |------|----------|
 | `folder` | Hard-deletes folder tree and files |
-| `document` | Hard-deletes DB record and media file |
+| `document` | Hard-deletes DB record and media file; storage usage recalculated |
 
 ---
 
