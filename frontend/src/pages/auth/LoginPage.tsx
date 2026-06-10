@@ -3,6 +3,7 @@
  * API: POST /api/auth/login → stores JWT in localStorage via auth-context.
  */
 import React, { useState } from 'react'
+import { publicAsset } from '@/lib/app-path'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -55,7 +56,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative text-white p-16 flex-col justify-between overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src="/img/login_hero.jpeg"
+            src={publicAsset('img/login_hero.jpeg')}
             alt="Office Desk"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
@@ -69,7 +70,7 @@ export default function LoginPage() {
         <div className="z-20">
           <div className="flex items-center mb-12">
             <img
-              src="/img/login_logo.png"
+              src={publicAsset('img/login_logo.png')}
               alt="DigiFile logo"
               className="h-12 w-12 rounded-xl object-contain "
             />
@@ -102,7 +103,7 @@ export default function LoginPage() {
             <CardHeader className="space-y-4 py-8 flex flex-col items-center text-center">
             <div className="flex items-center">
                 <div className="h-12 w-12 rounded-xl object-contain">
-                  <img src="/img/login_logo.png" alt="DigiFile logo" />
+                  <img src={publicAsset('img/login_logo.png')} alt="DigiFile logo" />
                 </div>
                 <span className="text-2xl font-black tracking-tighter text-gray-900">DigiFile</span>
               </div>

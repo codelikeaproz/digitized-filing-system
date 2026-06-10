@@ -1,3 +1,5 @@
+import { appPath, isAppPath } from '@/lib/app-path';
+
 /**
  * Centralized HTTP client for the DFS backend.
  *
@@ -87,8 +89,8 @@ class ApiService {
         // Auto logout on unauthorized
         localStorage.removeItem("auth_token");
         localStorage.removeItem("auth_user");
-        if (!window.location.pathname.startsWith("/login")) {
-          window.location.href = "/login";
+        if (!isAppPath("/login")) {
+          window.location.href = appPath("/login");
         }
         throw new Error("Unauthorized");
       }
@@ -111,15 +113,15 @@ class ApiService {
           throw rateLimitError;
         }
 
-        if (!window.location.pathname.startsWith("/error/429")) {
-          window.location.href = "/error/429";
+        if (!isAppPath("/error/429")) {
+          window.location.href = appPath("/error/429");
         }
         throw rateLimitError;
       }
 
       if (response.status >= 500) {
-        if (!window.location.pathname.startsWith("/error/500")) {
-          window.location.href = "/error/500";
+        if (!isAppPath("/error/500")) {
+          window.location.href = appPath("/error/500");
         }
         throw new Error("Internal Server Error");
       }

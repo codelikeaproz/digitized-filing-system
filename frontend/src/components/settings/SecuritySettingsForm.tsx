@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Shield } from "lucide-react";
+import { appPath } from "@/lib/app-path";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -42,7 +43,7 @@ export function SecuritySettingsForm() {
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");
       setTimeout(() => {
-        window.location.href = "/login";
+        window.location.href = appPath("/login");
       }, 800);
     } catch (error: any) {
       toast.error(error.message || "Failed to update password");

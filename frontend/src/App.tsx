@@ -42,10 +42,12 @@ import AppShell from "./layouts/AppShell";
 import AutoLogout from "./components/AutoLogout";
 import { PublicAssistantMount } from "@/components/assistant/public/PublicAssistantMount";
 
+const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename || undefined}>
         <AutoLogout timeoutMinutes={10} />
         <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
           <Routes>
