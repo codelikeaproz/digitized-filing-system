@@ -39,6 +39,11 @@ urlpatterns = [
         DocumentViewSet.as_view({"get": "download"}),
         name="document-download",
     ),
+    path(
+        "documents/<int:pk>/preview/",
+        DocumentViewSet.as_view({"get": "preview"}),
+        name="document-preview",
+    ),
     path("recycle-bin", RecycleBinAPIView.as_view(), name="recycle-bin"),
     path("recycle-bin/restore", RecycleBinRestoreAPIView.as_view(), name="recycle-bin-restore"),
     path("recycle-bin/delete", RecycleBinDeleteAPIView.as_view(), name="recycle-bin-delete"),

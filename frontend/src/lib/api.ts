@@ -1,3 +1,4 @@
+import { resolveApiUrl } from '@/lib/api-base-url';
 import { appPath, isAppPath } from '@/lib/app-path';
 
 /**
@@ -9,12 +10,11 @@ import { appPath, isAppPath } from '@/lib/app-path';
  * - upload() for multipart/form-data (PDF uploads)
  * - Auto-redirect on 401 (logout), 429, 5xx
  *
- * Base URL: import.meta.env.VITE_API_URL
+ * Production URLs are relative (/digifile/api/...) so save/update/delete
+ * always hit the same host as the page (http/https, domain or IP).
  *
  * @see docs/API_DOCUMENTATION.md
  */
-
-const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export interface PaginatedResponse<T> {
   count: number;
@@ -48,6 +48,7 @@ class ApiService {
   private getHeaders(): HeadersInit {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      Accept: "application/json",
     };
 
     const token = localStorage.getItem("auth_token");
@@ -60,11 +61,9 @@ class ApiService {
 
   async request<T>(endpoint: string, options: RequestOptions = {}, retries = 2): Promise<T> {
     const { params, ...init } = options;
-    
-    const cleanBaseUrl = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    let url = `${cleanBaseUrl}${cleanEndpoint}`;
-    
+
+    let url = resolveApiUrl(endpoint);
+
     if (params) {
       const searchParams = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
@@ -131,7 +130,11 @@ class ApiService {
       try {
         data = text ? JSON.parse(text) : {};
       } catch {
-        throw new Error("Server returned non-JSON response. Check API URL.");
+        const preview = text.replace(/\s+/g, " ").trim().slice(0, 120);
+        throw new Error(
+          `Server returned non-JSON response (${response.status} ${response.statusText}). ` +
+            `URL: ${url}. Preview: ${preview || "(empty)"}`
+        );
       }
 
       if (!response.ok) {
@@ -206,10 +209,7 @@ class ApiService {
     delete headers["Content-Type"]; // Let fetch set boundary
     delete headers["content-type"];
 
-    const cleanBaseUrl = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-
-    const response = await fetch(`${cleanBaseUrl}${cleanEndpoint}`, {
+    const response = await fetch(resolveApiUrl(endpoint), {
       method: "POST",
       body: formData,
       headers,

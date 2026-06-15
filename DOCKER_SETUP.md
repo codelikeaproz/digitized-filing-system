@@ -47,7 +47,7 @@ In `backend/.env`:
 
 ```env
 DB_ENGINE=mysql
-DB_NAME=dfs_project
+DB_NAME=vpaa_digi_file
 DB_USER=dfs_user
 DB_PASSWORD=dfs_password
 DB_HOST=db
@@ -207,7 +207,7 @@ Update `backend/.env`:
 
 ```env
 DB_ENGINE=mysql
-DB_NAME=dfs_project
+DB_NAME=vpaa_digi_file
 DB_USER=dfs_user
 DB_PASSWORD=dfs_password
 DB_HOST=db

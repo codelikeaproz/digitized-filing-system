@@ -16,7 +16,7 @@ import {
   CardTitle,
   CardFooter
 } from "@/components/ui/card"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "@/lib/auth-context"
 import { toast } from "sonner"
 
@@ -28,6 +28,7 @@ export default function LoginPage() {
   })
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
+  const navigate = useNavigate()
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({
@@ -42,7 +43,7 @@ export default function LoginPage() {
     try {
       await login(formData.email, formData.password)
       toast.success("Login successful")
-      window.location.assign("/")
+      navigate("/")
     } catch (error: any) {
       console.error(error)
     } finally {

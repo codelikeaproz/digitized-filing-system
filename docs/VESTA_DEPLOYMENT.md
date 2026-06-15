@@ -25,6 +25,8 @@ Upload **contents** of `frontend/dist/` to:
 
 No manual `frontend/.env` edits needed — production URL is in `frontend/.env.production` (loaded automatically by `npm run build`).
 
+> If the primary domain is down, see [Backup access via internal IP (172.16.3.22)](#210-backup-access-via-internal-ip-17216322).
+
 **Backend** (first deploy or when secrets/env change)
 
 ```bash
@@ -167,7 +169,7 @@ DEBUG=False
 ALLOWED_HOSTS=apps.cmu.edu.ph
 
 DB_ENGINE=mysql
-DB_NAME=dfs_project
+DB_NAME=vpaa_digi_file
 DB_USER=dfs_user
 DB_PASSWORD=your-strong-db-password
 DB_HOST=db
@@ -314,6 +316,113 @@ CMU uses the **same-host subpath** layout (Section 2.6), not a separate API subd
 
 ---
 
+### 2.10 Backup access via internal IP (172.16.3.22)
+
+Use this **manual** procedure when **`https://apps.cmu.edu.ph/digifile/`** is unreachable (DNS, SSL, or nginx issues on the public domain) but the Vesta server and Docker stack are still running.
+
+**Backup URL (CMU internal network only):** [http://172.16.3.22/digifile/](http://172.16.3.22/digifile/)
+
+> `172.16.x.x` is a private LAN address — not reachable from the public internet. Users must be on the CMU network (or VPN).
+
+#### When to use
+
+| Situation | Use backup IP? |
+|-----------|----------------|
+| `apps.cmu.edu.ph` DNS or SSL failure | Yes |
+| nginx not serving the domain | Yes (after nginx fix for IP) |
+| Backend or MySQL container down | No — fix Docker first |
+| User off-campus without VPN | No — IP is internal only |
+
+#### Why a frontend rebuild is required
+
+`VITE_API_URL` is baked into `dist/` at build time. If users open the app via `http://172.16.3.22/digifile/` but the built JS still calls `https://apps.cmu.edu.ph/digifile`, API requests will fail. During backup mode, rebuild with the IP URL and re-upload `dist/`.
+
+```text
+Normal:   User → https://apps.cmu.edu.ph/digifile/ → nginx → static + backend
+Backup:   User → http://172.16.3.22/digifile/      → nginx → same static + backend
+```
+
+#### Backup env values (copy-paste)
+
+**Backend** — edit `backend/.env` on the server:
+
+```env
+ALLOWED_HOSTS=apps.cmu.edu.ph,172.16.3.22,127.0.0.1
+FRONTEND_URL=http://172.16.3.22/digifile
+```
+
+**Frontend** — on your build machine, use the backup env template:
+
+```bash
+cp frontend/.env.production.backup.example frontend/.env.production
+cd frontend && npm run build
+```
+
+```env
+# frontend/.env.production (temporary backup mode)
+VITE_API_URL=http://172.16.3.22/digifile
+```
+
+Upload `dist/` contents to the same path as normal deploy:
+
+```text
+/home/admin/web/apps.cmu.edu.ph/public_html/digifile/
+```
+
+#### Admin steps during outage
+
+1. Confirm backend is up: `curl -I http://127.0.0.1:8000/api/docs/`
+2. Test IP reachability: `curl -I http://172.16.3.22/digifile/` — if this fails, fix nginx first (see below)
+3. Edit `backend/.env` → add `172.16.3.22` to `ALLOWED_HOSTS`, set `FRONTEND_URL=http://172.16.3.22/digifile`
+4. Restart backend: `docker compose up -d backend`
+5. On build machine: copy backup env → `npm run build` → upload `dist/` to `public_html/digifile/`
+6. Notify users: open **`http://172.16.3.22/digifile/`**
+7. Smoke test at IP URL: login, upload, download
+
+#### nginx note (if IP returns 404)
+
+Vesta may only respond when the `Host` header is `apps.cmu.edu.ph`. If `curl -I http://172.16.3.22/digifile/` fails, add a `default_server` or explicit `server_name 172.16.3.22` block in Vesta (**Web → apps.cmu.edu.ph → Edit → Advanced**) reusing the same `/digifile/` location blocks from Section 7.1:
+
+```nginx
+server {
+    listen 80 default_server;
+    server_name 172.16.3.22;
+
+    location /digifile/ {
+        alias /home/admin/web/apps.cmu.edu.ph/public_html/digifile/;
+        try_files $uri $uri/ /digifile/index.html;
+    }
+
+    location /digifile/api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /digifile/media/ {
+        proxy_pass http://127.0.0.1:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Use **HTTP** (not HTTPS) for the IP — there is no SSL certificate for `172.16.3.22`.
+
+#### Restore when primary domain is back
+
+1. Revert `backend/.env`: `FRONTEND_URL=https://apps.cmu.edu.ph/digifile` (keep `172.16.3.22` in `ALLOWED_HOSTS` for future outages)
+2. Restart backend: `docker compose up -d backend`
+3. Restore `frontend/.env.production` to `VITE_API_URL=https://apps.cmu.edu.ph/digifile`
+4. Run `npm run build` and re-upload `dist/`
+5. Confirm `https://apps.cmu.edu.ph/digifile/` works (login, upload, email links)
+
+---
+
 ## 3. Prerequisites
 
 On the Vesta server:
@@ -354,10 +463,10 @@ File: `backend/.env`
 ```env
 DJANGO_SECRET_KEY=<long-random-secret>
 DEBUG=False
-ALLOWED_HOSTS=apps.cmu.edu.ph,127.0.0.1
+ALLOWED_HOSTS=apps.cmu.edu.ph,172.16.3.22,127.0.0.1
 
 DB_ENGINE=mysql
-DB_NAME=dfs_project
+DB_NAME=vpaa_digi_file
 DB_USER=dfs_user
 DB_PASSWORD=<strong-password>
 DB_HOST=db
@@ -449,7 +558,7 @@ services:
     image: mysql:8.0
     restart: always
     environment:
-      MYSQL_DATABASE: dfs_project
+      MYSQL_DATABASE: vpaa_digi_file
       MYSQL_USER: dfs_user
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -548,7 +657,7 @@ With this layout:
 VITE_API_URL=https://apps.cmu.edu.ph/digifile
 
 # backend/.env
-ALLOWED_HOSTS=apps.cmu.edu.ph,127.0.0.1
+ALLOWED_HOSTS=apps.cmu.edu.ph,172.16.3.22,127.0.0.1
 FRONTEND_URL=https://apps.cmu.edu.ph/digifile
 ```
 
@@ -619,7 +728,7 @@ Admin browser → Vesta nginx → backend container → MySQL / media volume →
 
 - [ ] `DEBUG=False` in `backend/.env`
 - [ ] Strong `DJANGO_SECRET_KEY` and database passwords
-- [ ] `ALLOWED_HOSTS` includes `apps.cmu.edu.ph`
+- [ ] `ALLOWED_HOSTS` includes `apps.cmu.edu.ph` (recommended: also `172.16.3.22` for backup access — Section 2.10)
 - [ ] `FRONTEND_URL=https://apps.cmu.edu.ph/digifile` (email links)
 - [ ] `VITE_API_URL=https://apps.cmu.edu.ph/digifile`; frontend rebuilt and `dist/` uploaded
 - [ ] `base: '/digifile/'` in `vite.config.js` and `basename="/digifile"` in `App.tsx`
@@ -675,6 +784,7 @@ Uploaded files remain in the `backend_media` volume across redeploys.
 | Media/PDF 404 | nginx not proxying `/digifile/media/` | Add `/digifile/media/` location block |
 | Backup database fails | `mysqldump` missing or DB unreachable | Rebuild backend image; check `DB_HOST=db` |
 | Email links go to localhost | `FRONTEND_URL` still dev value | Set `https://apps.cmu.edu.ph/digifile` in `backend/.env` |
+| Domain down but server OK | DNS/SSL/nginx outage on `apps.cmu.edu.ph` | Follow [Section 2.10](#210-backup-access-via-internal-ip-17216322) — switch to `http://172.16.3.22/digifile/` |
 
 ---
 

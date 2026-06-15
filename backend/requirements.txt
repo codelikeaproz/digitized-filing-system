@@ -10,7 +10,7 @@ psycopg2-binary
 PyMySQL
 python-dotenv
 cryptography
-# gunicorn
+gunicorn
 pypdf
 pdf2image
 pytesseract

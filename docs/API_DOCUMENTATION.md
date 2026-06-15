@@ -2024,7 +2024,7 @@ No global `ordering` query parameter is implemented on list endpoints.
 | `DEBUG` | Debug mode | `True` / `False` |
 | `ALLOWED_HOSTS` | Allowed Host header values | `localhost,127.0.0.1` |
 | `DB_ENGINE` | `sqlite` or `mysql` | `mysql` |
-| `DB_NAME` | MySQL database name | `dfs_project` |
+| `DB_NAME` | MySQL database name | `vpaa_digi_file` |
 | `DB_USER` | MySQL username | `dfs_user` |
 | `DB_PASSWORD` | MySQL password | `<secret>` |
 | `DB_HOST` | MySQL host | `db` |

@@ -663,6 +663,23 @@ class DocumentViewSet(viewsets.ModelViewSet):
             filename=file_name,
         )
 
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, pk=None):
+        document = self.get_object()
+        assert_document_write_access(request.user, document)
+
+        if not document.file or not default_storage.exists(document.file.name):
+            return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        file_name = document.file.name.rsplit("/", 1)[-1] or document.title or "document.pdf"
+
+        return FileResponse(
+            document.file.open("rb"),
+            as_attachment=False,
+            filename=file_name,
+            content_type=document.mime_type or "application/pdf",
+        )
+
     @action(detail=True, methods=["patch"], url_path="rename")
     def rename(self, request, pk=None):
         document = self.get_object()

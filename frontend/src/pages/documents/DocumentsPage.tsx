@@ -54,22 +54,9 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { AssistantPageContext } from "@/lib/assistant/pageContext";
 import { AssistantMatchedDocument } from "@/components/assistant/documents/ChatDocumentCard";
 
-const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+import { getApiBaseUrl, resolveApiUrl } from "@/lib/api-base-url";
 
-function getPdfUrl(fileUrl?: string | null) {
-  if (!fileUrl) return null;
-  if (fileUrl.startsWith("/")) return `${BACKEND_URL}${fileUrl}`;
-
-  try {
-    const url = new URL(fileUrl);
-    if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") && url.port === "8000") {
-      return `${BACKEND_URL}${url.pathname}${url.search}${url.hash}`;
-    }
-    return fileUrl;
-  } catch {
-    return `${BACKEND_URL}/${fileUrl.replace(/^\/+/, "")}`;
-  }
-}
+const BACKEND_URL = getApiBaseUrl();
 
 function getFileNameFromDisposition(disposition: string | null) {
   if (!disposition) return null;
@@ -127,6 +114,9 @@ export default function DocumentsPage() {
   const [selectedFolder, setSelectedFolder] = useState<any>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocType | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [docToEdit, setDocToEdit] = useState<DocType | null>(null);
   const [folders, setFolders] = useState<any[]>([]);
   const [documents, setDocuments] = useState<DocType[]>([]);
@@ -193,7 +183,78 @@ export default function DocumentsPage() {
   const folderPath = getFolderPath(selectedFolder?.id);
   const isVirtualFolder = Boolean(selectedFolder?.isVirtual || selectedFolder?.is_virtual);
   const isOrgUnitNode = selectedFolder?.type === "org_unit";
-  const previewPdfUrl = getPdfUrl(previewDoc?.file_url);
+
+  useEffect(() => {
+    if (!previewDoc) {
+      setPreviewBlobUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return null;
+      });
+      setPreviewLoading(false);
+      setPreviewError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    const loadPreview = async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        const response = await fetch(resolveApiUrl(`/api/documents/${previewDoc.id}/preview/`), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          let message =
+            response.status === 404
+              ? "Preview not available. Redeploy backend with the latest documents/urls.py and views.py."
+              : "Preview failed";
+          try {
+            const data = text ? JSON.parse(text) : {};
+            message = data.error || data.message || data.detail || message;
+          } catch {
+            if (text && !text.includes("<!DOCTYPE") && !text.includes("<html")) {
+              message = text.slice(0, 200);
+            }
+          }
+          throw new Error(message);
+        }
+
+        const contentType = response.headers.get("Content-Type") || "";
+        if (!contentType.includes("application/pdf") && !contentType.includes("octet-stream")) {
+          throw new Error("Preview failed — server did not return a PDF.");
+        }
+
+        const blob = await response.blob();
+        if (cancelled) return;
+
+        const objectUrl = URL.createObjectURL(blob);
+        setPreviewBlobUrl((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return objectUrl;
+        });
+      } catch (error: any) {
+        if (!cancelled) {
+          setPreviewError(error.message || "Failed to load preview");
+          setPreviewBlobUrl((previous) => {
+            if (previous) URL.revokeObjectURL(previous);
+            return null;
+          });
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewDoc]);
 
   const assistantPageContext = useMemo((): AssistantPageContext => {
     const context: AssistantPageContext = {};
@@ -524,9 +585,19 @@ export default function DocumentsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-hidden rounded-lg border bg-muted">
-            {previewPdfUrl ? (
+            {previewLoading ? (
+              <div className="flex h-full min-h-[70vh] flex-col items-center justify-center gap-2 p-8 text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Loading preview...</p>
+              </div>
+            ) : previewError ? (
+              <div className="flex h-full min-h-[70vh] flex-col items-center justify-center gap-2 p-8 text-center">
+                <p className="text-sm font-semibold text-foreground">Preview unavailable</p>
+                <p className="max-w-md text-sm text-muted-foreground">{previewError}</p>
+              </div>
+            ) : previewBlobUrl ? (
               <iframe
-                src={previewPdfUrl}
+                src={previewBlobUrl}
                 title={`PDF Preview - ${previewDoc?.title || "Document"}`}
                 className="h-full min-h-[70vh] w-full bg-white"
                 style={{ border: "none" }}
@@ -535,7 +606,7 @@ export default function DocumentsPage() {
               <div className="flex h-full min-h-[70vh] flex-col items-center justify-center gap-2 p-8 text-center">
                 <p className="text-sm font-semibold text-foreground">No preview available</p>
                 <p className="max-w-md text-sm text-muted-foreground">
-                  This document does not have an uploaded file URL. Check that the file exists under the Django media folder.
+                  This document does not have an uploaded file. Try downloading it or re-uploading the PDF.
                 </p>
               </div>
             )}
