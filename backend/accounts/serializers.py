@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import DjangoUnicodeDecodeError, force_str
 from django.utils.http import urlsafe_base64_decode
 
-from config.timezone_utils import format_local_datetime
+from config.timezone_utils import serialize_api_datetime
 from documents.permissions import get_accessible_org_unit_ids
 from orgunits.models import OrgUnit
 from .models import User
@@ -158,7 +158,7 @@ class UserSerializer(serializers.ModelSerializer):
         return build_full_name(obj) or obj.get_full_name() or obj.email
 
     def get_createdAt(self, obj):
-        return format_local_datetime(obj.date_joined)
+        return serialize_api_datetime(obj.date_joined)
 
     def get_isLastActiveAdmin(self, obj):
         if obj.role != "admin" or not obj.is_active or not obj.is_active_status:
@@ -171,13 +171,13 @@ class UserSerializer(serializers.ModelSerializer):
     def get_activationEmailSentAt(self, obj):
         if not obj.activation_email_sent_at:
             return None
-        return format_local_datetime(obj.activation_email_sent_at)
+        return serialize_api_datetime(obj.activation_email_sent_at)
 
     def get_activationExpiresAt(self, obj):
         expires_at = obj.activation_expires_at
         if not expires_at:
             return None
-        return format_local_datetime(expires_at)
+        return serialize_api_datetime(expires_at)
 
     def get_profilePictureUrl(self, obj):
         return build_profile_picture_url(obj, self.context.get("request"))

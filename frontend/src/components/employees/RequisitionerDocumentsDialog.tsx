@@ -27,6 +27,7 @@ import { PaginationControls } from "@/components/PaginationControls";
 import { api } from "@/lib/api";
 import { resolveApiUrl } from "@/lib/api-base-url";
 import { formatRequisitionerEmployeeNumberDisplay } from "@/lib/employee-number";
+import { formatManilaDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { DocType, EmployeeDirectoryEntry, RequisitionerDocumentsResponse } from "@/types";
 
@@ -253,7 +254,7 @@ export function RequisitionerDocumentsDialog({
                         <TableCell className="whitespace-nowrap">{document.category}</TableCell>
                         <TableCell className="whitespace-nowrap">{document.orgUnit}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {document.uploadedAt}
+                          {formatManilaDateTime(document.uploadedAt)}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>

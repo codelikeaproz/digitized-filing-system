@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from config.employee_number import EMPLOYEE_NUMBER_FORMAT_ERROR
+from config.tests.test_timezone_utils import ISO_UTC_PATTERN
 from documents.models import Category, Document, DocumentRequisitioner, Folder
 from documents.requisitioners import (
     format_requisitioners_display,
@@ -230,3 +231,8 @@ class RequisitionerAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(DocumentRequisitioner.objects.filter(document=self.document).count(), 2)
+
+    def test_document_detail_returns_iso_created_at(self):
+        response = self.client.get(f"/api/documents/{self.document.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(response.data["createdAt"], ISO_UTC_PATTERN)

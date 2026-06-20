@@ -2,7 +2,7 @@ from django.db.models import Max
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from config.timezone_utils import format_local_datetime
+from config.timezone_utils import serialize_api_datetime
 from accounts.models import User
 from documents.models import Document, Folder
 from .models import OrgType, OrgUnit
@@ -55,10 +55,10 @@ class OrgTypeSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def get_createdAt(self, obj):
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
     def get_updatedAt(self, obj):
-        return format_local_datetime(obj.updated_at)
+        return serialize_api_datetime(obj.updated_at)
 
 
 class OrgUnitSerializer(serializers.ModelSerializer):
@@ -219,7 +219,7 @@ class OrgUnitSerializer(serializers.ModelSerializer):
         return obj.type_name
 
     def get_createdAt(self, obj):
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
     def get_userCount(self, obj):
         return User.objects.filter(org_unit=obj).count()

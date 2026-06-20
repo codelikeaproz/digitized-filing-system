@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from auditlogs.models import AuditLog
+from config.tests.test_timezone_utils import ISO_UTC_PATTERN
 from documents.models import Category, Document, DocumentRequisitioner, Folder
 from employees.models import Employee
 from employees.references import get_reference_count_for_employee
@@ -141,6 +142,8 @@ class RequisitionerReferenceTests(TestCase):
         self.assertEqual(response.data["count"], 2)
         self.assertEqual(response.data["totalTaggedDocuments"], 2)
         self.assertEqual(len(response.data["results"]), 1)
+        uploaded_at = response.data["results"][0]["uploadedAt"]
+        self.assertRegex(uploaded_at, ISO_UTC_PATTERN)
         self.assertTrue(
             AuditLog.objects.filter(action="VIEW_REQUISITIONER_DOCUMENT_REFERENCES").exists()
         )

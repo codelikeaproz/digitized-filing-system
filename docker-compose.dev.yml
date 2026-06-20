@@ -9,6 +9,7 @@ services:
       MYSQL_USER: dfs_user
       MYSQL_PASSWORD: dfs_password
       MYSQL_ROOT_PASSWORD: root_password
+      TZ: Asia/Manila
     ports:
       - "3307:3306"
     volumes:
@@ -29,6 +30,7 @@ services:
       DB_PASSWORD: dfs_password
       DB_HOST: db
       DB_PORT: 3306
+      TZ: Asia/Manila
     ports:
       - "8000:8000"
     volumes:

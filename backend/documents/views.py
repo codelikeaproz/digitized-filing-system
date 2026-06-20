@@ -96,7 +96,7 @@ from .services import (
 )
 from accounts.models import User
 from config.pagination import StandardResultsSetPagination
-from config.timezone_utils import format_local_datetime, local_datetime
+from config.timezone_utils import local_datetime, serialize_api_datetime
 from orgunits.models import OrgUnit
 from orgunits.storage import add_storage_usage, validate_storage_quota
 from notifications.storage_alerts import check_storage_thresholds, validate_global_storage_quota
@@ -384,7 +384,7 @@ class FolderViewSet(viewsets.ModelViewSet):
             "orgUnitId": str(folder.org_unit_id) if folder.org_unit_id else None,
             "org_unit": folder.org_unit.name if folder.org_unit else None,
             "createdBy": str(folder.created_by_id) if folder.created_by_id else None,
-            "createdAt": format_local_datetime(folder.created_at),
+            "createdAt": serialize_api_datetime(folder.created_at),
             "documentCount": folder.documents.filter(is_deleted=False).count(),
             "subfolderCount": folder.children.filter(is_deleted=False).count(),
             "location": folder.get_full_path(),
@@ -1020,7 +1020,7 @@ class RecycleBinAPIView(APIView):
         )
 
     def _format_deleted_at(self, value):
-        return format_local_datetime(value)
+        return serialize_api_datetime(value)
 
     def _scope_deleted_folders(self, request):
         queryset = Folder.objects.filter(is_deleted=True, org_unit__is_deleted=False).select_related(

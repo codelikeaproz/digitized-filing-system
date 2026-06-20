@@ -1,10 +1,27 @@
 const MANILA_TIME_ZONE = "Asia/Manila";
+const MANILA_OFFSET = "+08:00";
+
+const LEGACY_24H_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+const LEGACY_12H_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{1,2}):(\d{2}):(\d{2}) ([AP]M)$/i;
 
 function normalizeTimestamp(value: string | number | Date) {
   if (value instanceof Date || typeof value === "number") return value;
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
-    return `${value.replace(" ", "T")}+08:00`;
+
+  if (LEGACY_24H_PATTERN.test(value)) {
+    return `${value.replace(" ", "T")}${MANILA_OFFSET}`;
   }
+
+  const legacy12h = value.match(LEGACY_12H_PATTERN);
+  if (legacy12h) {
+    let hour = parseInt(legacy12h[2], 10);
+    const minute = legacy12h[3];
+    const second = legacy12h[4];
+    const ampm = legacy12h[5].toUpperCase();
+    if (ampm === "PM" && hour !== 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+    return `${legacy12h[1]}T${String(hour).padStart(2, "0")}:${minute}:${second}${MANILA_OFFSET}`;
+  }
+
   return value;
 }
 

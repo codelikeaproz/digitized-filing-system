@@ -4,7 +4,7 @@ from config.employee_number import (
     normalize_employee_number,
     validate_employee_number_value,
 )
-from config.timezone_utils import format_local_datetime
+from config.timezone_utils import serialize_api_datetime
 from documents.permissions import get_accessible_org_unit_ids
 
 from .models import ALLOWED_NAME_SUFFIXES, Employee
@@ -99,7 +99,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return obj.get_full_name()
 
     def get_createdAt(self, obj):
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
     def get_referencedDocumentCount(self, obj):
         if hasattr(obj, "referenced_document_count"):
@@ -325,7 +325,7 @@ class RequisitionerTaggedDocumentSerializer(serializers.Serializer):
         return "—"
 
     def get_uploadedAt(self, obj):
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
     def get_owner(self, obj):
         if not obj.uploader_id:

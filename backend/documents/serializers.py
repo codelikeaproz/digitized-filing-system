@@ -6,7 +6,7 @@ from django.utils import timezone
 
 
 
-from config.timezone_utils import format_local_datetime
+from config.timezone_utils import serialize_api_datetime
 
 from .document_code_validation import ensure_unique_document_code, normalize_document_code
 from .models import Category, Document, DocumentRequisitioner, Folder
@@ -97,7 +97,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     def get_createdAt(self, obj):
 
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
 
 
@@ -299,7 +299,7 @@ class FolderSerializer(serializers.ModelSerializer):
 
     def get_createdAt(self, obj):
 
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
 
 
@@ -507,13 +507,13 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def get_deletedAt(self, obj):
 
-        return format_local_datetime(obj.deleted_at)
+        return serialize_api_datetime(obj.deleted_at)
 
 
 
     def get_createdAt(self, obj):
 
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
 
 
 

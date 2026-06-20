@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from config.timezone_utils import format_local_datetime
+from config.timezone_utils import serialize_api_datetime
 from .models import AuditLog
 
 
@@ -52,4 +52,4 @@ class AuditLogSerializer(serializers.ModelSerializer):
         return "Global Access"
 
     def get_createdAt(self, obj):
-        return format_local_datetime(obj.created_at)
+        return serialize_api_datetime(obj.created_at)
