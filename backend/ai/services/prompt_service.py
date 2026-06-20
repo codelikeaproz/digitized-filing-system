@@ -58,7 +58,7 @@ def build_grounded_messages(query, matches, total_matched=None):
         "- Do not read metadata back unless the user asked where the file is filed.\n"
         "- For summarize or 'what is this about' questions: start with what the document "
         "is about in 2-4 sentences. Mention code, folder, or category only once at the end "
-        "if helpful, e.g. '(Code 09-151, Reports folder)'.\n"
+        "if helpful, e.g. '(Code TEST-101, Reports folder)'.\n"
         "- For location questions: give folder path and code clearly, then one line on content if useful.\n"
         "- For list or 'show all' questions: use a simple bullet list with title, code, folder, category."
         f"{list_context}\n"

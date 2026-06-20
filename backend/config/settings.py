@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     "backups",
     "system",
     "notifications",
+    "employees",
     "ai",
     "drf_spectacular",
 ]

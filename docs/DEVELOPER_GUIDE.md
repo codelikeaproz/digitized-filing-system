@@ -37,6 +37,7 @@ project_dfs/
 │   ├── notifications/       # Storage threshold alerts + bell API
 │   ├── auditlogs/           # Audit trail + exports
 │   ├── backups/             # Admin database/media backup downloads
+│   ├── employees/           # Requisitioners Directory (tagged-document references)
 │   └── ai/                    # Document assistant chatbot
 ├── frontend/                # React SPA
 │   └── src/
@@ -62,6 +63,7 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 | `notifications` | Storage threshold alerts, notification list/clear API |
 | `auditlogs` | Immutable audit records, Excel export |
 | `backups` | Admin-only database (`mysqldump`) and media ZIP downloads |
+| `employees` | Requisitioners Directory CRUD (admin), read-only browse + scoped tagged counts (dept head) |
 | `ai` | Document assistant (intent parsing + OpenRouter) |
 
 **Recycle bin** and **dashboard** live inside `documents` because they operate on folder/document querysets — splitting them would duplicate scoping logic.
@@ -69,10 +71,11 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 ### First-time setup (Docker)
 
 1. Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` → `frontend/.env`
-2. `docker compose up --build`
-3. Create the admin login once: `docker compose exec backend python manage.py createsuperuser` (email = username, role auto-set to `admin`, Org Unit optional)
+2. Optional: set `DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD` in `backend/.env` for automatic admin creation on first startup
+3. `docker compose -f docker-compose.dev.yml up --build`
+4. Sign in at `http://localhost:5173` (auto-seeded admin or run `createsuperuser` manually if env vars are unset)
 
-See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for MySQL config, clean reset (`docker compose down -v`), and troubleshooting. Migrations do **not** seed a default user.
+See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for MySQL config, clean reset (`docker compose down -v`), and troubleshooting.
 
 ---
 
@@ -105,6 +108,7 @@ OrgUnit list API (`GET /api/org-units/`) returns only accessible units for non-a
 | Recycle bin | ✓ global | ✓ scoped | ✗ |
 | Audit logs | ✓ global | ✓ scoped | ✗ |
 | User management | ✓ all | ✓ staff in org subtree | ✗ |
+| Requisitioners Directory | ✓ CRUD + global counts | ✓ read-only + scoped counts | ✗ (upload search API only) |
 | OrgUnit / OrgType admin | ✓ (UI) | ✗ | ✗ |
 | Backup downloads | ✓ | ✗ | ✗ |
 
@@ -117,6 +121,7 @@ OrgUnit list API (`GET /api/org-units/`) returns only accessible units for non-a
 | User management | `accounts/views.py` → `UserViewSet._can_dept_head_manage` (subtree via `get_accessible_org_unit_ids`) |
 | Audit log scope | `auditlogs/views.py` → `_scope_queryset` |
 | Backup downloads | `backups/permissions.py` → `assert_backup_access` |
+| Requisitioners Directory | `employees/permissions.py` → `assert_directory_read`, `assert_directory_admin` |
 | OrgType admin-only | `orgunits/views.py` → `OrgTypeViewSet._require_admin` |
 | Dashboard stats / storage rollup | `documents/dashboard_service.py` → `DashboardService` |
 | Hierarchical storage quotas | `orgunits/storage.py` → allocation validation, usage rollup |
@@ -192,15 +197,19 @@ log_audit(
 ### PDF upload pipeline
 
 1. `POST /api/documents/upload` → `DocumentUploadView`
-2. `validate_pdf_upload()` — extension, size (configurable via `SystemSettings.upload_limit_mb`, default 15 MB), `%PDF` header
-3. `validate_global_storage_quota()` — blocks when system storage is full
-4. `validate_storage_quota(org_unit)` — per–Office Unit cap
-5. `generate_document_code(category)` — `{CategoryCode}-{Year}-{Sequence}` via `DocumentSequence` (locked per `category_code` + year)
-6. `Document.objects.create(...)` — metadata + file to `media/documents/YYYY/MM/DD/`
-7. `add_storage_usage()` + `check_storage_thresholds()` + `check_allocation_thresholds()` — updates usage and may create bell notifications
-8. `index_document_text(document)` — extract text for AI search
+2. Require at least one of: PDF file (`file`) or `googleDriveLink` (or both)
+3. `validate_pdf_upload()` — when `file` is present: extension, size (configurable via `SystemSettings.upload_limit_mb`, default 15 MB), `%PDF` header
+4. `validate_global_storage_quota()` — blocks PDF uploads when system storage is full (skipped for Google Drive–only records)
+5. `validate_storage_quota(org_unit)` — per–Office Unit cap (PDF uploads only)
+6. Uploader enters a unique **document code** manually (`code` form field; validated in `document_code_validation.py`)
+7. `Document.objects.create(...)` — metadata + optional PDF to `media/documents/YYYY/MM/DD/` and/or `google_drive_link`
+8. `link_document_requisitioners()` (alias: `sync_requisitioners_to_directory()`) — directory tags link via `employeeId` FK and refresh snapshots from master; manual tags create a directory row only when no duplicate exists; document edits never mutate master `Employee` records
+9. `add_storage_usage()` + threshold checks — file uploads only
+10. `index_document_text(document)` — extract text for AI search when a PDF file is present
 
-**Document codes:** Preview with `GET /api/documents/next-code?categoryId=`. Assigned at upload. When a document's category is changed on edit, or when a category abbreviation changes in Manage Categories, auto-generated document codes swap their prefix only (e.g. `MEM-2026-000001` → `TES-2026-000001`); legacy non-standard codes are unchanged. Category codes are auto-generated from the category name on create/rename, or set manually via Manage Categories. Sequence counters are shared globally per category code and year.
+**Document codes:** Required on upload and edit. Pattern: letters, numbers, and hyphens only; stored uppercase; globally unique. See [DATA_MIGRATION_POLICY.md](./DATA_MIGRATION_POLICY.md).
+
+**Requisitioners:** Upload/edit sends a `requisitioners` JSON array with `employeeId` + `source: "directory"` (read-only snapshots) or `source: "manual"` (editable; duplicate employee number or similar name blocked). Optional `employeeNumber` uses institutional format `Letter-Year-Code` (legacy numeric values allowed on document tags). Non-admin users search via `GET /api/employees?search=`; directory CRUD API remains admin-only. Directory employee number is locked when tagged on ≥1 document (admin override with reason + audit).
 
 ### Soft delete / recycle bin
 
@@ -266,6 +275,7 @@ For backend setup, copy `backend/.env.example` to `backend/.env`. Do not use a s
 | `src/pages/orgunits/OrgUnitsPage.tsx` | Office Unit CRUD, hierarchical quota modal + table |
 | `src/components/notifications/NotificationBell.tsx` | Storage alert bell + clear |
 | `src/lib/storage-quota-presets.ts` | Quota presets, allocation helpers, table formatters |
+| `src/pages/employees/EmployeeDirectoryPage.tsx` | Requisitioners Directory (admin CRUD; dept head read-only) |
 | `src/pages/documents/DocumentsPage.tsx` | Main document UI |
 
 ### API calls
@@ -287,7 +297,7 @@ Token is read from `localStorage.auth_token`. On `401`, client clears storage an
 ### Route protection
 
 - `ProtectedRoute` — requires login
-- `RoleRoute` — requires one of `allowedRoles` (mirrors sidebar, not a substitute for backend checks)
+- `RoleRoute` — requires one of `allowedRoles`; redirects unauthorized roles to `/error/403`
 
 ### Dashboard aggregation (by role)
 
@@ -337,8 +347,7 @@ After backend changes:
 
 After frontend changes:
 
-- [ ] Protected routes redirect when logged out
-- [ ] Role-restricted pages show Access Denied
+- [ ] Protected routes redirect when logged out; role-restricted routes redirect to `/error/403`
 - [ ] Upload dialog completes successfully
 
 ---
@@ -363,7 +372,9 @@ Documented in [API_DOCUMENTATION.md §15](./API_DOCUMENTATION.md#15-known-limita
 | New page | `App.tsx` + `FRONTEND_ROUTES.md` + sidebar if needed |
 | Storage / dashboard change | `API_DOCUMENTATION.md` §7.2 + § Hierarchical storage + `DEVELOPER_GUIDE.md` §4 |
 | Office Units UI / quota display | `ALPHA_TEST_CHECKLIST.md` §7 + `API_DOCUMENTATION.md` Office Units fields |
-| Document upload / metadata change | `API_DOCUMENTATION.md` upload and edit endpoints |
+| Requisitioners Directory RBAC | `API_DOCUMENTATION.md` §7.16 + `employees/permissions.py` |
+| User password on create/edit | `API_DOCUMENTATION.md` users API + `UsersPage.tsx` |
+| Document upload / metadata change | `API_DOCUMENTATION.md` upload and edit endpoints + `DATA_MIGRATION_POLICY.md` |
 | Chatbot behavior | `CHATBOT_CAPABILITIES.md` + `ai/services/intent_service.py` |
 
 ---

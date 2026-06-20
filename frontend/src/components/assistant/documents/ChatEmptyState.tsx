@@ -2,7 +2,7 @@ import { FileSearch, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const INTERNAL_PROMPTS = [
-  "Where is the file with code 01-242?",
+  "Find document code TEST-101",
   "What is this document about?",
   "Find files related to digitization.",
   "Which folder contains the RRL PDF?",

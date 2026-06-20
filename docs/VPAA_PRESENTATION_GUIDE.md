@@ -44,8 +44,8 @@ Three user roles control what each person can see and do.
 
 | Role | Plain name | What they can access |
 |------|------------|----------------------|
-| **Admin** | System administrator (IT / records office) | All modules — Dashboard, Documents, Office Units, User Management, Audit Logs, Recycle Bin, Settings, Backup Management |
-| **Dept Head** | College dean / department head | Dashboard, Documents, User Management (Staff only in their unit), Recycle Bin, Settings |
+| **Admin** | System administrator (IT / records office) | All modules — Dashboard, Documents, Requisitioners Directory, Office Units, User Management, Audit Logs, Recycle Bin, Settings, Backup Management |
+| **Dept Head** | College dean / department head | Dashboard, Documents, Requisitioners Directory (read-only), User Management (Staff only in their unit), Recycle Bin, Settings |
 | **Staff** | Office staff | Dashboard, Documents, Settings — upload and manage files; cannot delete documents |
 
 ### Taglish summary
@@ -81,7 +81,7 @@ Each section has:
 | Display | Short explanation |
 |---------|-------------------|
 | **Total Documents** | Count of all document records in the system |
-| **Uploaded Files** | Count of files actually uploaded (PDFs) |
+| **G Drive Files** | Count of Google Drive–only documents (Drive link, no uploaded PDF) |
 | **Total Office Units** | Number of configured office units (Admin view) |
 | **Total Users** | Number of registered user accounts (Admin view) |
 | **Office Unit filter** | Dropdown to view stats for all units or one unit |
@@ -110,7 +110,7 @@ Each section has:
 
 > **Documents** is the core of the system — this is where staff file their PDFs digitally.
 >
-> On the left is the folder tree organized by office unit. On the right is the document list. Users can upload PDFs, search by title or keywords, filter by category and date, preview files without printing, and download when needed.
+> On the left is the folder tree organized by office unit. On the right is the document list. Users can upload PDFs or register Google Drive links, enter a document code manually, tag requisitioners, search by title or keywords, filter by category and date, preview files without printing, and download PDFs when available.
 >
 > The **Document Assistant** button lets users ask questions in plain language to find files faster — for example, "Show me invoices from March."
 
@@ -122,15 +122,16 @@ Each section has:
 | **Breadcrumb trail** | Current location path (Home → folder → subfolder) |
 | **Category filter** | Filter documents by document category |
 | **Date range filter** | Filter by filing or upload date |
-| **Upload button** | Add a new PDF (disabled when quota is full) |
+| **Upload button** | Add a PDF and/or Google Drive link (disabled when quota is full) |
+| **Document code field** | Unique identifier entered manually on upload |
+| **Requisitioners field** | Tag people who requested the document (search directory or add manually) |
 | **Search bar** | Search by title, code, description, keywords |
 | **Document table — Title** | Document name |
 | **Document table — Requisitioner** | Person who requested the document |
 | **Document table — Category** | Document type/category |
 | **Document table — Location** | Folder path where file is stored |
 | **Document table — Date** | Filing or upload date |
-| **Document table — Status** | Active or other document status |
-| **Document table — Actions** | View, Download, Rename, Edit, Delete |
+| **Document table — Actions** | View, Download (PDF only), Rename, Edit, Delete |
 | **PDF preview modal** | View PDF inside the browser |
 | **Document Assistant** | AI helper to search documents by question |
 
@@ -140,7 +141,33 @@ Each section has:
 
 ---
 
-### 3.3 Office Units
+### 3.3 Requisitioners Directory
+
+**Route:** `/employees`  
+**Who sees it:** Admin (full management), Dept Head (read-only, scoped to their office units)
+
+#### What to say (English)
+
+> The **Requisitioners Directory** is our master list of people tagged on documents. Each document tag links to a directory record via a foreign key — directory-selected tags store snapshots (name and employee number) that refresh from the master on save without changing master data from the document editor.
+>
+> Administrators can add, edit, or remove directory records and see how many documents each person is tagged on across the institution. Once a requisitioner is tagged on at least one document, their **employee number is locked** on edit; admins can override with a documented reason (audit-logged). Name changes still cascade to linked document tags.
+>
+> Department heads can browse the same directory in read-only mode — they see tagged-document counts and linked files only within their office unit scope, which supports oversight without changing central records.
+
+#### What you see on screen
+
+| Display | Short explanation |
+|---------|-------------------|
+| **Directory table** | Requisitioner number, name, tagged document count |
+| **View Documents** | Modal listing documents tagged to that person |
+| **Add / Edit / Delete** | Admin only — delete blocked when tagged on more than 3 documents |
+| **Edit — employee number lock** | When tagged on ≥1 document, employee number field is disabled with a helper message |
+| **Edit — admin override** | Admin can unlock employee number change with a required reason (audit-logged) |
+| **Document tagging** | Search directory or add manual tag; directory tags are read-only on the document |
+
+---
+
+### 3.4 Office Units
 
 **Route:** `/org-units`  
 **Who sees it:** Admin only
@@ -185,7 +212,7 @@ Each section has:
 
 ---
 
-### 3.4 User Management
+### 3.5 User Management
 
 **Route:** `/users`  
 **Who sees it:** Admin (all users); Dept Head (Staff in their unit only)
@@ -194,7 +221,7 @@ Each section has:
 
 > **User Management** controls who can log in and what they can do.
 >
-> The admin creates accounts for all roles. A department head can add and manage staff within their office unit only. Each new user receives an activation email to set their password before first login.
+> The admin creates accounts for all roles. A department head can add and manage staff within their office unit only. Each new user receives an activation email; managers may also set an initial password on create so the account is active immediately.
 >
 > The role legend at the top explains the difference between Admin, Head, and Staff at a glance.
 
@@ -219,7 +246,7 @@ Each section has:
 
 ---
 
-### 3.5 Audit Logs
+### 3.6 Audit Logs
 
 **Route:** `/audit-logs`  
 **Who sees it:** Admin only
@@ -256,7 +283,7 @@ Each section has:
 
 ---
 
-### 3.6 Recycle Bin
+### 3.7 Recycle Bin
 
 **Route:** `/recycle-bin`  
 **Who sees it:** Admin, Dept Head
@@ -288,7 +315,7 @@ Each section has:
 
 ---
 
-### 3.7 Settings
+### 3.8 Settings
 
 **Route:** `/settings`  
 **Who sees it:** All roles (System tab: Admin only)
@@ -313,7 +340,7 @@ Each section has:
 
 ---
 
-### 3.8 Backup Management
+### 3.9 Backup Management
 
 **Route:** `/backup` (under Administration in sidebar)  
 **Who sees it:** Admin only
@@ -341,7 +368,7 @@ Each section has:
 
 ---
 
-### 3.9 Login and Assistants
+### 3.10 Login and Assistants
 
 **Routes:** `/login`, `/forgot-password`, `/set-password/:token`
 
@@ -479,14 +506,15 @@ Follow this order for a smooth presentation:
 | 2 | **Dashboard** — show stat cards, filter "All Office Units", explain Storage Utilization chart | ~2 min |
 | 3 | Point to **Office Unit Storage Comparison** chart | ~1 min |
 | 4 | **Office Units** — show CISC hierarchy (Envelope, To Children, Pool Available, SDD as leaf) | ~2 min |
-| 5 | **Documents** — browse folder tree, show one document preview, mention search and upload | ~2 min |
-| 6 | **User Management** — show Role Permission Legend | ~1 min |
-| 7 | **Audit Logs** — show one log entry, mention Excel export | ~1 min |
-| 8 | **Recycle Bin** — explain restore vs permanent delete | ~30 sec |
-| 9 | **Settings → System** — show system quota | ~30 sec |
-| 10 | **Backup Management** — show both download cards | ~1 min |
-| 11 | Click **notification bell** — mention storage alerts | ~30 sec |
-| 12 | **Closing statement** (Section 7) | ~1 min |
+| 5 | **Documents** — browse folder tree, show upload (code + requisitioners), preview one PDF | ~2 min |
+| 6 | **Requisitioners Directory** — show tagged counts and View Documents (admin or dept head account) | ~1 min |
+| 7 | **User Management** — show Role Permission Legend; optional password on create | ~1 min |
+| 8 | **Audit Logs** — show one log entry, mention Excel export | ~1 min |
+| 9 | **Recycle Bin** — explain restore vs permanent delete | ~30 sec |
+| 10 | **Settings → System** — show system quota | ~30 sec |
+| 11 | **Backup Management** — show both download cards | ~1 min |
+| 12 | Click **notification bell** — mention storage alerts | ~30 sec |
+| 13 | **Closing statement** (Section 7) | ~1 min |
 
 ---
 

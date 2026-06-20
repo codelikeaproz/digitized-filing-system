@@ -7,8 +7,9 @@
  * Protected shell: AppShell with sidebar (requires JWT)
  *
  * Role-restricted routes (must match AppSidebar menu):
- *   - /audit-logs, /org-units, /backup  → admin only
- *   - /users, /recycle-bin        → admin, dept_head
+ *   - /audit-logs, /org-units, /backup                         → admin only
+ *   - /employees                                               → admin, dept_head (read-only for dept_head)
+ *   - /users, /recycle-bin                                     → admin, dept_head
  *
  * Global providers: AuthProvider, CategoryProvider (inside shell), AutoLogout
  *
@@ -34,6 +35,8 @@ const UsersPage = lazy(() => import("./pages/users/UsersPage"));
 const RecycleBinPage = lazy(() => import("./pages/recyclebin/RecycleBinPage"));
 const OrgUnitsPage = lazy(() => import("./pages/orgunits/OrgUnitsPage"));
 const BackupManagementPage = lazy(() => import("./pages/backup/BackupManagementPage"));
+const EmployeeDirectoryPage = lazy(() => import("./pages/employees/EmployeeDirectoryPage"));
+const Error403Page = lazy(() => import("./pages/errors/Error403Page"));
 const Error429Page = lazy(() => import("./pages/errors/Error429Page"));
 const Error500Page = lazy(() => import("./pages/errors/Error500Page"));
 
@@ -55,6 +58,7 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
             <Route path="/set-password/:uid/:token" element={<SetPasswordPage />} />
+            <Route path="/error/403" element={<Error403Page />} />
             <Route path="/error/429" element={<Error429Page />} />
             <Route path="/error/500" element={<Error500Page />} />
             <Route 
@@ -77,6 +81,11 @@ export default function App() {
               <Route path="users" element={
                 <RoleRoute allowedRoles={['admin', 'dept_head']}>
                   <UsersPage />
+                </RoleRoute>
+              } />
+              <Route path="employees" element={
+                <RoleRoute allowedRoles={['admin', 'dept_head']}>
+                  <EmployeeDirectoryPage />
                 </RoleRoute>
               } />
               <Route path="org-units" element={

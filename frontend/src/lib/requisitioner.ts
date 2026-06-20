@@ -1,5 +1,5 @@
 import { formatPersonName } from "@/lib/utils";
-import { validateOptionalEmployeeNumber } from "@/lib/employee-number";
+import { sanitizeEmployeeNumberInput, formatEmployeeNumberInput, validateOptionalEmployeeNumber } from "@/lib/employee-number";
 import type { DocumentRequisitioner } from "@/types";
 
 export const REQUISITIONER_SUFFIX_OPTIONS = [
@@ -18,6 +18,8 @@ const ALLOWED_SUFFIX_VALUES = new Set<string>(
 );
 
 export type RequisitionerInput = {
+  employeeId?: string;
+  source?: "directory" | "manual";
   employeeNumber: string;
   firstName: string;
   lastName: string;
@@ -38,7 +40,11 @@ export type RequisitionerValidationResult = {
 };
 
 export function createEmptyRequisitioner(): RequisitionerInput {
-  return { employeeNumber: "", firstName: "", lastName: "", suffix: "" };
+  return { employeeNumber: "", firstName: "", lastName: "", suffix: "", source: "manual" };
+}
+
+export function isDirectoryLinkedRequisitioner(item: RequisitionerInput): boolean {
+  return item.source === "directory";
 }
 
 export function splitFullName(fullName: string): Pick<RequisitionerInput, "firstName" | "lastName" | "suffix"> {
@@ -78,16 +84,39 @@ export function buildRequisitionerFullName(item: Pick<RequisitionerInput, "first
 
 export function normalizeRequisitionerInput(item: RequisitionerInput): RequisitionerInput {
   return {
-    employeeNumber: item.employeeNumber.trim(),
+    employeeId: item.employeeId,
+    source: item.source || (item.employeeId ? "directory" : "manual"),
+    employeeNumber: item.employeeNumber.trim()
+      ? formatEmployeeNumberInput(item.employeeNumber.trim())
+      : "",
     firstName: formatPersonName(item.firstName.trim()),
     lastName: formatPersonName(item.lastName.trim()),
     suffix: item.suffix.trim(),
   };
 }
 
+export function isRequisitionerAlreadyOnDocument(
+  existing: RequisitionerInput[],
+  employeeNumber: string,
+  employeeId?: string
+): boolean {
+  if (employeeId && existing.some((row) => row.employeeId === employeeId)) {
+    return true;
+  }
+  const normalized = sanitizeEmployeeNumberInput(employeeNumber);
+  if (!normalized) {
+    return false;
+  }
+  return existing.some(
+    (row) => sanitizeEmployeeNumberInput(row.employeeNumber) === normalized
+  );
+}
+
 export function toRequisitionerInput(item: DocumentRequisitioner): RequisitionerInput {
   if (item.firstName || item.lastName) {
     return {
+      employeeId: item.employeeId || undefined,
+      source: item.source || (item.employeeId ? "directory" : "manual"),
       employeeNumber: item.employeeNumber || "",
       firstName: item.firstName || "",
       lastName: item.lastName || "",
@@ -97,6 +126,8 @@ export function toRequisitionerInput(item: DocumentRequisitioner): Requisitioner
 
   const split = splitFullName(item.fullName || "");
   return {
+    employeeId: item.employeeId || undefined,
+    source: item.source || (item.employeeId ? "directory" : "manual"),
     employeeNumber: item.employeeNumber || "",
     firstName: split.firstName,
     lastName: split.lastName,
@@ -228,7 +259,9 @@ export function validateSingleRequisitioner(
   } else if (
     employeeNumber &&
     existing.some(
-      (row, index) => index !== excludeIndex && row.employeeNumber.trim() === employeeNumber
+      (row, index) =>
+        index !== excludeIndex &&
+        sanitizeEmployeeNumberInput(row.employeeNumber) === sanitizeEmployeeNumberInput(employeeNumber)
     )
   ) {
     errors.employeeNumber = "This employee number is already listed.";
@@ -272,7 +305,7 @@ export function validateRequisitioners(items: RequisitionerInput[]): Requisition
       return;
     }
 
-    const employeeNumber = item.employeeNumber.trim();
+    const employeeNumber = sanitizeEmployeeNumberInput(item.employeeNumber.trim());
     if (employeeNumber) {
       if (seenEmployeeNumbers.has(employeeNumber)) {
         rowErrors[index].employeeNumber = "Duplicate employee numbers are not allowed.";
@@ -290,6 +323,8 @@ export function serializeRequisitionersForApi(items: RequisitionerInput[]): Docu
   return items.map((item) => {
     const normalized = normalizeRequisitionerInput(item);
     return {
+      employeeId: normalized.employeeId || null,
+      source: normalized.source,
       employeeNumber: normalized.employeeNumber,
       firstName: normalized.firstName,
       lastName: normalized.lastName,

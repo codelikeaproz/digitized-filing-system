@@ -32,7 +32,6 @@ class DocumentFilePathSyncTests(TestCase):
         )
         self.category = Category.objects.create(
             name="Reports",
-            code="REP",
             org_unit=self.sdd,
         )
         pdf = SimpleUploadedFile("report.pdf", b"%PDF-1.4 test", content_type="application/pdf")

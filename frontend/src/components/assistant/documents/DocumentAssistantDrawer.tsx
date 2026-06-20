@@ -128,9 +128,6 @@ export function DocumentAssistantDrawer({
     const contextDocument = lastContextDocumentRef.current;
 
     if (contextDocument && DOCUMENT_FOLLOW_UP_PATTERN.test(trimmed)) {
-      if (contextDocument.code) {
-        return `What is inside code ${contextDocument.code}?`;
-      }
       return `What is ${contextDocument.title} about?`;
     }
 
@@ -173,7 +170,7 @@ export function DocumentAssistantDrawer({
           id: now + 1,
           role: "assistant",
           content:
-            "You already asked that. Try a document code, folder name, or ask \"how many files do I have?\"",
+            "You already asked that. Try a document title, folder name, or ask \"how many files do I have?\"",
         },
       ]);
       setLoading(false);

@@ -75,9 +75,9 @@ class OrgUnitHierarchyAuthTests(TestCase):
             file_size=4096,
         )
 
-        self.cisc_category = Category.objects.create(name="CISC Reports", code="CRP", org_unit=self.cisc)
-        self.sdd_category = Category.objects.create(name="SDD Records", code="SDR", org_unit=self.sdd)
-        self.other_category = Category.objects.create(name="Other Files", code="OTH", org_unit=self.other)
+        self.cisc_category = Category.objects.create(name="CISC Reports", org_unit=self.cisc)
+        self.sdd_category = Category.objects.create(name="SDD Records", org_unit=self.sdd)
+        self.other_category = Category.objects.create(name="Other Files", org_unit=self.other)
 
     def _set_hierarchical_quotas(self):
         self.cisc.storage_quota_mb = 15360
@@ -282,7 +282,7 @@ class OrgUnitHierarchyAuthTests(TestCase):
         self.client.force_authenticate(user=self.cisc_head)
         response = self.client.put(
             f"/api/categories/{self.sdd_category.id}/",
-            {"name": "SDD Updated", "code": "SDU"},
+            {"name": "SDD Updated"},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
@@ -290,7 +290,7 @@ class OrgUnitHierarchyAuthTests(TestCase):
         self.assertEqual(self.sdd_category.name, "SDD Updated")
 
     def test_cisc_head_deletes_unused_child_category(self):
-        unused = Category.objects.create(name="SDD Temp", code="TMP", org_unit=self.sdd)
+        unused = Category.objects.create(name="SDD Temp", org_unit=self.sdd)
         self.client.force_authenticate(user=self.cisc_head)
         response = self.client.delete(f"/api/categories/{unused.id}/")
         self.assertEqual(response.status_code, 200)
@@ -305,7 +305,7 @@ class OrgUnitHierarchyAuthTests(TestCase):
         self.client.force_authenticate(user=self.sdd_head)
         response = self.client.put(
             f"/api/categories/{self.cisc_category.id}/",
-            {"name": "Blocked", "code": "BLK"},
+            {"name": "Blocked"},
             format="json",
         )
         self.assertIn(response.status_code, [403, 404])

@@ -3,7 +3,7 @@
  *
  * Supports manual PDF upload via POST /api/documents/upload (multipart).
  * Validates category, folder, requisitioners, and metadata before submit.
- * Document code is auto-generated server-side from the selected category.
+ * Document code is entered manually by the uploader.
  */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
@@ -51,6 +51,7 @@ import { useCategories } from "@/contexts/CategoryContext";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fetchSystemSettings, formatUploadSizeError } from "@/lib/system-settings";
+import { normalizeDocumentCode, validateDocumentCode } from "@/lib/document-code";
 import { Folder } from "@/types";
 
 interface UploadDialogProps {
@@ -72,7 +73,6 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
   const [customFileName, setCustomFileName] = useState("");
   const [docCode, setDocCode] = useState("");
   const [docCodeError, setDocCodeError] = useState("");
-  const [isLoadingDocCode, setIsLoadingDocCode] = useState(false);
   const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>([]);
   const [requisitionerErrors, setRequisitionerErrors] = useState<RequisitionerRowErrors[]>([]);
   const [requisitionerListError, setRequisitionerListError] = useState("");
@@ -84,9 +84,11 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadLimitMb, setUploadLimitMb] = useState(15);
+  const [fileSizeError, setFileSizeError] = useState<string | null>(null);
+  const [googleDriveLink, setGoogleDriveLink] = useState("");
+  const [googleDriveLinkError, setGoogleDriveLinkError] = useState("");
 
   const uploadLimitBytes = uploadLimitMb * 1024 * 1024;
-  const selectedCategoryCode = categories.find((category) => category.id === categoryId)?.code ?? "";
 
   const reset = () => {
     setState("manual-upload");
@@ -94,7 +96,6 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
     setCustomFileName("");
     setDocCode("");
     setDocCodeError("");
-    setIsLoadingDocCode(false);
     setRequisitioners([]);
     setRequisitionerErrors([]);
     setRequisitionerListError("");
@@ -104,6 +105,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
     setKeywordInput("");
     setTargetFolderId(selectedFolderId || "");
     setIsProcessing(false);
+    setFileSizeError(null);
+    setGoogleDriveLink("");
+    setGoogleDriveLinkError("");
   };
 
   useEffect(() => {
@@ -120,41 +124,6 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
       }
     }
   }, [open, selectedFolderId, storageQuotaExceeded]);
-
-  useEffect(() => {
-    if (!categoryId) {
-      setDocCode("");
-      setDocCodeError("");
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingDocCode(true);
-    setDocCodeError("");
-
-    api
-      .get<{ code: string }>("/api/documents/next-code", { categoryId })
-      .then((response) => {
-        if (!cancelled) {
-          setDocCode(response.code);
-        }
-      })
-      .catch((error: any) => {
-        if (!cancelled) {
-          setDocCode("");
-          setDocCodeError(error.message || "Unable to preview document code.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingDocCode(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [categoryId, selectedCategoryCode]);
 
   const fetchFolders = async () => {
     try {
@@ -198,9 +167,12 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
           return;
         }
         if (selectedFile.size > uploadLimitBytes) {
-          toast.error(formatUploadSizeError(uploadLimitMb));
+          const message = formatUploadSizeError(uploadLimitMb);
+          setFileSizeError(message);
+          toast.error(message);
           return;
         }
+        setFileSizeError(null);
         const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
         setFile(selectedFile);
         setCustomFileName(baseName);
@@ -221,7 +193,9 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
       if (!rejection) return;
 
       if (rejection.errors.some((error) => error.code === "file-too-large")) {
-        toast.error(formatUploadSizeError(uploadLimitMb));
+        const message = formatUploadSizeError(uploadLimitMb);
+        setFileSizeError(message);
+        toast.error(message);
         return;
       }
 
@@ -261,16 +235,59 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
     setKeywords(keywords.filter((keyword) => keyword !== tag));
   };
 
+  const getGoogleDriveLinkValidation = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { value: "", error: "" };
+    }
+    if (!/^https:\/\/drive\.google\.com\//i.test(trimmed)) {
+      return {
+        value: "",
+        error: "Google Drive link must start with https://drive.google.com/",
+      };
+    }
+    return { value: trimmed, error: "" };
+  };
+
+  const continueWithMetadata = () => {
+    const { value, error } = getGoogleDriveLinkValidation(googleDriveLink);
+    if (error) {
+      setGoogleDriveLinkError(error);
+      return;
+    }
+    if (!file && !value) {
+      setGoogleDriveLinkError("Enter a Google Drive link or upload a PDF first.");
+      return;
+    }
+    setGoogleDriveLinkError("");
+    setGoogleDriveLink(value);
+    if (!file && value && !customFileName.trim()) {
+      setCustomFileName("Google Drive Document");
+    }
+    setState("category-entry");
+  };
+
   const handleSave = async () => {
     if (storageQuotaExceeded) {
       toast.error("Storage quota exceeded. Please contact your system administrator.");
       return;
     }
-    if (!file) {
-      toast.error("File is missing.");
+    if (!file && !googleDriveLink.trim()) {
+      toast.error("Upload a PDF, provide a Google Drive link, or both.");
       return;
     }
-    if (file.size > uploadLimitBytes) {
+    const { value: normalizedDriveLink, error: driveLinkError } = getGoogleDriveLinkValidation(googleDriveLink);
+    if (driveLinkError) {
+      setGoogleDriveLinkError(driveLinkError);
+      toast.error(driveLinkError);
+      return;
+    }
+    if (!file) {
+      if (!customFileName.trim()) {
+        toast.error("Title is required for Google Drive link documents.");
+        return;
+      }
+    } else if (file.size > uploadLimitBytes) {
       toast.error(formatUploadSizeError(uploadLimitMb));
       return;
     }
@@ -278,10 +295,13 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
       toast.error("Category is required.");
       return;
     }
-    if (!docCode.trim()) {
-      setDocCodeError("Select a category with a valid code to generate a document code.");
+    const codeValidationError = validateDocumentCode(docCode);
+    if (codeValidationError) {
+      setDocCodeError(codeValidationError);
+      toast.error(codeValidationError);
       return;
     }
+    setDocCodeError("");
     if (!targetFolderId) {
       toast.error("Target folder is required.");
       return;
@@ -310,7 +330,11 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
 
     setIsProcessing(true);
     const cleanFileName = customFileName.trim();
-    const finalName = cleanFileName ? `${cleanFileName}.pdf` : "unnamed_document.pdf";
+    const finalName = file
+      ? cleanFileName
+        ? `${cleanFileName}.pdf`
+        : "unnamed_document.pdf"
+      : cleanFileName;
 
     try {
       const physicalLocation = folderPaths.find((path) => path.id === targetFolderId)?.path || "All Files";
@@ -321,8 +345,14 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
       }
 
       const formData = new FormData();
-      formData.append("file", file);
+      if (file) {
+        formData.append("file", file);
+      }
       formData.append("title", finalName);
+      formData.append("code", normalizeDocumentCode(docCode));
+      if (normalizedDriveLink) {
+        formData.append("googleDriveLink", normalizedDriveLink);
+      }
       formData.append("requisitioners", JSON.stringify(serializeRequisitionersForApi(requisitioners)));
       formData.append("categoryId", categoryId);
       formData.append("categoryName", categoryObj.name);
@@ -382,29 +412,40 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
 
         <div className="py-2">
           {state === "manual-upload" && (
+            <>
             <div
               {...getRootProps()}
               className={cn(
                 "border-2 border-dashed rounded-xl p-16 flex flex-col items-center justify-center gap-6 transition-colors cursor-pointer my-4",
-                isDragActive
-                  ? "border-primary bg-primary/5"
-                  : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/20"
+                fileSizeError
+                  ? "border-destructive bg-destructive/5"
+                  : isDragActive
+                    ? "border-primary bg-primary/5"
+                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/20"
               )}
             >
               <input {...getInputProps()} />
               <UploadCloud
                 className={cn(
                   "h-16 w-16 transition-colors",
-                  isDragActive ? "text-primary" : "text-muted-foreground/60"
+                  fileSizeError
+                    ? "text-destructive"
+                    : isDragActive
+                      ? "text-primary"
+                      : "text-muted-foreground/60"
                 )}
               />
               <div className="text-center space-y-1">
                 <p className="font-semibold text-xl">
                   {isDragActive ? "Drop your PDF here" : "Click or drag PDF here"}
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  Only PDF files are accepted — maximum {uploadLimitMb} MB
-                </p>
+                {fileSizeError ? (
+                  <p className="text-sm font-medium text-destructive">{fileSizeError}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Only PDF files are accepted — maximum {uploadLimitMb} MB
+                  </p>
+                )}
                 {storageQuotaExceeded ? (
                   <p className="text-sm font-medium text-destructive">
                     Storage quota exceeded. Please contact your system administrator.
@@ -412,6 +453,36 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
                 ) : null}
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="upload-google-drive-link" className="text-sm font-medium">
+                Google Drive Link (optional)
+              </Label>
+              <Input
+                id="upload-google-drive-link"
+                value={googleDriveLink}
+                onChange={(event) => {
+                  setGoogleDriveLink(event.target.value);
+                  if (googleDriveLinkError) setGoogleDriveLinkError("");
+                }}
+                placeholder="https://drive.google.com/..."
+              />
+              {googleDriveLinkError ? (
+                <p className="text-sm text-destructive">{googleDriveLinkError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Upload a PDF, paste a Google Drive link, or provide both.
+                </p>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={continueWithMetadata}
+                disabled={storageQuotaExceeded}
+              >
+                Continue to Metadata
+              </Button>
+            </div>
+            </>
           )}
 
           {state === "category-entry" && (
@@ -422,13 +493,56 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
                   <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                     Original Source
                   </Label>
-                  <p className="text-sm font-semibold truncate">{file?.name}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase">
-                    {(file?.size || 0) / 1024 / 1024 < 1
-                      ? `${((file?.size || 0) / 1024).toFixed(1)} KB`
-                      : `${((file?.size || 0) / 1024 / 1024).toFixed(1)} MB`}{" "}
-                    • PDF Document
-                  </p>
+                  {file ? (
+                    <>
+                      <p className="text-sm font-semibold truncate">{file.name}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">
+                        {(file.size || 0) / 1024 / 1024 < 1
+                          ? `${((file.size || 0) / 1024).toFixed(1)} KB`
+                          : `${((file.size || 0) / 1024 / 1024).toFixed(1)} MB`}{" "}
+                        • PDF Document
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-semibold truncate">Google Drive link only</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="metadata-google-drive-link" className="text-xs font-semibold uppercase text-muted-foreground">
+                  Google Drive Link (Optional)
+                </Label>
+                <Input
+                  id="metadata-google-drive-link"
+                  value={googleDriveLink}
+                  onChange={(event) => {
+                    setGoogleDriveLink(event.target.value);
+                    if (googleDriveLinkError) setGoogleDriveLinkError("");
+                  }}
+                  placeholder="https://drive.google.com/..."
+                />
+                {googleDriveLinkError && (
+                  <p className="text-[11px] font-medium text-destructive">{googleDriveLinkError}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fileName" className="text-xs font-semibold uppercase text-muted-foreground">
+                  {file ? "File Name (Editable)" : "Title"}
+                </Label>
+                <div className="flex w-full items-center">
+                  <Input
+                    id="fileName"
+                    value={customFileName}
+                    onChange={(event) => setCustomFileName(event.target.value)}
+                    className={cn("min-w-0 flex-1", file && "rounded-r-none h-10")}
+                  />
+                  {file ? (
+                    <div className="shrink-0 bg-muted px-3 h-10 flex items-center border border-l-0 rounded-r-md text-sm font-medium text-muted-foreground">
+                      .pdf
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -468,41 +582,26 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
               <div className="space-y-2">
                 <Label htmlFor="docCode" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
                   <Hash className="h-3.5 w-3.5" />
-                  Document Code
+                  Document Code <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="docCode"
-                  value={isLoadingDocCode ? "Generating..." : docCode}
-                  readOnly
-                  disabled
-                  placeholder="Select a category to preview"
-                  className={cn("h-10 font-mono bg-muted", docCodeError && "border-destructive focus-visible:ring-destructive")}
+                  value={docCode}
+                  onChange={(event) => {
+                    setDocCode(event.target.value);
+                    if (docCodeError) setDocCodeError("");
+                  }}
+                  placeholder="e.g. RPT-2026-000001"
+                  className={cn("h-10 font-mono", docCodeError && "border-destructive focus-visible:ring-destructive")}
                   aria-invalid={Boolean(docCodeError)}
                 />
                 {docCodeError ? (
                   <p className="text-[11px] text-destructive font-medium">{docCodeError}</p>
                 ) : (
                   <p className="text-[11px] text-muted-foreground">
-                    Auto-generated from category. Final code is assigned when you save.
+                    Enter the document code manually. Letters, numbers, and hyphens only.
                   </p>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="fileName" className="text-xs font-semibold uppercase text-muted-foreground">
-                  File Name (Editable)
-                </Label>
-                <div className="flex w-full items-center">
-                  <Input
-                    id="fileName"
-                    value={customFileName}
-                    onChange={(event) => setCustomFileName(event.target.value)}
-                    className="min-w-0 flex-1 rounded-r-none h-10"
-                  />
-                  <div className="shrink-0 bg-muted px-3 h-10 flex items-center border border-l-0 rounded-r-md text-sm font-medium text-muted-foreground">
-                    .pdf
-                  </div>
-                </div>
               </div>
 
               <RequisitionersEditor
@@ -612,7 +711,6 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
                   !categoryId ||
                   !targetFolderId ||
                   !docCode.trim() ||
-                  isLoadingDocCode ||
                   Boolean(docCodeError) ||
                   keywords.length === 0
                 }

@@ -16,7 +16,7 @@ The **Digitized Filing System (DFS) API** is a Django REST Framework backend tha
 | Default permission | `IsAuthenticated` on all endpoints unless explicitly set to `AllowAny` |
 | Roles | `admin`, `dept_head`, `staff` |
 | Data scoping | OrgUnit-based; Department Heads include child OrgUnits |
-| Documents | PDF-only uploads with metadata (code, requisitioners, description, keywords, category, folder) |
+| Documents | PDF uploads and/or Google Drive link–only records with metadata (code, requisitioners, description, keywords, category, folder) |
 | Soft delete | Folders and documents use `is_deleted`; Recycle Bin supports restore and permanent delete |
 | Audit logging | Server-side `log_audit()` helper; optional client-side audit POST from frontend |
 | Time zone | `Asia/Manila` (formatted timestamps via `format_local_datetime`) |
@@ -111,7 +111,7 @@ User (role + optional OrgUnit assignment)
 
 - Store `token` in `localStorage` as `auth_token` (see `frontend/src/lib/api.ts`).
 - Login requires both `is_active` and `is_active_status` to be true.
-- New users created by Admin/Dept Head receive an activation email; they cannot log in until they call **Set Password**.
+- New users created by Admin/Dept Head receive an activation email. They may also receive an optional password from the manager on create/update to activate immediately without using the activation link.
 
 ---
 
@@ -311,6 +311,7 @@ For file uploads, omit `Content-Type` so the browser sets the multipart boundary
 - Recycle Bin: global view of deleted items
 - Audit logs: full view and export
 - Can delete documents and any folder (including non-empty)
+- **Requisitioners Directory:** full browse, CRUD, tagged-document views, reference counts
 - Dashboard stats: **global** for admin (`office_unit=all`); **subtree aggregated** when admin or parent dept_head views a parent unit with children; **single unit** for leaf filters; **own unit** for staff and child-only dept_head
 
 ### Department Head (`dept_head`)
@@ -322,6 +323,7 @@ For file uploads, omit `Content-Type` so the browser sets the multipart boundary
 - Recycle Bin: scoped to OrgUnit + children
 - Audit logs: scoped to OrgUnit + children
 - Can delete documents; can delete folders (Staff restrictions do not apply to Dept Head)
+- **Requisitioners Directory:** read-only browse, scoped tagged-document views, and scoped reference counts (within accessible org units); may use `GET /api/employees?search=` for document tagging
 
 ### Staff (`staff`)
 
@@ -331,6 +333,7 @@ For file uploads, omit `Content-Type` so the browser sets the multipart boundary
 - Can delete **empty** folders only (no documents, no subfolders)
 - **No Recycle Bin access** (`403`)
 - **No Audit Log access** (`403`)
+- **No Requisitioners Directory access** (`403` on browse/CRUD; may use `GET /api/employees?search=` during document upload)
 
 ### OrgUnit scoping helper
 
@@ -489,6 +492,8 @@ Or custom:
 | `storage.children_allocated_mb` | Subtree view only: sum of direct child quotas under the selected parent |
 | `storage.available_for_allocation_mb` | Subtree view only: parent envelope minus `children_allocated_mb` |
 | `storage_by_office_unit[]` | Comparison chart rows: `org_unit_id`, `org_unit_name`, `quota_mb`, `used_mb`, `remaining_mb`, `usage_percentage` |
+| `total_documents` | Count of active (non-deleted) documents in scope |
+| `google_drive_files` | Count of Google Drive–only documents in scope (Drive link present, no uploaded PDF) |
 
 **Success `200` (global):**
 
@@ -500,7 +505,7 @@ Or custom:
   "can_filter_office_units": true,
   "aggregates_subtree": false,
   "total_documents": 42,
-  "uploaded_files": 42,
+  "google_drive_files": 8,
   "total_org_units": 5,
   "total_users": 18,
   "deleted_files": null,
@@ -546,7 +551,7 @@ Or custom:
   "can_filter_office_units": false,
   "aggregates_subtree": false,
   "total_documents": 2,
-  "uploaded_files": 2,
+  "google_drive_files": 2,
   "total_org_units": null,
   "total_users": 1,
   "deleted_files": 0,
@@ -576,7 +581,7 @@ When the selected unit has active child Office Units, document counts and file u
   "can_filter_office_units": true,
   "aggregates_subtree": true,
   "total_documents": 2,
-  "uploaded_files": 2,
+  "google_drive_files": 2,
   "total_org_units": 2,
   "total_users": 2,
   "deleted_files": 0,
@@ -737,10 +742,10 @@ Parent reduction blocked:
       "categoryId": "1",
       "category": "Reports",
       "code": "01-12551",
-      "requestor": "202400123 - Jane Doe",
+      "requestor": "D-2122-GCM - Jane Doe",
       "requisitioners": [
         {
-          "employeeNumber": "202400123",
+          "employeeNumber": "D-2122-GCM",
           "firstName": "Jane",
           "lastName": "Doe",
           "suffix": "",
@@ -775,7 +780,7 @@ Parent reduction blocked:
 
 ---
 
-#### Upload PDF document
+#### Upload document (PDF and/or Google Drive link)
 
 | | |
 |---|---|
@@ -788,11 +793,13 @@ Parent reduction blocked:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `file` | Yes | PDF file |
+| `file` | Conditional | PDF file — required unless `googleDriveLink` is provided |
+| `googleDriveLink` | Conditional | Valid Google Drive URL — required unless `file` is provided |
+| `code` | Yes | Unique document code (letters, numbers, hyphens only; stored uppercase) |
 | `folderId` | Yes | Target folder ID |
-| `categoryId` | Yes | Category ID (must match folder OrgUnit if category is scoped; category must have a `code`) |
-| `title` | No | Defaults to uploaded filename |
-| `requisitioners` | Yes | JSON array string, e.g. `[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; `employeeNumber` optional — digits only when provided; no duplicate non-empty employee numbers per document) |
+| `categoryId` | Yes | Category ID (must match folder OrgUnit when category is scoped) |
+| `title` | No | Defaults to uploaded filename (PDF) or user-entered title (Drive-only) |
+| `requisitioners` | Yes | JSON array string, e.g. `[{"employeeId":"12","source":"directory","employeeNumber":"D-2122-GCM","firstName":"Jane","lastName":"Doe","suffix":""}]` (at least one; first/last name required; directory-selected tags include `employeeId` + `source: "directory"` and are read-only snapshots; manual tags use `source: "manual"`; `employeeNumber` optional — institutional `Letter-Year-Code` or legacy numeric when provided; no duplicate non-empty employee numbers per document) |
 | `requestor` | No | Legacy derived display string (synced server-side from `requisitioners`; do not send on manual upload) |
 | `description` | Yes | Required; max 50 characters |
 | `keywords` | No | JSON array string, e.g. `["keyword1","keyword2"]` |
@@ -813,36 +820,13 @@ Parent reduction blocked:
 
 **PDF validation rules:**
 
-- Extension must be `.pdf`
-- File header must start with `%PDF`
-- Max size: **Configurable** via System Settings (`upload_limit_mb`, default **15 MB**)
-- File must not be empty
+- Extension must be `.pdf` when `file` is provided
+- File header must start with `%PDF` when `file` is provided
+- Max size: **Configurable** via System Settings (`upload_limit_mb`, default **15 MB**) — PDF uploads only
+- File must not be empty when provided
+- Google Drive–only records do not consume file storage quota
 
-**Notes:** Document `code` is auto-generated server-side as `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Do not send `code` in the upload form. After upload, PDF text is indexed via `index_document_text()` for AI search.
-
----
-
-#### Preview next document code
-
-| | |
-|---|---|
-| **Method** | `GET` |
-| **Path** | `/api/documents/next-code` |
-| **Auth** | Bearer JWT |
-
-**Query parameters:**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `categoryId` | Yes | Category ID with a configured `code` (must be visible in the caller's Office Unit scope) |
-
-**Success `200`:**
-
-```json
-{ "code": "RPT-2026-000155" }
-```
-
-Preview only — the final code is assigned atomically when upload completes.
+**Notes:** Document `code` is entered by the uploader and validated for uniqueness. After upload, PDF text is indexed via `index_document_text()` when a file is present. Requisitioner tags link to the Requisitioners Directory on save: directory-selected tags store an `employeeId` FK and refresh snapshots from the master record; manual tags create a directory row only when no duplicate employee number or similar name exists.
 
 ---
 
@@ -855,7 +839,7 @@ Preview only — the final code is assigned atomically when upload completes.
 | **Auth** | Bearer JWT |
 | **Scope** | Must be in accessible OrgUnit |
 
-Uses `DocumentSerializer` — document `code` is read-only in the serializer; prefix may update when category assignment changes via edit (see Edit document details).
+Uses `DocumentSerializer` — document `code` is editable on upload and via edit endpoints.
 
 ---
 
@@ -874,20 +858,26 @@ Uses `DocumentSerializer` — document `code` is read-only in the serializer; pr
 {
   "folderId": "3",
   "categoryId": "1",
+  "code": "RPT-2026-000001",
   "requisitioners": [
-    { "employeeNumber": "202400123", "firstName": "Jane", "lastName": "Doe", "suffix": "" },
-    { "employeeNumber": "202400456", "firstName": "Maria", "lastName": "Santos", "suffix": "" }
+    { "employeeId": "12", "source": "directory", "employeeNumber": "D-2122-GCM", "firstName": "Jane", "lastName": "Doe", "suffix": "" },
+    { "source": "manual", "employeeNumber": "", "firstName": "Maria", "lastName": "Santos", "suffix": "" }
   ],
   "description": "Monthly report",
   "keywords": ["report", "may"],
-  "file_name": "report"
+  "file_name": "report",
+  "googleDriveLink": "https://drive.google.com/file/d/example/view"
 }
 ```
 
-- Replaces the full requisitioner list (add/update/remove sync)
-- Document `code` is not sent in the body; when `categoryId` changes, auto-generated codes swap prefix only (`MEM-2026-000001` → `REP-2026-000001`). Legacy codes are unchanged.
+- Replaces the full requisitioner list (add/remove directory tags; edit manual-only tags)
+- `code` is required and must remain unique (letters, numbers, hyphens only)
+- Optional `googleDriveLink` updates or clears the Drive link
 - `requestor` in responses is derived as `"emp - name, emp - name"` for backward compatibility
-- At least one requisitioner required; `employeeNumber` is optional (leave blank for non-employees). When provided, employee numbers must be digits only and unique per document among non-empty values
+- At least one requisitioner required; `employeeNumber` is optional (institutional format or legacy numeric when provided)
+- Directory-linked tags (`employeeId` + `source: "directory"`) refresh snapshots from the master record and **do not** mutate directory data
+- Manual tags (`source: "manual"`) create a directory row on save only when no duplicate employee number or similar name exists; duplicate employee number returns `400` with *"Employee Number already exists. Please select the existing requisitioner."*
+- Only **Admin** may call `POST /api/employees/upsert` from the Requisitioners Directory page; document metadata no longer upserts directory records
 
 **Success `200`:** Full `DocumentSerializer` object.
 
@@ -1109,8 +1099,7 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 }
 ```
 
-- `code` — auto-generated from the category name when omitted (first 3 alphanumeric characters, deduped per Office Unit). Optional on create: send `"code": "AUD"` to set manually.
-- Unique `(name, org_unit)` per category name; unique `(code, org_unit)` when code is non-empty
+- Unique `(name, org_unit)` per category name
 - **Dept Head** may create categories for any accessible Office Unit in their subtree (`orgUnitId` in scope)
 - **Staff** may create categories for their assigned Office Unit only
 
@@ -1123,11 +1112,8 @@ Use `file_url` from document response (`/media/documents/YYYY/MM/DD/filename.pdf
 | **Method** | `PUT` / `PATCH` |
 | **Path** | `/api/categories/{id}` |
 
-**Body:** `{ "name": "Updated Name", "code": "AUD" }` — `code` is optional.
+**Body:** `{ "name": "Updated Name" }`
 
-- When `code` is sent, it is normalized (uppercase A–Z, 0–9, max 10) and saved as a **manual abbreviation override**.
-- When `code` is omitted and the name changes, the server regenerates `code` from the new name (deduped within the Office Unit).
-- When the category abbreviation changes, active documents in that category with auto-generated codes (`PREFIX-YEAR-SEQ`) have their prefix updated; sequence numbers are preserved (e.g. `MEM-2026-000001` → `TES-2026-000001`).
 - **Dept Head** may update categories in their accessible subtree; **Staff** own unit only.
 
 ---
@@ -1370,14 +1356,16 @@ Staff receive empty list (`403` not raised — empty queryset).
   "email": "newuser@example.com",
   "fullName": "New User",
   "role": "staff",
-  "orgUnitId": "2"
+  "orgUnitId": "2",
+  "password": "SecurePass123!",
+  "confirmPassword": "SecurePass123!"
 }
 ```
 
 **Behavior:**
 
-- User created **inactive** with unusable password
-- Activation email sent automatically
+- Without `password`: user created **inactive** with unusable password; activation email sent automatically
+- With `password` + matching `confirmPassword` (**Admin/Dept Head only**): password set, user **active** immediately; activation email still sent
 - Admin: `orgUnitId` cleared when `role=admin`
 - Dept Head: `role` forced to `staff`, `orgUnitId` forced to actor's OrgUnit
 
@@ -1397,6 +1385,7 @@ Staff receive empty list (`403` not raised — empty queryset).
 - Dept Head can only update Staff in same OrgUnit
 - Cannot demote/deactivate last active Admin
 - Cannot deactivate own account
+- Optional `password` + `confirmPassword` (**Admin/Dept Head only**): sets or resets login password; pending accounts are activated when a password is set; audit action `SET_USER_PASSWORD`
 
 ---
 
@@ -1408,7 +1397,7 @@ Staff receive empty list (`403` not raised — empty queryset).
 | PATCH | `/api/users/{id}/activate` |
 | PATCH | `/api/users/{id}/deactivate` |
 
-Activation requires user to have set password via activation link.
+Activation requires a usable password (from activation link or manager-set password on create/edit).
 
 ---
 
@@ -1937,11 +1926,87 @@ Each threshold fires once until system quota is increased (resets threshold flag
 
 ---
 
+### 7.16 Requisitioners Directory API
+
+Master requisitioner records used for document tagging search. **Directory CRUD is admin-only; Dept Head has read-only access with org-unit–scoped counts.**
+
+| Endpoint | Method | Path | Auth | Roles |
+|----------|--------|------|------|-------|
+| List / browse | GET | `/api/employees` | Yes | **Admin** — global reference counts; **Dept Head** — scoped counts; **Staff** — **403** |
+| Search for document tagging | GET | `/api/employees?search={query}` | Yes | **All roles** — Staff: minimal fields only; Admin/Dept Head: full serializer |
+| Retrieve | GET | `/api/employees/{id}` | Yes | **Admin**, **Dept Head** |
+| Tagged documents | GET | `/api/employees/{id}/documents` | Yes | **Admin** (global); **Dept Head** (scoped to accessible org units) |
+| Create | POST | `/api/employees` | Yes | **Admin** |
+| Update | PUT/PATCH | `/api/employees/{id}` | Yes | **Admin** |
+| Upsert | POST | `/api/employees/upsert` | Yes | **Admin** |
+| Check duplicate | POST | `/api/employees/check-duplicate` | Yes | **All roles** (document manual add validation) |
+| Delete | DELETE | `/api/employees/{id}` | Yes | **Admin** (blocked when tagged on more than 3 documents) |
+
+**Staff search response** omits `referencedDocumentCount`, `scopedReferencedDocumentCount`, `canDelete`, `canChangeEmployeeNumber`, `employeeNumberBlockReason`, and related directory-management fields.
+
+**Directory record fields (Admin/Dept Head list & retrieve):**
+
+| Field | Description |
+|-------|-------------|
+| `referencedDocumentCount` | Distinct active documents tagged via FK (with legacy fallback) |
+| `canChangeEmployeeNumber` | `false` when tagged on ≥1 document |
+| `employeeNumberBlockReason` | Lock helper when employee number cannot be edited |
+| `canDelete` | `false` when tagged on >3 documents |
+
+**Employee number edit policy (directory update):**
+
+- **Name/suffix:** always editable; changes cascade to linked document tag snapshots.
+- **Employee number:** editable only when `referencedDocumentCount == 0`.
+- When tagged on ≥1 document, employee number changes return `400` with: *"Employee Number cannot be modified because this requisitioner is referenced by existing documents."*
+- **Admin override:** include `employeeNumberOverrideReason` on `PUT/PATCH /api/employees/{id}` when changing the number on a tagged record. Override is audited as `UPDATE_EMPLOYEE_NUMBER_OVERRIDE` with requisitioner ID, old/new numbers, user, timestamp, and reason.
+- Untagged number changes are audited as `UPDATE_EMPLOYEE_NUMBER`.
+
+**Document upload/edit** tags requisitioners via `employeeId` (directory) or manual entry. Directory-linked tags store an FK to the master record and refresh snapshots on save without mutating master data. Manual tags create a directory row only when duplicate checks pass. Document metadata edits do **not** call directory upsert.
+
+**Check duplicate** (`POST /api/employees/check-duplicate`):
+
+```json
+{
+  "employeeNumber": "D-2122-GCM",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "suffix": "",
+  "excludeEmployeeId": "12"
+}
+```
+
+**Response:**
+
+```json
+{
+  "blocked": true,
+  "message": "Employee Number already exists. Please select the existing requisitioner.",
+  "matches": [{ "id": "5", "employeeNumber": "D-2122-GCM", "firstName": "Jane", "lastName": "Doe", "suffix": "", "fullName": "Jane Doe" }]
+}
+```
+
+**Document requisitioner object (read/write on upload/edit):**
+
+```json
+{
+  "employeeId": "12",
+  "source": "directory",
+  "employeeNumber": "D-2122-GCM",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "suffix": ""
+}
+```
+
+**Audit actions:** `CREATE_EMPLOYEE`, `UPDATE_EMPLOYEE`, `UPDATE_EMPLOYEE_NUMBER`, `UPDATE_EMPLOYEE_NUMBER_OVERRIDE`, `DELETE_EMPLOYEE`, `UPSERT_REQUISITIONER_DIRECTORY`, `VIEW_REQUISITIONERS_DIRECTORY`, `VIEW_REQUISITIONER_DOCUMENT_REFERENCES`, `REQUISITIONER_DELETE_BLOCKED`, `REQUISITIONER_DIRECTORY_ACCESS_DENIED`
+
+---
+
 ## 8. Query Parameters (Summary)
 
 | Parameter | Used in |
 |-----------|---------|
-| `search` | `/api/documents`, `/api/users`, `/api/org-units/`, `/api/audit-logs/` |
+| `search` | `/api/documents`, `/api/users`, `/api/org-units/`, `/api/audit-logs/`, `/api/employees` (Staff: search-only on employees) |
 | `page`, `page_size` | Paginated list endpoints |
 | `folderId` | `/api/documents` |
 | `orgUnitId` | `/api/documents`, `/api/categories`, `/api/users` |
@@ -1986,13 +2051,14 @@ No global `ordering` query parameter is implemented on list endpoints.
 
 | Rule | Value |
 |------|-------|
-| Allowed type | PDF only (`.pdf`, `%PDF` header) |
-| Max size | Configurable (default **15 MB** via `SystemSettings.upload_limit_mb`) |
-| Global storage block | When system used storage ≥ `SystemSettings.storage_quota_mb` |
+| Allowed type | PDF only when uploading a file (`.pdf`, `%PDF` header) |
+| Google Drive | Optional `googleDriveLink` instead of or in addition to PDF |
+| Max size | Configurable (default **15 MB** via `SystemSettings.upload_limit_mb`) — PDF only |
+| Global storage block | When system used storage ≥ `SystemSettings.storage_quota_mb` (PDF uploads) |
 | Upload endpoints | `POST /api/documents/upload` |
-| Storage path | `media/documents/YYYY/MM/DD/<filename>` |
-| Required metadata | `folderId`, `categoryId` (with category `code`) |
-| Document code | Unique, pattern `^[A-Za-z0-9-]+$`, stored uppercase |
+| Storage path | `media/documents/YYYY/MM/DD/<filename>` (PDF uploads) |
+| Required metadata | `folderId`, `categoryId`, `code`, `description`, `requisitioners` |
+| Document code | Unique, pattern `^[A-Za-z0-9-]+$`, stored uppercase; entered manually |
 | Description max length | 50 characters |
 | Keywords | JSON array of strings |
 | Duplicate filename | Rejected within same folder |
@@ -2107,7 +2173,8 @@ curl -X POST http://localhost:8000/api/documents/upload \
   -F "folderId=3" \
   -F "categoryId=1" \
   -F "code=01-99999" \
-  -F 'requisitioners=[{"employeeNumber":"202400123","firstName":"Jane","lastName":"Doe","suffix":""}]' \
+  -F 'requisitioners=[{"employeeNumber":"D-2122-GCM","firstName":"Jane","lastName":"Doe","suffix":""}]' \
+  -F 'code=MEMO-2026-001'
   -F "description=Test upload" \
   -F 'keywords=["test","pdf"]'
 ```

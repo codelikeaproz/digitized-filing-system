@@ -4,7 +4,7 @@ Dashboard statistics and storage analytics.
 Computes storage usage dynamically from Document.file_size and
 OfficeUnit.storage_quota_mb (quota only is stored in DB).
 """
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 from rest_framework.exceptions import NotFound, PermissionDenied
 
@@ -54,6 +54,15 @@ class DashboardService:
     @staticmethod
     def _deleted_documents(org_unit_ids=None):
         queryset = Document.objects.filter(is_deleted=True)
+        if org_unit_ids is not None:
+            queryset = queryset.filter(folder__org_unit_id__in=org_unit_ids)
+        return queryset
+
+    @staticmethod
+    def _google_drive_only_documents(org_unit_ids=None):
+        queryset = Document.objects.filter(is_deleted=False, google_drive_link__gt="").filter(
+            Q(file="") | Q(file__isnull=True)
+        )
         if org_unit_ids is not None:
             queryset = queryset.filter(folder__org_unit_id__in=org_unit_ids)
         return queryset
@@ -152,7 +161,7 @@ class DashboardService:
             "can_filter_office_units": True,
             "aggregates_subtree": False,
             "total_documents": docs.count(),
-            "uploaded_files": docs.count(),
+            "google_drive_files": cls._google_drive_only_documents().count(),
             "total_org_units": len(org_units),
             "total_users": User.objects.count(),
             "deleted_files": None,
@@ -185,7 +194,7 @@ class DashboardService:
             "can_filter_office_units": False,
             "aggregates_subtree": False,
             "total_documents": docs.count(),
-            "uploaded_files": docs.count(),
+            "google_drive_files": cls._google_drive_only_documents(org_unit_ids).count(),
             "total_org_units": None,
             "total_users": User.objects.filter(org_unit=org_unit).count(),
             "deleted_files": deleted.count(),
@@ -217,7 +226,7 @@ class DashboardService:
             "can_filter_office_units": can_filter and has_children,
             "aggregates_subtree": True,
             "total_documents": docs.count(),
-            "uploaded_files": docs.count(),
+            "google_drive_files": cls._google_drive_only_documents(scope_ids).count(),
             "total_org_units": len(scope_ids),
             "total_users": User.objects.filter(org_unit_id__in=scope_ids).count(),
             "deleted_files": deleted.count(),

@@ -6,8 +6,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Network, Plus, Trash2, Edit, Loader2, FolderTree, Filter } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Network, Plus, Trash2, Edit, Loader2, FolderTree, Filter, MoreVertical } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth-context';
 import { PaginationControls } from '@/components/PaginationControls';
@@ -36,6 +36,7 @@ import {
   type OrgUnitStorageQuotaPreset,
 } from '@/lib/storage-quota-presets';
 import { fetchSystemSettings } from '@/lib/system-settings';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +47,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -683,20 +690,35 @@ export default function OrgUnitsPage() {
                     <TableCell className="text-muted-foreground">
                       {getParentName(ou.parentId)}
                     </TableCell>
-                    <TableCell className="text-right pr-6 gap-2 flex justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(ou)}>
-                        <Edit className="h-4 w-4 text-muted-foreground hover:text-blue-600" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => canDeleteOrgUnit(ou) ? setOuToDelete(ou) : toast.info(getDeleteBlockReason(ou))}
-                        disabled={!canDeleteOrgUnit(ou)}
-                        title={!canDeleteOrgUnit(ou) ? getDeleteBlockReason(ou) : 'Delete Office Unit'}
-                        className="disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Trash2 className={`h-4 w-4 ${canDeleteOrgUnit(ou) ? 'text-muted-foreground hover:text-red-500' : 'text-muted-foreground'}`} />
-                      </Button>
+                    <TableCell className="text-right pr-6">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className={cn(buttonVariants({ variant: 'ghost' }), 'h-8 w-8 p-0')}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenEdit(ou)}>
+                            <Edit className="mr-2 h-4 w-4 text-blue-600" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={!canDeleteOrgUnit(ou)}
+                            className="text-destructive focus:text-destructive"
+                            title={!canDeleteOrgUnit(ou) ? getDeleteBlockReason(ou) : undefined}
+                            onClick={() => {
+                              if (canDeleteOrgUnit(ou)) {
+                                setOuToDelete(ou);
+                              } else {
+                                toast.info(getDeleteBlockReason(ou));
+                              }
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))

@@ -77,11 +77,25 @@ async function downloadDocumentFile(document: DocType) {
     let message = response.status === 404 ? "File not found" : "Download failed";
     try {
       const data = text ? JSON.parse(text) : {};
+      if (data.googleDriveLink) {
+        window.open(data.googleDriveLink, "_blank", "noopener,noreferrer");
+        return;
+      }
       message = data.error || data.message || data.detail || message;
     } catch {
       if (text) message = text;
     }
     throw new Error(message);
+  }
+
+  const contentType = response.headers.get("Content-Type") || "";
+  if (contentType.includes("application/json")) {
+    const data = await response.json();
+    if (data.googleDriveLink) {
+      window.open(data.googleDriveLink, "_blank", "noopener,noreferrer");
+      return;
+    }
+    throw new Error("This document is stored in Google Drive; use View to open it.");
   }
 
   const blob = await response.blob();
@@ -224,6 +238,18 @@ export default function DocumentsPage() {
         }
 
         const contentType = response.headers.get("Content-Type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          if (data.googleDriveLink) {
+            window.open(data.googleDriveLink, "_blank", "noopener,noreferrer");
+            if (!cancelled) {
+              setPreviewError(null);
+              setPreviewLoading(false);
+            }
+            return;
+          }
+        }
+
         if (!contentType.includes("application/pdf") && !contentType.includes("octet-stream")) {
           throw new Error("Preview failed — server did not return a PDF.");
         }

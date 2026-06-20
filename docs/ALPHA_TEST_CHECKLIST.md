@@ -14,8 +14,8 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 |------|--------|
 | Public | Login page + public assistant |
 | Staff | Dashboard, Documents, Settings |
-| Dept Head | + Users (Staff in org subtree), Recycle Bin |
-| Admin | + Org Units, Audit Logs, Backup Management, full Recycle Bin |
+| Dept Head | + Requisitioners Directory (read-only), Users (Staff in org subtree), Recycle Bin |
+| Admin | + Org Units, Audit Logs, Backup Management, Requisitioners Directory (full CRUD) |
 
 **Sign-off:** Tester __________ · Date __________ · Pass / Fail __________
 
@@ -37,7 +37,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| Stats load; counts update after upload | All | [ ] |
+| Stats load; summary cards show **Documents** and **G Drive Files** | All | [ ] |
 | Dashboard refetches when returning to tab / window focus | All | [ ] |
 | Admin-only cards (Org Units, Users) visible to Admin only | Admin | [ ] |
 | Global view shows System Storage Limit, Top-Level Allocated, and System Allocation Remaining | Admin | [ ] |
@@ -71,10 +71,10 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| PDF upload with folder, category (with code), description, auto document code preview, and ≥1 keyword | All | [ ] |
-| Document code read-only on edit unless category changes; prefix swaps when category reassigned | All | [ ] |
-| Category abbreviation change in Manage Categories recodes existing document prefixes | All | [ ] |
-| Category code auto-generated from name on create/rename or editable manually in Manage Categories | All | [ ] |
+| PDF or Google Drive link upload with folder, category, manual document code, requisitioners, description, and ≥1 keyword | All | [ ] |
+| Document code required; letters, numbers, hyphens only; unique across system | All | [ ] |
+| Google Drive–only upload (no PDF) counts toward Documents but not file storage quota | All | [ ] |
+| Edit Details updates document code, metadata, requisitioners, and optional Drive link | Admin, Dept Head | [ ] |
 | Non-PDF, missing fields, duplicate name, and out-of-scope folder rejected | All | [ ] |
 | File over configured upload limit (default 15 MB) rejected | All | [ ] |
 | Upload blocked when global or Office Unit storage quota exceeded | All | [ ] |
@@ -107,7 +107,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 | Test case | Role | Done |
 |-----------|------|------|
-| Create, rename, delete (blocked if in use); scoped to Org Unit; manual code abbreviation edit in Manage Categories | All | [ ] |
+| Create, rename, delete (blocked if in use); scoped to Org Unit | All | [ ] |
 | Parent Dept Head can manage categories in child Office Units via Manage Categories | Dept Head | [ ] |
 
 ---
@@ -122,6 +122,8 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Follow-up after code (e.g. `120-12` → `What is about?`) | All | [ ] |
 | RBAC respected; no out-of-scope results | Staff, Dept Head | [ ] |
 | Parent Dept Head assistant counts/search include child-unit documents | Dept Head | [ ] |
+| Dept Head can ask Requisitioners Directory questions (scoped tagged counts) | Dept Head | [ ] |
+| Staff Requisitioners Directory chatbot questions politely refused | Staff | [ ] |
 | Child Dept Head / Staff assistant excludes parent and sibling units | Dept Head, Staff | [ ] |
 
 > More queries: [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md)
@@ -143,18 +145,45 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Test case | Role | Done |
 |-----------|------|------|
 | List, search, pagination | Admin, Dept Head | [ ] |
-| Create user + activation email; resend activation | Admin, Dept Head | [ ] |
+| Create user + activation email; optional password activates immediately | Admin, Dept Head | [ ] |
+| Resend activation | Admin, Dept Head | [ ] |
 | Admin: all roles. Dept Head: Staff in accessible org subtree; child Heads read-only | Admin, Dept Head | [ ] |
 | Parent Dept Head lists and manages Staff in child Office Units | Dept Head | [ ] |
 | Parent Dept Head can assign new Staff to child Office Unit on create | Dept Head | [ ] |
 | Child Dept Head sees only own-unit users; cannot access parent unit staff | Dept Head | [ ] |
 | Tampered orgUnitId filter on user list returns 403 | Dept Head | [ ] |
 | Deactivate / reactivate; cannot remove last active Admin | Admin | [ ] |
-| Staff blocked from route | Staff | [ ] |
+| Staff blocked from route → `/error/403` | Staff | [ ] |
 
 ---
 
-## 7. Org Units (`/org-units`) — Admin only
+## 7. Requisitioners Directory (`/employees`)
+
+| Test case | Role | Done |
+|-----------|------|------|
+| Admin: list, search, Add/Edit/Delete, global Tagged Documents counts | Admin | [ ] |
+| Admin: View Documents modal lists all tagged documents | Admin | [ ] |
+| Dept Head: read-only list with scoped Tagged Documents counts | Dept Head | [ ] |
+| Dept Head: View Documents shows only accessible org units; Edit/Delete hidden | Dept Head | [ ] |
+| Dept Head: directory API mutations return 403 | Dept Head | [ ] |
+| Staff: no sidebar link; direct URL → `/error/403` | Staff | [ ] |
+| Staff: `GET /api/employees?search=` works during document upload | Staff | [ ] |
+| Staff: browse directory without search returns 403 + audit | Staff | [ ] |
+| Cross-org tags: dept head sees scoped count only | Dept Head | [ ] |
+| Directory-selected requisitioner on document: name/number read-only; remove to change person | Admin, Dept Head | [ ] |
+| Manual requisitioner: editable; duplicate employee number blocked with required message | Admin, Dept Head | [ ] |
+| Manual requisitioner: similar existing name blocked on save | Admin, Dept Head | [ ] |
+| Document metadata edit does not create orphan directory rows | Admin | [ ] |
+| Admin: `find_duplicate_requisitioners` report identifies split rows for cleanup | Admin | [ ] |
+| Edit modal shows Tagged Documents count | Admin | [ ] |
+| Tagged requisitioner: employee number field locked with helper message | Admin | [ ] |
+| Tagged requisitioner: name edit still works and cascades to document tags | Admin | [ ] |
+| Untagged requisitioner: employee number editable | Admin | [ ] |
+| Admin override: reason required, number editable, audit log `UPDATE_EMPLOYEE_NUMBER_OVERRIDE` | Admin | [ ] |
+
+---
+
+## 8. Org Units (`/org-units`) — Admin only
 
 | Test case | Role | Done |
 |-----------|------|------|
@@ -174,7 +203,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 ---
 
-## 8. Audit Logs (`/audit-logs`) — Admin only
+## 9. Audit Logs (`/audit-logs`) — Admin only
 
 | Test case | Role | Done |
 |-----------|------|------|
@@ -184,7 +213,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 ---
 
-## 9. Recycle Bin (`/recycle-bin`)
+## 10. Recycle Bin (`/recycle-bin`)
 
 | Test case | Role | Done |
 |-----------|------|------|
@@ -204,7 +233,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 ---
 
-## 10. Settings
+## 11. Settings
 
 | Test case | Role | Done |
 |-----------|------|------|
@@ -213,18 +242,19 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 
 ---
 
-## 11. Security & UI
+## 12. Security & UI
 
 | Test case | Role | Done |
 |-----------|------|------|
-| Sidebar and routes match role | All | [ ] |
+| Sidebar and routes match role (Staff: no directory link) | All | [ ] |
+| Unauthorized protected route redirects to `/error/403` | Staff, Dept Head | [ ] |
 | No out-of-scope Org Unit access (Staff: own unit; Dept Head: subtree only) | Staff, Dept Head | [ ] |
 | Unauthenticated API returns 401 | All | [ ] |
 | Empty states and upload errors handled cleanly | All | [ ] |
 
 ---
 
-## 12. Backup Management (`/backup`)
+## 13. Backup Management (`/backup`)
 
 | Test case | Role | Done |
 |-----------|------|------|
@@ -232,7 +262,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Download Database Backup → `.sql` file saves locally | Admin | [ ] |
 | Download Media Backup → `.zip` file saves locally | Admin | [ ] |
 | Audit Logs show `BACKUP_DATABASE_DOWNLOADED` / `BACKUP_MEDIA_DOWNLOADED` | Admin | [ ] |
-| Dept Head / Staff: route blocked (403 / Access Denied) | Dept Head, Staff | [ ] |
+| Dept Head / Staff: route blocked → `/error/403` | Dept Head, Staff | [ ] |
 | Unauthorized API call returns 403 | Dept Head, Staff | [ ] |
 
 ---

@@ -46,7 +46,7 @@ import {
 import { PaginationControls } from '@/components/PaginationControls';
 import { formatManilaDate } from '@/lib/time';
 import { RolePermissionLegend } from '@/components/users/RolePermissionLegend';
-import { formatEmployeeNumberDisplay, sanitizeEmployeeNumberInput, validateEmployeeNumber } from '@/lib/employee-number';
+import { formatEmployeeNumberDisplay, formatEmployeeNumberInput, validateEmployeeNumber, EMPLOYEE_NUMBER_PLACEHOLDER, EMPLOYEE_NUMBER_HELPER_TEXT } from '@/lib/employee-number';
 
 const SUFFIX_OPTIONS = [
   { value: '', label: 'No Suffix' },
@@ -110,6 +110,7 @@ export default function UsersPage() {
     role: 'staff',
     orgUnitId: '',
     password: '',
+    confirmPassword: '',
     isActive: true
   });
   const [employeeNumberError, setEmployeeNumberError] = useState('');
@@ -242,7 +243,7 @@ export default function UsersPage() {
     const { name, value, type } = e.target;
     const nextValue =
       name === 'employeeNumber'
-        ? sanitizeEmployeeNumberInput(value)
+        ? formatEmployeeNumberInput(value)
         : type === 'checkbox'
           ? (e.target as HTMLInputElement).checked
           : value;
@@ -257,6 +258,18 @@ export default function UsersPage() {
     }));
   };
 
+  const validatePasswordFields = () => {
+    const password = formData.password.trim();
+    const confirmPassword = formData.confirmPassword.trim();
+    if (!password && !confirmPassword) {
+      return null;
+    }
+    if (password !== confirmPassword) {
+      return 'Password and confirm password do not match.';
+    }
+    return null;
+  };
+
   const handleOpenAdd = () => {
     setEmployeeNumberError('');
     setFormData({
@@ -268,6 +281,7 @@ export default function UsersPage() {
       role: 'staff',
       orgUnitId: isDeptHead ? currentUserOrgUnitId : orgUnits[0]?.id || '',
       password: '',
+      confirmPassword: '',
       isActive: true
     });
     setIsAddModalOpen(true);
@@ -289,6 +303,7 @@ export default function UsersPage() {
       role: isDeptHead ? 'staff' : user.role,
       orgUnitId: isDeptHead ? (user.orgUnitId || currentUserOrgUnitId) : user.orgUnitId || '',
       password: '',
+      confirmPassword: '',
       isActive: user.isActive
     });
     setIsEditModalOpen(true);
@@ -309,14 +324,19 @@ export default function UsersPage() {
 
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const employeeValidationError = validateEmployeeNumber(formData.employeeNumber);
+    const employeeValidationError = validateEmployeeNumber(formData.employeeNumber, false);
     if (employeeValidationError) {
       setEmployeeNumberError(employeeValidationError);
       toast.error(employeeValidationError);
       return;
     }
+    const passwordValidationError = validatePasswordFields();
+    if (passwordValidationError) {
+      toast.error(passwordValidationError);
+      return;
+    }
     try {
-      const payload = {
+      const payload: Record<string, string | null> = {
         employeeNumber: formData.employeeNumber.trim(),
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -327,8 +347,12 @@ export default function UsersPage() {
           ? (formData.orgUnitId || currentUserOrgUnitId)
           : formData.role === 'admin' ? null : formData.orgUnitId,
       };
+      if (formData.password.trim()) {
+        payload.password = formData.password;
+        payload.confirmPassword = formData.confirmPassword;
+      }
 
-      const newUser = await api.post<User>('/api/users', payload);
+      await api.post<User>('/api/users', payload);
       if (currentPage === 1) {
         await fetchUsers();
       } else {
@@ -336,7 +360,11 @@ export default function UsersPage() {
       }
       
       toast.success('User created successfully');
-      toast.info('Activation email sent. The user must set their own password before login.');
+      if (formData.password.trim()) {
+        toast.info('Account activated with the password you set. An activation email was also sent.');
+      } else {
+        toast.info('Activation email sent. The user must set their password from the email link before login.');
+      }
       setIsAddModalOpen(false);
     } catch (error: any) {
       applyApiFieldErrors(error.errors);
@@ -347,7 +375,12 @@ export default function UsersPage() {
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
-    const employeeValidationError = validateEmployeeNumber(formData.employeeNumber);
+    const allowLegacyEmployeeNumber = Boolean(
+      selectedUser.employeeNumber &&
+      /^\d+$/.test(selectedUser.employeeNumber.trim()) &&
+      /^\d+$/.test(formData.employeeNumber.trim())
+    );
+    const employeeValidationError = validateEmployeeNumber(formData.employeeNumber, allowLegacyEmployeeNumber);
     if (employeeValidationError) {
       setEmployeeNumberError(employeeValidationError);
       toast.error(employeeValidationError);
@@ -357,8 +390,12 @@ export default function UsersPage() {
       toast.error(lastAdminMessage);
       return;
     }
+    const passwordValidationError = validatePasswordFields();
+    if (passwordValidationError) {
+      toast.error(passwordValidationError);
+      return;
+    }
     try {
-      // Omit password if blank
       const payload = {
         ...formData,
         role: isDeptHead ? 'staff' : formData.role,
@@ -366,7 +403,10 @@ export default function UsersPage() {
           ? (formData.orgUnitId || currentUserOrgUnitId)
           : formData.role === 'admin' ? null : formData.orgUnitId,
       } as any;
-      if (!payload.password) delete payload.password;
+      if (!payload.password) {
+        delete payload.password;
+        delete payload.confirmPassword;
+      }
       
       const updatedUser = await api.put<User>(`/api/users/${selectedUser.id}`, payload);
       await fetchUsers();
@@ -388,8 +428,8 @@ export default function UsersPage() {
       toast.error(lastAdminMessage);
       return;
     }
-    if (isPendingActivation(user) || isActivationExpired(user)) {
-      toast.error('This account is pending activation. The user must set their password from the email link.');
+    if ((isPendingActivation(user) || isActivationExpired(user)) && !user.hasUsablePassword) {
+      toast.error('Set a password in Edit User first, or ask the user to use the activation email link.');
       return;
     }
     if (!canManageUser(user)) {
@@ -726,13 +766,13 @@ export default function UsersPage() {
                   name="employeeNumber"
                   value={formData.employeeNumber}
                   onChange={handleInputChange}
-                  className="h-11 rounded-xl"
-                  placeholder="e.g. 20240001"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
+                  className="h-11 rounded-xl font-mono tracking-wide"
+                  placeholder={EMPLOYEE_NUMBER_PLACEHOLDER}
+                  autoComplete="off"
+                  spellCheck={false}
                   required
                 />
-                <p className="text-xs text-muted-foreground">Digits only. Must be unique across all users.</p>
+                <p className="text-xs text-muted-foreground">{EMPLOYEE_NUMBER_HELPER_TEXT}. Must be unique across all users.</p>
                 {employeeNumberError && (
                   <p className="text-xs text-destructive">{employeeNumberError}</p>
                 )}
@@ -850,10 +890,39 @@ export default function UsersPage() {
                 )}
               </div>
 
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    {isAddModalOpen ? 'Password (optional)' : 'New Password (optional)'}
+                  </label>
+                  <Input
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    autoComplete="new-password"
+                    className="h-11 rounded-xl"
+                    placeholder={isAddModalOpen ? 'Set initial password' : 'Leave blank to keep current'}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Confirm Password</label>
+                  <Input
+                    type="password"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    autoComplete="new-password"
+                    className="h-11 rounded-xl"
+                    placeholder="Confirm password"
+                  />
+                </div>
+              </div>
+
               <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 {isAddModalOpen
-                  ? 'No default password will be created. The user will receive an activation email to set their own password.'
-                  : 'Passwords are not edited here. Users must use account activation or password reset to set their password.'}
+                  ? 'Optional: set a password to activate the account immediately. An activation email is still sent.'
+                  : 'Optional: set a new password to activate a pending account or reset login credentials.'}
               </div>
 
               <div className="pt-4 flex justify-end gap-3">

@@ -503,14 +503,26 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = serializer.save()
+        create_message = f"Created user account: {user.email}"
+        if getattr(serializer, "password_was_set", False):
+            create_message += " (password set by administrator)"
         log_audit(
             self.request.user,
             "CREATE_USER",
-            f"Created user account: {user.email}",
+            create_message,
             target_type="User",
             target_name=user.email,
             target_org_unit=self._target_org_name(user),
         )
+        if getattr(serializer, "password_was_set", False):
+            log_audit(
+                self.request.user,
+                "SET_USER_PASSWORD",
+                f"Set password for user: {user.email}",
+                target_type="User",
+                target_name=user.email,
+                target_org_unit=self._target_org_name(user),
+            )
         self._send_activation_email(user)
 
     def _send_activation_email(self, user):
@@ -596,6 +608,15 @@ class UserViewSet(viewsets.ModelViewSet):
                 target_name=user.email,
                 target_org_unit=self._target_org_name(user),
             )
+        if getattr(serializer, "password_was_set", False):
+            log_audit(
+                self.request.user,
+                "SET_USER_PASSWORD",
+                f"Set password for user: {user.email}",
+                target_type="User",
+                target_name=user.email,
+                target_org_unit=self._target_org_name(user),
+            )
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
@@ -667,12 +688,12 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_active = is_active
         user.is_active_status = is_active
         user.save(update_fields=["is_active", "is_active_status"])
-        action = "ACTIVATE_USER" if is_active else "DEACTIVATE_USER"
-        verb = "Activated" if is_active else "Deactivated"
+        action = "ACCOUNT_ACTIVATED" if is_active else "DEACTIVATE_USER"
+        verb = "Account activated" if is_active else "Deactivated"
         log_audit(
             self.request.user,
             action,
-            f"{verb} user: {user.email}",
+            f"{verb} for user: {user.email}" if is_active else f"{verb} user: {user.email}",
             target_type="User",
             target_name=user.email,
             target_org_unit=self._target_org_name(user),

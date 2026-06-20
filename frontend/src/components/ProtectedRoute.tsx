@@ -2,7 +2,7 @@
  * Route guards for authenticated and role-restricted pages.
  *
  * ProtectedRoute — redirects to /login when no valid session.
- * RoleRoute      — blocks Staff from admin-only screens (UI layer only;
+ * RoleRoute      — redirects unauthorized roles to /error/403 (UI layer only;
  *                  backend must enforce the same rules).
  */
 import React from "react";
@@ -32,13 +32,7 @@ export function RoleRoute({ children, allowedRoles }: { children: React.ReactNod
   }
 
   if (!user || (user.role && !allowedRoles.includes(user.role.toLowerCase()))) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] space-y-4">
-        <h2 className="text-2xl font-bold text-gray-800">Access Denied</h2>
-        <p className="text-gray-600">You do not have permission to access this page.</p>
-        <Navigate to="/" replace />
-      </div>
-    );
+    return <Navigate to="/error/403" replace />;
   }
 
   return <>{children}</>;

@@ -15,44 +15,16 @@ from orgunits.models import OrgUnit
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=10, blank=True, default="")
     org_unit = models.ForeignKey(OrgUnit, on_delete=models.CASCADE, null=True, blank=True, related_name="categories")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
         unique_together = ("name", "org_unit")
-        constraints = [
-            models.UniqueConstraint(
-                fields=["code", "org_unit"],
-                name="unique_category_code_per_org_unit",
-                condition=models.Q(code__gt=""),
-            ),
-        ]
         verbose_name_plural = "Categories"
 
     def __str__(self):
         return self.name
-
-
-class DocumentSequence(models.Model):
-    category_code = models.CharField(max_length=10, db_index=True)
-    current_year = models.PositiveIntegerField()
-    current_number = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["category_code", "current_year"],
-                name="unique_document_sequence_per_code_year",
-            ),
-        ]
-        ordering = ["category_code", "-current_year"]
-
-    def __str__(self):
-        return f"{self.category_code}-{self.current_year} ({self.current_number})"
 
 
 class Folder(models.Model):
@@ -104,11 +76,11 @@ class Folder(models.Model):
 
 
 class Document(models.Model):
-    STATUS_CHOICES = [("Received", "Received")]
     SOURCE_CHOICES = [("Scanned", "Scanned"), ("Uploaded", "Uploaded")]
 
     title = models.CharField(max_length=255)
-    file = models.FileField(upload_to="documents/%Y/%m/%d/")
+    file = models.FileField(upload_to="documents/%Y/%m/%d/", blank=True, null=True)
+    google_drive_link = models.URLField(max_length=500, blank=True, default="")
     file_path = models.CharField(max_length=500, blank=True, default="")
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name="documents")
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name="documents")
@@ -118,7 +90,6 @@ class Document(models.Model):
     description = models.CharField(max_length=50, null=True, blank=True)
     keywords = models.JSONField(default=list, blank=True)
     filing_year = models.PositiveIntegerField(default=timezone.now().year)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Received")
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="Uploaded")
     mime_type = models.CharField(max_length=100, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
@@ -152,10 +123,29 @@ class Document(models.Model):
 
 
 class DocumentRequisitioner(models.Model):
+    SOURCE_DIRECTORY = "directory"
+    SOURCE_MANUAL = "manual"
+    SOURCE_CHOICES = [
+        (SOURCE_DIRECTORY, "Directory"),
+        (SOURCE_MANUAL, "Manual"),
+    ]
+
     document = models.ForeignKey(
         Document,
         on_delete=models.CASCADE,
         related_name="requisitioners",
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="document_tags",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_MANUAL,
     )
     employee_number = models.CharField(max_length=50, blank=True, null=True, default=None)
     first_name = models.CharField(max_length=100)
@@ -169,6 +159,11 @@ class DocumentRequisitioner(models.Model):
             models.UniqueConstraint(
                 fields=["document", "employee_number"],
                 name="unique_requisitioner_per_document",
+            ),
+            models.UniqueConstraint(
+                fields=["document", "employee"],
+                condition=models.Q(employee__isnull=False),
+                name="unique_directory_requisitioner_per_document",
             ),
         ]
 

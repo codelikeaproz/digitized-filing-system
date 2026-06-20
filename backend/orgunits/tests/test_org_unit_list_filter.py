@@ -37,7 +37,7 @@ class OrgUnitListFilterTests(TestCase):
         )
 
         folder = Folder.objects.create(name="Records", org_unit=self.sdd)
-        category = Category.objects.create(name="General", code="GEN", org_unit=self.sdd)
+        category = Category.objects.create(name="General", org_unit=self.sdd)
         upload = SimpleUploadedFile("sample.pdf", b"%PDF-test", content_type="application/pdf")
         Document.objects.create(
             title="sample.pdf",

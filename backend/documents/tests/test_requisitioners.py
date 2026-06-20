@@ -3,8 +3,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from config.employee_number import EMPLOYEE_NUMBER_FORMAT_ERROR
 from documents.models import Category, Document, DocumentRequisitioner, Folder
-from documents.requisitioners import normalize_requisitioner_item, validate_requisitioners_list
+from documents.requisitioners import (
+    format_requisitioners_display,
+    normalize_requisitioner_item,
+    validate_requisitioners_list,
+)
 from orgunits.models import OrgUnit
 
 
@@ -30,7 +35,7 @@ class RequisitionerValidationTests(TestCase):
                     "suffix": "",
                 }
             )
-        self.assertIn("digits only", str(ctx.exception))
+        self.assertIn(EMPLOYEE_NUMBER_FORMAT_ERROR, str(ctx.exception))
 
     def test_duplicate_non_empty_employee_numbers_rejected(self):
         with self.assertRaises(ValidationError) as ctx:
@@ -74,10 +79,46 @@ class RequisitionerValidationTests(TestCase):
         self.assertIsNone(normalized[1]["employee_number"])
 
 
+class FormatRequisitionersDisplayTests(TestCase):
+    def setUp(self):
+        self.org_unit = OrgUnit.objects.create(name="CISC")
+        self.category = Category.objects.create(name="Reports", org_unit=self.org_unit)
+        self.folder = Folder.objects.create(name="Inbox", org_unit=self.org_unit)
+        self.document = Document.objects.create(
+            title="sample.pdf",
+            file="documents/sample.pdf",
+            folder=self.folder,
+            category=self.category,
+        )
+
+    def test_model_instance_without_employee_number(self):
+        requisitioner = DocumentRequisitioner.objects.create(
+            document=self.document,
+            employee_number=None,
+            first_name="Jane",
+            last_name="Guest",
+            suffix="",
+        )
+        self.assertEqual(format_requisitioners_display([requisitioner]), "Jane Guest")
+
+    def test_model_instance_with_employee_number(self):
+        requisitioner = DocumentRequisitioner.objects.create(
+            document=self.document,
+            employee_number="D-2022-ADDD",
+            first_name="Ralph",
+            last_name="Jumao-As",
+            suffix="",
+        )
+        self.assertEqual(
+            format_requisitioners_display([requisitioner]),
+            "D-2022-ADDD - Ralph Jumao-As",
+        )
+
+
 class RequisitionerAPITests(TestCase):
     def setUp(self):
         self.org_unit = OrgUnit.objects.create(name="CISC")
-        self.category = Category.objects.create(name="Reports", code="RPT", org_unit=self.org_unit)
+        self.category = Category.objects.create(name="Reports", org_unit=self.org_unit)
         self.folder = Folder.objects.create(name="Inbox", org_unit=self.org_unit)
         self.admin = User.objects.create_user(
             email="admin@test.local",
@@ -91,14 +132,15 @@ class RequisitionerAPITests(TestCase):
             file="documents/sample.pdf",
             folder=self.folder,
             category=self.category,
-            code="RPT-2026-000001",
             keywords=["test"],
+            code="RPT-TEST-001",
         )
 
     def _edit_payload(self, requisitioners):
         return {
             "folderId": str(self.folder.id),
             "categoryId": str(self.category.id),
+            "code": self.document.code,
             "requisitioners": requisitioners,
             "description": "Updated",
             "keywords": ["updated"],
@@ -122,8 +164,8 @@ class RequisitionerAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         requisitioner = DocumentRequisitioner.objects.get(document=self.document)
-        self.assertIsNone(requisitioner.employee_number)
         self.assertEqual(requisitioner.first_name, "External")
+        self.assertIsNone(requisitioner.employee_number)
 
     def test_edit_rejects_invalid_employee_number(self):
         response = self.client.patch(

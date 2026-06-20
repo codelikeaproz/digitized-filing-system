@@ -12,6 +12,7 @@ Route map for the DFS React SPA. Defined in `frontend/src/App.tsx`.
 | `/forgot-password` | `ForgotPasswordPage` | Request password reset email |
 | `/reset-password/:uid/:token` | `ResetPasswordPage` | Complete password reset from email |
 | `/set-password/:uid/:token` | `SetPasswordPage` | Activate new account + set password |
+| `/error/403` | `Error403Page` | Unauthorized access (role-restricted route) |
 | `/error/429` | `Error429Page` | Rate limit exceeded (login throttle) |
 | `/error/500` | `Error500Page` | Server error fallback |
 
@@ -36,6 +37,7 @@ Wrapped by `ProtectedRoute` + `AppShell` layout.
 | `/` | `DashboardPage` | All roles | `GET /api/dashboard/` (optional `?office_unit=all\|{id}`) |
 | `/documents` | `DocumentsPage` | All roles | Documents, folders, upload, AI assistant |
 | `/settings` | `SettingsPage` | All roles | `POST /api/auth/update-password` |
+| `/employees` | `EmployeeDirectoryPage` | `admin`, `dept_head` (read-only UI for dept_head) | `/api/employees` browse/view; Staff use `GET /api/employees?search=` during document upload only |
 | `/users` | `UsersPage` | `admin`, `dept_head` | ` /api/users` |
 | `/audit-logs` | `AuditLogsPage` | `admin` only | `/api/audit-logs/` |
 | `/org-units` | `OrgUnitsPage` | `admin` only | `/api/org-units/`, `/api/org-types/` |
@@ -49,8 +51,29 @@ Wrapped by `ProtectedRoute` + `AppShell` layout.
 - **Admin:** Office Unit filter dropdown — `All Office Units` (global) or a specific unit; parent units with children use subtree aggregation (`aggregates_subtree: true`)
 - **Parent dept_head:** Filter label **My Organization (all units)** — aggregates assigned unit + descendants; can filter to child units
 - **Staff / leaf dept_head:** Fixed to assigned unit; no filter dropdown
+- **Summary cards:** **Documents** (all active records) and **G Drive Files** (Google Drive–only records, no uploaded PDF)
 - **Storage charts:** `StorageUtilizationChart`, `OfficeUnitStorageComparisonChart`; refetches on tab focus and every 30s
 - **Low usage:** Percent shows `< 0.1%` when files exist but usage is tiny vs quota
+
+> **Staff** see Dashboard, Documents, and Settings only (sidebar + route guards must stay in sync). **Requisitioners Directory** (`/employees`) is available to Admin (full CRUD) and Dept Head (read-only); Staff are redirected to `/error/403` and may still search requisitioners during document upload via `GET /api/employees?search=`.
+
+### Requisitioners Directory (`/employees`) — Admin and Dept Head
+
+- **Admin:** paginated directory list with global **Tagged Documents** counts; Add, edit, delete; **View Documents** modal
+- **Dept Head:** read-only list with **scoped Tagged Documents** counts (accessible org units only); **View Documents** only; no add/edit/delete
+- **Staff:** no sidebar link; direct navigation redirects to `/error/403`; directory APIs return **403** except search-only list for document tagging
+
+**Edit modal (Admin):**
+
+- Shows **Tagged Documents** count while editing
+- **Employee number locked** when tagged on ≥1 document (disabled field + helper message from `employeeNumberBlockReason`)
+- **Override employee number lock** — secondary dialog requires a reason; sent as `employeeNumberOverrideReason` on save; audited as `UPDATE_EMPLOYEE_NUMBER_OVERRIDE`
+- Name edits remain allowed when tagged; snapshots on linked document tags refresh from master on save
+
+### User Management (`/users`) — Admin and Dept Head
+
+- Create/edit users with optional **password** + **confirm password** (Admin and Dept Head) — activates account immediately when set; activation email still sent
+- Dept Head manages Staff within accessible org subtree only
 
 ### Org Units (`/org-units`) — Admin only
 
@@ -76,7 +99,7 @@ Table columns: **Envelope**, **To Children**, **Pool Available**, **Used (files)
 ### `RoleRoute`
 
 - Checks `user.role` against `allowedRoles`
-- Shows "Access Denied" and redirects to `/` if role not allowed
+- Redirects unauthorized roles to `/error/403`
 - **Frontend-only** — backend must still enforce permissions
 
 ---

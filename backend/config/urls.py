@@ -24,6 +24,7 @@ urlpatterns = [
     path("api/system/", include("system.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/", include("documents.urls")),
+    path("api/", include("employees.urls")),
     path("api/ai/", include("ai.urls")),
     path('api/token/', TokenObtainPairView.as_view(), name="get_token"),
     path('api/token/refresh/', TokenRefreshView.as_view(), name="refresh"),

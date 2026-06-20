@@ -65,9 +65,9 @@ export interface OrgUnit {
   allocationContext?: OrgUnitAllocationContext;
 }
 
-export type DocumentStatus = 'Received';
-
 export interface DocumentRequisitioner {
+  employeeId?: string | null;
+  source?: "directory" | "manual";
   employeeNumber: string;
   firstName: string;
   lastName: string;
@@ -88,7 +88,6 @@ export interface Folder {
 export interface Category {
   id: string;
   name: string;
-  code?: string;
   org_unit?: number | string | null;
   orgUnitId?: string | null;
   createdAt?: string;
@@ -105,14 +104,13 @@ export interface Document {
   folderId: string;
   categoryId: string;
   category?: string;
-  uploaderId: string;
   code?: string;
+  uploaderId: string;
   requestor?: string;
   requisitioners?: DocumentRequisitioner[];
   description?: string;
   keywords?: string[];
   filingYear: number;
-  status: DocumentStatus;
   source: 'Scanned' | 'Uploaded';
   mimeType: string;
   isDeleted: boolean;
@@ -123,6 +121,43 @@ export interface Document {
   mime_type?: string;
   file_size?: number;
   file_url?: string;
+  googleDriveLink?: string;
+}
+
+export interface EmployeeDirectoryEntry {
+  id: string;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  suffix?: string;
+  fullName: string;
+  isActive?: boolean;
+  createdAt?: string;
+  referencedDocumentCount?: number;
+  scopedReferencedDocumentCount?: number;
+  canDelete?: boolean;
+  deleteBlockReason?: string;
+  canChangeEmployeeNumber?: boolean;
+  employeeNumberBlockReason?: string;
+}
+
+export interface RequisitionerTaggedDocument {
+  id: string;
+  title: string;
+  code?: string | null;
+  category: string;
+  orgUnit: string;
+  uploadedAt: string;
+  owner?: string;
+  keywords?: string[];
+}
+
+export interface RequisitionerDocumentsResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: RequisitionerTaggedDocument[];
+  totalTaggedDocuments: number;
 }
 
 export interface AuditLog {

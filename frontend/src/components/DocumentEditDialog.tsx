@@ -31,8 +31,8 @@ import {
   serializeRequisitionersForApi,
   validateRequisitioners,
 } from "@/lib/requisitioner";
-import { swapDocumentCodePrefixPreview } from "@/lib/category-code";
 import { cn, compareByNaturalName } from "@/lib/utils";
+import { normalizeDocumentCode, validateDocumentCode } from "@/lib/document-code";
 import { Document, Folder } from "@/types";
 
 type DocumentEditDialogProps = {
@@ -47,6 +47,8 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
   const [folders, setFolders] = useState<Folder[]>([]);
   const [targetFolderId, setTargetFolderId] = useState("");
   const [customFileName, setCustomFileName] = useState("");
+  const [docCode, setDocCode] = useState("");
+  const [docCodeError, setDocCodeError] = useState("");
   const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>([]);
   const [requisitionerErrors, setRequisitionerErrors] = useState<RequisitionerRowErrors[]>([]);
   const [requisitionerListError, setRequisitionerListError] = useState("");
@@ -54,6 +56,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
   const [categoryId, setCategoryId] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
+  const [googleDriveLink, setGoogleDriveLink] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const folderPaths = useMemo(() => {
@@ -94,6 +97,8 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
     const currentName = document.title || document.file_name || "";
     setTargetFolderId(String(document.folderId || ""));
     setCustomFileName(currentName.replace(/\.pdf$/i, ""));
+    setDocCode(document.code || "");
+    setDocCodeError("");
     setRequisitioners(seedRequisitionersFromDocument(document));
     setRequisitionerErrors([]);
     setRequisitionerListError("");
@@ -101,17 +106,8 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
     setCategoryId(String(document.categoryId || ""));
     setKeywords(Array.isArray(document.keywords) ? [...document.keywords] : []);
     setKeywordInput("");
+    setGoogleDriveLink(document.googleDriveLink || "");
   }, [open, document]);
-
-  const selectedCategory = categories.find((category) => category.id === categoryId);
-  const categoryChanged = Boolean(document && categoryId && String(document.categoryId || "") !== categoryId);
-  const previewDocumentCode =
-    document?.code && selectedCategory?.code && categoryChanged
-      ? swapDocumentCodePrefixPreview(document.code, selectedCategory.code)
-      : null;
-  const willUpdateDocumentCode = Boolean(
-    previewDocumentCode && previewDocumentCode !== (document?.code || "").trim().toUpperCase()
-  );
 
   const addKeyword = () => {
     const value = keywordInput.trim();
@@ -139,6 +135,13 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       toast.error("Category is required.");
       return;
     }
+    const codeValidationError = validateDocumentCode(docCode);
+    if (codeValidationError) {
+      setDocCodeError(codeValidationError);
+      toast.error(codeValidationError);
+      return;
+    }
+    setDocCodeError("");
     if (keywords.length === 0) {
       toast.error("Add at least one keyword before saving.");
       return;
@@ -162,16 +165,22 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       await api.patch(`/api/documents/${document.id}/edit`, {
         folderId: targetFolderId,
         categoryId,
+        code: normalizeDocumentCode(docCode),
         requisitioners: serializeRequisitionersForApi(requisitioners),
         description: description.trim(),
         keywords,
         file_name: customFileName.trim(),
+        googleDriveLink: googleDriveLink.trim(),
       });
       toast.success("Document details updated");
       onSaved?.();
       onOpenChange(false);
     } catch (error: any) {
-      toast.error(error.message || "Update failed.");
+      const message = error.message || "Update failed.";
+      if (message.toLowerCase().includes("document code")) {
+        setDocCodeError(message);
+      }
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -223,37 +232,60 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               </Select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-file-name" className="text-xs font-semibold uppercase text-muted-foreground">
-                  File Name
-                </Label>
-                <div className="flex items-center">
-                  <Input
-                    id="edit-file-name"
-                    value={customFileName}
-                    onChange={(event) => setCustomFileName(event.target.value)}
-                    className="rounded-r-none h-10"
-                  />
-                  <div className="bg-muted px-3 h-10 flex items-center border border-l-0 rounded-r-md text-sm font-medium text-muted-foreground">
-                    .pdf
-                  </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-file-name" className="text-xs font-semibold uppercase text-muted-foreground">
+                File Name
+              </Label>
+              <div className="flex items-center">
+                <Input
+                  id="edit-file-name"
+                  value={customFileName}
+                  onChange={(event) => setCustomFileName(event.target.value)}
+                  className="rounded-r-none h-10"
+                />
+                <div className="bg-muted px-3 h-10 flex items-center border border-l-0 rounded-r-md text-sm font-medium text-muted-foreground">
+                  .pdf
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="edit-doc-code" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-                  <Hash className="h-3.5 w-3.5" />
-                  Document Code
-                </Label>
-                <Input
-                  id="edit-doc-code"
-                  value={willUpdateDocumentCode && previewDocumentCode ? previewDocumentCode : document.code || "—"}
-                  readOnly
-                  disabled
-                  className="h-10 font-mono bg-muted"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-doc-code" className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                <Hash className="h-3.5 w-3.5" />
+                Document Code <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="edit-doc-code"
+                value={docCode}
+                onChange={(event) => {
+                  setDocCode(event.target.value);
+                  if (docCodeError) setDocCodeError("");
+                }}
+                placeholder="e.g. RPT-2026-000001"
+                className={cn("h-10 font-mono", docCodeError && "border-destructive focus-visible:ring-destructive")}
+                disabled={isSaving}
+                aria-invalid={Boolean(docCodeError)}
+              />
+              {docCodeError ? (
+                <p className="text-[11px] text-destructive font-medium">{docCodeError}</p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Enter the document code manually. Letters, numbers, and hyphens only.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-google-drive-link" className="text-xs font-semibold uppercase text-muted-foreground">
+                Google Drive Link (Optional)
+              </Label>
+              <Input
+                id="edit-google-drive-link"
+                value={googleDriveLink}
+                onChange={(event) => setGoogleDriveLink(event.target.value)}
+                placeholder="https://drive.google.com/..."
+                disabled={isSaving}
+              />
             </div>
 
             <RequisitionersEditor

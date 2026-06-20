@@ -71,7 +71,7 @@ def is_list_request(query):
 
 
 def extract_document_codes(query):
-    return [match.group(0) for match in DOCUMENT_CODE_PATTERN.finditer(query or "")]
+    return [match.group(0).strip().upper() for match in DOCUMENT_CODE_PATTERN.finditer(query or "")]
 
 
 def contains(value, query):
@@ -194,7 +194,9 @@ def search_accessible_documents(user, query, limit=None):
         ]
 
     if len(normalized) < MIN_BROAD_QUERY_LENGTH:
-        exact_code_matches = accessible_documents_for_user(user).filter(code__iexact=normalized)[:limit]
+        exact_code_matches = accessible_documents_for_user(user).filter(
+            code__iexact=normalized.upper()
+        )[:limit]
         return [
             DocumentMatch(document=document, score=1000, reasons=["exact code"])
             for document in exact_code_matches

@@ -1,14 +1,17 @@
 import { resolveApiUrl } from '@/lib/api-base-url';
 import { appPath, isAppPath } from '@/lib/app-path';
+import { getAccessToken } from '@/lib/auth-storage';
+import { redirectToLogin, refreshAccessToken } from '@/lib/auth-tokens';
 
 /**
  * Centralized HTTP client for the DFS backend.
  *
  * Features:
  * - Attaches JWT from localStorage (auth_token)
+ * - Silently refreshes expired access tokens via auth_refresh_token
  * - JSON helpers: get, post, put, patch, delete
  * - upload() for multipart/form-data (PDF uploads)
- * - Auto-redirect on 401 (logout), 429, 5xx
+ * - Auto-redirect on 401 when refresh fails, 429, 5xx
  *
  * Production URLs are relative (/digifile/api/...) so save/update/delete
  * always hit the same host as the page (http/https, domain or IP).
@@ -26,6 +29,11 @@ export interface PaginatedResponse<T> {
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | undefined | null>;
   skipRateLimitRedirect?: boolean;
+  _retriedAfterRefresh?: boolean;
+}
+
+function isAuthEndpoint(endpoint: string): boolean {
+  return endpoint.includes("/api/auth/login") || endpoint.includes("/api/token/refresh/");
 }
 
 class ApiService {
@@ -51,7 +59,7 @@ class ApiService {
       Accept: "application/json",
     };
 
-    const token = localStorage.getItem("auth_token");
+    const token = getAccessToken();
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -85,12 +93,18 @@ class ApiService {
       });
 
       if (response.status === 401) {
-        // Auto logout on unauthorized
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("auth_user");
-        if (!isAppPath("/login")) {
-          window.location.href = appPath("/login");
+        if (!isAuthEndpoint(endpoint) && !options._retriedAfterRefresh) {
+          const refreshed = await refreshAccessToken();
+          if (refreshed) {
+            return this.request<T>(
+              endpoint,
+              { ...options, _retriedAfterRefresh: true },
+              retries
+            );
+          }
         }
+
+        redirectToLogin();
         throw new Error("Unauthorized");
       }
 
@@ -204,7 +218,7 @@ class ApiService {
   }
 
   // Specialized for FormData (Uploads)
-  async upload<T>(endpoint: string, formData: FormData): Promise<T> {
+  async upload<T>(endpoint: string, formData: FormData, retriedAfterRefresh = false): Promise<T> {
     const headers = this.getHeaders() as Record<string, string>;
     delete headers["Content-Type"]; // Let fetch set boundary
     delete headers["content-type"];
@@ -214,6 +228,17 @@ class ApiService {
       body: formData,
       headers,
     });
+
+    if (response.status === 401) {
+      if (!retriedAfterRefresh) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          return this.upload<T>(endpoint, formData, true);
+        }
+      }
+      redirectToLogin();
+      throw new Error("Unauthorized");
+    }
 
     if (!response.ok) {
       const text = await response.text();

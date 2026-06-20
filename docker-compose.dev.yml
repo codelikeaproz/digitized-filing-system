@@ -1,0 +1,74 @@
+# Local development: backend + frontend + MySQL.
+# Run: docker compose -f docker-compose.dev.yml up --build
+services:
+  db:
+    image: mysql:8.0
+    container_name: dfs_mysql_dev
+    environment:
+      MYSQL_DATABASE: vpaa_digi_file
+      MYSQL_USER: dfs_user
+      MYSQL_PASSWORD: dfs_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data_dev:/var/lib/mysql
+    networks:
+      - dfs_net
+
+  backend:
+    build:
+      context: ./backend
+    container_name: dfs_backend_dev
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_ENGINE: mysql
+      DB_NAME: vpaa_digi_file
+      DB_USER: dfs_user
+      DB_PASSWORD: dfs_password
+      DB_HOST: db
+      DB_PORT: 3306
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_media_dev:/app/media
+    depends_on:
+      - db
+    networks:
+      - dfs_net
+    command:
+      - sh
+      - -c
+      - |
+        until nc -z db 3306; do echo 'Waiting for MySQL...'; sleep 2; done
+        echo 'Applying migrations...'
+        python manage.py migrate
+        python manage.py shell -c "import os; from django.contrib.auth import get_user_model; User=get_user_model(); email=os.environ.get('DJANGO_SUPERUSER_EMAIL'); password=os.environ.get('DJANGO_SUPERUSER_PASSWORD'); email and password and not User.objects.filter(email=email).exists() and User.objects.create_superuser(email, password) and print('Created superuser:', email)"
+        python manage.py runserver 0.0.0.0:8000
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: dfs_frontend_dev
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - dfs_net
+
+volumes:
+  mysql_data_dev:
+  backend_media_dev:
+  frontend_node_modules:
+
+networks:
+  dfs_net:
+    driver: bridge

@@ -3,8 +3,8 @@
  *
  * Menu visibility must stay aligned with RoleRoute guards in App.tsx:
  *   admin     → all items + Administration (Backup Management)
- *   dept_head → Users + Recycle Bin (scoped on backend)
- *   staff     → Dashboard, Documents, Settings only
+ *   dept_head → Requisitioners Directory (read-only), Users + Recycle Bin (scoped on backend)
+ *   staff     → Dashboard, Documents, Settings
  */
 import { publicAsset } from '@/lib/app-path';
 import {
@@ -29,20 +29,20 @@ import {
   Building2,
   Users,
   HardDriveDownload,
+  Contact,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 
-// Base menu for all roles
 const defaultMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/" },
   { title: "Documents", icon: Files, url: "/documents" },
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
-// Admin-only menu items
 const adminMenuItems = [
   ...defaultMenuItems.slice(0, 2),
+  { title: "Requisitioners Directory", icon: Contact, url: "/employees" },
   { title: "Office Units", icon: Building2, url: "/org-units" },
   { title: "User Management", icon: Users, url: "/users" },
   { title: "Audit Logs", icon: History, url: "/audit-logs" },
@@ -52,6 +52,7 @@ const adminMenuItems = [
 
 const deptHeadMenuItems = [
   ...defaultMenuItems.slice(0, 2),
+  { title: "Requisitioners Directory", icon: Contact, url: "/employees" },
   { title: "User Management", icon: Users, url: "/users" },
   { title: "Recycle Bin", icon: Archive, url: "/recycle-bin" },
   ...defaultMenuItems.slice(2),
@@ -71,7 +72,6 @@ export function AppSidebar() {
     navigate("/login");
   };
 
-  // Select items based on user role
   const menuItems = user?.role?.toLowerCase() === "admin" 
     ? adminMenuItems 
     : user?.role?.toLowerCase() === "dept_head"

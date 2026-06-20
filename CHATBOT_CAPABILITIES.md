@@ -1,6 +1,6 @@
 # Document Assistant Capabilities
 
-This document describes the current capabilities and limitations of the Digitized Filing System Document Assistant.
+This document describes the current capabilities and limitations of the Digitized Filing System Document Assistant. The assistant searches **documents** within your access scope; the **Requisitioners Directory** is a separate page for managing people and viewing **Tagged Documents** counts.
 
 **Document codes:** New uploads receive auto-generated codes in the format `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Category abbreviations are auto-generated or editable in Manage Categories. When the abbreviation changes or a document is reassigned to another category, auto-generated codes update their prefix only (sequence preserved). Legacy manual codes remain searchable and unchanged.
 
@@ -177,6 +177,8 @@ Important note:
 
 Image-only scanned PDFs are fully supported. If a PDF contains no selectable text (or selectable text is below a configurable threshold), the system automatically falls back to the Tesseract OCR pipeline to extract text from the document pages.
 
+Google Drive–only documents (no uploaded PDF in DFS) may have **no extractable PDF text** indexed in the system. Content questions about those records may fail unless text was indexed from an uploaded file. Use **View** on the Documents page or in the Tagged Documents modal to open the Google Drive link instead.
+
 ### 9. Keyword, Title, Category, Folder, And PDF Text Search
 
 The assistant can search accessible documents using:
@@ -272,9 +274,9 @@ List preview limit:
 - Count queries still return the full scoped total.
 - Chat API rate limit: **30 requests/minute** per authenticated user.
 
-### 11. Category And Requestor Filters
+### 11. Document Filters By Category And Requisitioner (Tag)
 
-The assistant can count or list documents by category and requestor/requisitioner.
+The assistant can count or list **documents** filtered by category or by requisitioner tags on those documents. This is **document search**, not a lookup against the Requisitioners Directory.
 
 Example prompts:
 
@@ -284,6 +286,7 @@ Show documents in test category.
 How many files were requested by SDD GODS?
 Search documents by requisitioner Ralph.
 Show files requested by Ralph.
+Search documents by requisitioner D-2101-ASD.
 ```
 
 Supported requestor/requisitioner aliases include common misspellings such as:
@@ -295,10 +298,102 @@ requestioner
 requester
 ```
 
+How requisitioner filtering works:
+
+- Matches document requisitioner tags and the document `requestor` display string using **partial** (`icontains`) matching on first name, last name, suffix, and employee number.
+- Results are scoped to documents the logged-in user can access (same as other assistant queries).
+- Supports common misspellings of "requisitioner" / "requestor" (listed above).
+
+What this does **not** cover:
+
+- *"List all requisitioners"* (full directory catalog without a tagged-documents filter).
+
+For directory-style tagged counts and tagged document lists, use Section 12.
+
 Recommended fields:
 
 - Use `category` for category counts and category filtering.
-- Use `requestor` for requisitioner/requestor questions.
+- Use requisitioner/requestor phrasing for document-by-tag questions (Section 11).
+- Use *"tagged on"* / *"tagged to"* phrasing for directory-style questions (Section 12).
+
+### 12. Requisitioners Directory Intents
+
+**Admin and Department Head only.** Staff cannot use directory intents in the Document Assistant; they are directed to use document upload search for tagging requisitioners.
+
+Administrators and Department Heads can ask Requisitioners Directory-style questions using the same **Tagged Documents** identity rules as the directory page (exact employee-number or name match — not partial search). Department Head answers use org-unit–scoped counts and document lists.
+
+Example prompts:
+
+```text
+How many documents is Ralph tagged on?
+List documents tagged to Ralph.
+Find requisitioner D-2101-ASD.
+Find requisitioner by employee number D-2101-ASD.
+Which requisitioners have tagged documents?
+Who has the most tagged documents?
+```
+
+Example answer (tagged count):
+
+```text
+Ralph Jumao-As (D-2022-ADDD) is tagged on 2 documents.
+```
+
+Example answer (list tagged documents, many matches):
+
+```text
+Documents tagged to Ralph Jumao-As (D-2022-ADDD):
+- cor.pdf (Code: TEst-2026-000001, Category: TEst, Folder: Systems > VPAA CABINET 0113)
+...
+Showing 5 of 12.
+Use the Requisitioners Directory page to view all tagged documents.
+```
+
+Example answer (catalog):
+
+```text
+Requisitioners with tagged documents in your accessible scope:
+- Ralph Jumao-As (D-2022-ADDD): 2 tagged documents
+```
+
+Example answer (most tagged):
+
+```text
+Ralph Jumao-As (D-2022-ADDD) has the most tagged documents: 2.
+```
+
+Rules:
+
+- **Admin and Dept Head** — directory intents, tagged counts, and tagged document lists; Staff are refused politely.
+- Tagged document lists respect document access scope (admin: system-wide; dept head: accessible org units).
+- List previews show at most **5** items; suggest the Requisitioners Directory page when more exist.
+- *"How many files were requested by Ralph?"* (Section 11) uses partial document search — related, but not identical to directory tagged counts.
+
+**Tagged Documents count logic (matches Requisitioners Directory UI):**
+
+| Rule | Behavior |
+|------|----------|
+| What is counted | Distinct active documents where the person is tagged as a requisitioner |
+| Active only | Excludes soft-deleted documents, folders, and org units |
+| Match with employee number | Document tag `employee_number` equals directory number (case-insensitive) |
+| Match without employee number | Same first name, last name, and suffix on tags where `employee_number` is null |
+| Admin column | System-wide count across all org units |
+| Dept Head column | Scoped count within accessible org units (matches read-only directory UI) |
+| Delete guard (admin) | Uses system-wide count; delete blocked when tagged on more than 3 documents |
+
+If a document tag and directory row use different identity keys (e.g. tag has an employee number but the directory row is name-only), counts may diverge until metadata is synced via document upload or edit.
+
+## Related Application Features (Not Chatbot)
+
+These features exist elsewhere in DFS. The Document Assistant does not replace them.
+
+| Feature | User-facing behavior | Chatbot today |
+|---------|---------------------|---------------|
+| **Requisitioners Directory** | **Admin** — full CRUD; **Dept Head** — read-only scoped list and **View Documents** | **Admin + Dept Head** — tagged counts, find requisitioner, list tagged docs, catalog (Section 12); **Staff** refused |
+| **Optional employee number** | Shows **No Emp No. Provided** when blank | Can search documents by name; number search works when that number appears on document tags |
+| **Metadata sync** | Document tags link to directory records via FK (`employeeId` + `source`). Directory-selected tags refresh snapshots on save without mutating master data; manual tags create a directory row only when no duplicate exists. Name changes on directory records cascade to linked tags; employee number is locked when tagged (admin override with reason). | N/A |
+| **Google Drive–only documents** | **View** opens the Drive link; **Download** is hidden in the documents table | Preview/view path opens Drive; no file download |
+| **Delete requisitioner** | Admin only; blocked when tagged on more than 3 documents | Not supported (use Requisitioners Directory page) |
 
 ## Current Limitations
 
@@ -390,6 +485,29 @@ There is **no true "catalog all folders"** intent yet. Folder lookup searches by
 | `All folders` | Partial — same limitation |
 | `Show every folder in my org` | Not supported |
 
+### 7. Requisitioners Directory Limits
+
+Directory intents (Section 12) are available to **Admin and Department Head** (scoped for dept head). **Staff** can search and tag requisitioners during document upload but cannot access the Requisitioners Directory module or directory chatbot answers.
+
+**Originally planned as unsupported — now supported in Section 12:**
+
+```text
+How many documents is Ralph tagged on?
+List documents tagged to Ralph in the directory.
+Find requisitioner D-2101-ASD in the directory.
+Who has the most tagged documents?
+```
+
+**Still not supported:**
+
+```text
+List all requisitioners
+Add or edit a requisitioner
+Delete requisitioner Ralph
+```
+
+Use the **Requisitioners Directory** page (admin or dept head) for full directory browsing and the **View Documents** modal for browsing all tagged documents with search and pagination.
+
 ## Manual Test Queries
 
 Use these in the **Document Assistant** (logged in). Replace sample names with folders, categories, and codes that exist in your environment.
@@ -466,8 +584,20 @@ Open the assistant while a **folder** is selected and/or a **category filter** i
 
 | Query | Expected |
 |-------|----------|
-| `How many files were requested by Ralph?` | Yes — if requestor exists |
-| `How many documents requested by SDD GODS?` | Yes — if requestor exists |
+| `How many files were requested by Ralph?` | Yes — document count in scope (partial name match) |
+| `How many documents requested by SDD GODS?` | Yes — if requestor exists on documents |
+
+### Requisitioners Directory (Section 12 — Admin and Dept Head)
+
+| Query | Expected |
+|-------|----------|
+| `How many documents is Ralph tagged on?` | Yes for **admin** — directory tagged count; **No** for Staff/Dept Head (refusal) |
+| `List documents tagged to Ralph` | Yes for **admin** — up to 5 preview |
+| `Find requisitioner D-2101-ASD` | Yes for **admin** — if in directory |
+| `Which requisitioners have tagged documents?` | Yes for **admin** — up to 5 preview |
+| `Who has the most tagged documents?` | Yes for **admin** — top requisitioner(s) |
+| `How many files were requested by Ralph?` | Yes — document search (Section 11; partial match) |
+| `List all requisitioners` | **No** — use Requisitioners Directory page |
 
 ### List All Files (max 5 preview + total)
 
@@ -573,6 +703,9 @@ Show all files under CISC org unit
 Summarize the second one
 List every folder in the system
 Show upload trend by month
+List all requisitioners
+Add requisitioner Ralph
+Delete requisitioner Ralph
 ```
 
 ## Access Rules
@@ -588,6 +721,28 @@ Document list and assistant search-preview actions are audited as `SEARCH_DOCUME
 The assistant should not reveal inaccessible documents, credentials, tokens, API keys, environment values, or private account data.
 
 ## Recommended Next Phases
+
+### Phase 2.5: Requisitioner Directory Intents (Implemented)
+
+Requisitioners Directory-style questions reuse directory reference counts and tagged-document lists (`employees.references`, `/api/employees/{id}/documents/`).
+
+Supported example prompts:
+
+```text
+How many documents is Ralph tagged on?
+List documents tagged to Ralph.
+Find requisitioner by employee number D-2101-ASD.
+Which requisitioners have tagged documents?
+Who has the most tagged documents?
+```
+
+Expected behavior (current):
+
+- **Admin and Dept Head** — Staff receive a refusal message.
+- Resolve requisitioner via directory identity rules (employee number or name match).
+- Return tagged-document counts scoped to the user's accessible org units (admin: system-wide; dept head: scoped).
+- List tagged documents with the same **5**-item preview limit and Requisitioners Directory browse hint.
+- Rank requisitioners by tagged-document count for *"who has the most tagged documents?"* (ties listed up to 5).
 
 ### Phase 3: Department And Advanced Analytics
 

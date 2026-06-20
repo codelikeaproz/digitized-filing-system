@@ -84,7 +84,7 @@ class SystemSettingsAPITests(TestCase):
 
     def _create_document_with_size_mb(self, org_unit, used_mb):
         folder = Folder.objects.create(name="Storage", org_unit=org_unit)
-        category = Category.objects.create(name="General", code="GEN", org_unit=org_unit)
+        category = Category.objects.create(name="General", org_unit=org_unit)
         upload = SimpleUploadedFile("sample.pdf", b"%PDF-test", content_type="application/pdf")
         Document.objects.create(
             title="sample.pdf",

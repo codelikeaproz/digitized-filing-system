@@ -143,7 +143,7 @@ def greeting_answer(user, *, repeat=False):
         '- "How many files do I have?"\n'
         '- "List all documents"\n'
         '- "Show documents in Test folder"\n'
-        '- "What is inside code 01-12551?"'
+        '- "Find document code TEST-101"'
     )
 
 
@@ -158,10 +158,12 @@ def help_answer(*, repeat=False):
         "- Count documents (overall, by folder, category, date, or filing year)\n"
         "- List accessible documents or documents in a folder (up to 5 at a time)\n"
         "- Find folders by name\n"
-        "- Search by document code, title, keyword, or PDF text\n"
+        "- Search by document code, title, keyword, requisitioner, or PDF text\n"
+        "- Answer Requisitioners Directory questions (tagged counts and tagged document lists)\n"
         "- Answer questions about a specific document's content\n\n"
         "Examples: \"list all documents\", \"how many files in Test folder\", "
-        "\"find code 01-12551\", or \"summarize document 04-98391\"."
+        "\"how many documents is Ralph tagged on?\", "
+        "\"find code TEST-101\", or \"summarize the RRL document\"."
     )
 
 
@@ -475,6 +477,12 @@ def answer_direct_intent(user, query, session_hints=None):
             "audit_action": "CHATBOT_QUERY",
         }
 
+    from .requisitioner_directory_service import answer_requisitioner_directory_intent
+
+    directory_answer = answer_requisitioner_directory_intent(user, normalized_query)
+    if directory_answer:
+        return directory_answer
+
     asks_count = has_any(normalized, COUNT_TERMS)
     mentions_document = has_any(normalized, DOCUMENT_TERMS)
     mentions_folder = has_any(normalized, FOLDER_TERMS)
@@ -625,7 +633,7 @@ def no_result_answer(user=None, query=None):
 
     return (
         "I couldn't find a matching document in your accessible scope.\n\n"
-        "Try asking by document code, title, folder, category, keyword, or PDF content. "
+        "Try asking by document code, title, folder, category, keyword, requisitioner, or PDF content. "
         "Examples: \"list all documents\", \"how many files do I have?\", "
-        "\"show documents in Test folder\", or \"what is inside code 01-12551?\""
+        "\"show documents in Test folder\", or \"find code TEST-101\""
     )

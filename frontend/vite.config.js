@@ -14,4 +14,16 @@ export default defineConfig(({ mode }) => ({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    watch: {
+      // Required for reliable HMR when running Vite inside Docker on Windows.
+      usePolling: true,
+      interval: 1000,
+    },
+    hmr: {
+      clientPort: 5173,
+    },
+  },
 }))

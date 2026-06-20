@@ -25,7 +25,9 @@ export function ChatDocumentCard({ document, onView, onOpenFolder }: ChatDocumen
       <div className="space-y-1">
         <p className="line-clamp-2 text-sm font-bold text-[#112217]">{document.title}</p>
         <div className="flex flex-wrap gap-1.5">
-          {document.code && <Badge variant="outline" className="border-[#C9DACB] text-[#31583B]">Code {document.code}</Badge>}
+          {document.code && (
+            <Badge variant="outline" className="font-mono text-[10px]">{document.code}</Badge>
+          )}
           {document.category && <Badge className="bg-[#E8F1EA] text-[#0A4D27] hover:bg-[#E8F1EA]">{document.category}</Badge>}
         </div>
       </div>

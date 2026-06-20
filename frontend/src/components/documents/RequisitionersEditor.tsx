@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, UserRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -18,16 +19,33 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatPersonName } from "@/lib/utils";
-import { formatRequisitionerEmployeeNumberDisplay, sanitizeEmployeeNumberInput } from "@/lib/employee-number";
+import { api, type PaginatedResponse } from "@/lib/api";
+import { toast } from "sonner";
+import {
+  formatEmployeeNumberInput,
+  formatRequisitionerEmployeeNumberDisplay,
+  EMPLOYEE_NUMBER_PLACEHOLDER,
+  EMPLOYEE_NUMBER_HELPER_TEXT,
+  sanitizeEmployeeNumberInput,
+} from "@/lib/employee-number";
+import type { EmployeeDirectoryEntry } from "@/types";
 import {
   buildRequisitionerFullName,
   createEmptyRequisitioner,
+  isDirectoryLinkedRequisitioner,
+  isRequisitionerAlreadyOnDocument,
   normalizeRequisitionerInput,
   REQUISITIONER_SUFFIX_OPTIONS,
   type RequisitionerInput,
   type RequisitionerRowErrors,
   validateSingleRequisitioner,
 } from "@/lib/requisitioner";
+import { useAuth } from "@/lib/auth-context";
+import {
+  canChangeEmployeeNumber,
+  EMPLOYEE_NUMBER_LOCKED_HELPER,
+  isEmployeeNumberLocked,
+} from "@/lib/requisitioner-permissions";
 
 type RequisitionersEditorProps = {
   value: RequisitionerInput[];
@@ -46,10 +64,36 @@ export function RequisitionersEditor({
   disabled = false,
   className,
 }: RequisitionersEditorProps) {
+  const { user } = useAuth();
+  const canChangeEmpNo = canChangeEmployeeNumber(user?.role);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<RequisitionerInput>(createEmptyRequisitioner());
+  const [draftReadOnly, setDraftReadOnly] = useState(false);
   const [draftErrors, setDraftErrors] = useState<RequisitionerRowErrors>({});
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeeResults, setEmployeeResults] = useState<EmployeeDirectoryEntry[]>([]);
+  const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+  const [isSavingRequisitioner, setIsSavingRequisitioner] = useState(false);
+
+  const documentEmployeeNumbers = useMemo(
+    () =>
+      new Set(
+        value
+          .map((row) => sanitizeEmployeeNumberInput(row.employeeNumber))
+          .filter(Boolean)
+      ),
+    [value]
+  );
+
+  const selectableEmployeeResults = useMemo(
+    () =>
+      employeeResults.filter(
+        (employee) => !isRequisitionerAlreadyOnDocument(value, employee.employeeNumber, employee.id)
+      ),
+    [employeeResults, value]
+  );
 
   const suffixOptions = useMemo(() => {
     const options = REQUISITIONER_SUFFIX_OPTIONS.map((option) => ({ ...option }));
@@ -59,9 +103,103 @@ export function RequisitionersEditor({
     return options;
   }, [draft.suffix]);
 
+  useEffect(() => {
+    const query = employeeSearch.trim();
+    if (!query) {
+      setEmployeeResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    setEmployeeSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await api.get<PaginatedResponse<EmployeeDirectoryEntry>>("/api/employees", {
+          search: query,
+          page_size: 50,
+        });
+        if (!cancelled) {
+          setEmployeeResults(data.results);
+        }
+      } catch {
+        if (!cancelled) {
+          setEmployeeResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setEmployeeSearchLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [employeeSearch]);
+
+  const toggleEmployeeSelection = (employeeId: string, checked: boolean) => {
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(employeeId);
+      } else {
+        next.delete(employeeId);
+      }
+      return next;
+    });
+  };
+
+  const addSelectedEmployees = () => {
+    const selected = employeeResults.filter((employee) => selectedEmployeeIds.has(employee.id));
+    if (selected.length === 0) return;
+
+    const existingNumbers = new Set(documentEmployeeNumbers);
+    const additions: RequisitionerInput[] = [];
+    let skippedCount = 0;
+
+    for (const employee of selected) {
+      const employeeNumber = sanitizeEmployeeNumberInput(employee.employeeNumber);
+      if (employeeNumber && existingNumbers.has(employeeNumber)) {
+        skippedCount += 1;
+        continue;
+      }
+      additions.push(
+        normalizeRequisitionerInput({
+          employeeId: employee.id,
+          source: "directory",
+          employeeNumber,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          suffix: employee.suffix || "",
+        })
+      );
+      if (employeeNumber) {
+        existingNumbers.add(employeeNumber);
+      }
+    }
+
+    if (additions.length === 0) {
+      if (skippedCount > 0) {
+        toast.info("Selected requisitioners are already in this document.");
+      }
+      return;
+    }
+
+    if (skippedCount > 0) {
+      toast.info(`${skippedCount} selected requisitioner(s) were already in this document and were skipped.`);
+    }
+
+    onChange([...value, ...additions]);
+    setSelectedEmployeeIds(new Set());
+    setEmployeeSearch("");
+    setEmployeeResults([]);
+  };
+
   const resetDraft = () => {
     setDraft(createEmptyRequisitioner());
     setDraftErrors({});
+    setDraftReadOnly(false);
     setEditingIndex(null);
   };
 
@@ -76,9 +214,11 @@ export function RequisitionersEditor({
   };
 
   const openEditModal = (index: number) => {
+    const row = value[index];
     setEditingIndex(index);
-    setDraft({ ...value[index] });
+    setDraft({ ...row });
     setDraftErrors({});
+    setDraftReadOnly(isDirectoryLinkedRequisitioner(row));
     setIsModalOpen(true);
   };
 
@@ -86,14 +226,55 @@ export function RequisitionersEditor({
     onChange(value.filter((_, rowIndex) => rowIndex !== index));
   };
 
-  const handleSaveRequisitioner = () => {
+  const handleSaveRequisitioner = async () => {
+    if (draftReadOnly) {
+      closeModal();
+      return;
+    }
+
     const validation = validateSingleRequisitioner(draft, value, editingIndex ?? undefined);
     setDraftErrors(validation.errors);
     if (!validation.isValid) {
       return;
     }
 
-    const normalized = normalizeRequisitionerInput(draft);
+    const normalized = normalizeRequisitionerInput({
+      ...draft,
+      source: draft.source || "manual",
+    });
+    if (editingIndex !== null && !canChangeEmpNo) {
+      normalized.employeeNumber = value[editingIndex]?.employeeNumber || "";
+    }
+
+    if (!isDirectoryLinkedRequisitioner(normalized)) {
+      setIsSavingRequisitioner(true);
+      try {
+        const duplicateCheck = await api.post<{
+          blocked: boolean;
+          message?: string;
+          matches?: Array<{ id: string; fullName: string; employeeNumber?: string }>;
+        }>("/api/employees/check-duplicate", {
+          employeeNumber: normalized.employeeNumber,
+          firstName: normalized.firstName,
+          lastName: normalized.lastName,
+          suffix: normalized.suffix,
+          excludeEmployeeId: normalized.employeeId,
+        });
+        if (duplicateCheck.blocked) {
+          setDraftErrors({
+            employeeNumber: duplicateCheck.message,
+          });
+          toast.error(duplicateCheck.message || "This requisitioner already exists in the directory.");
+          return;
+        }
+      } catch (error: any) {
+        toast.error(error.message || "Failed to validate requisitioner.");
+        return;
+      } finally {
+        setIsSavingRequisitioner(false);
+      }
+    }
+
     if (editingIndex === null) {
       onChange([...value, normalized]);
     } else {
@@ -117,8 +298,90 @@ export function RequisitionersEditor({
           className="h-8 gap-1.5"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add
+          Add Manually
         </Button>
+      </div>
+
+      <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+        <Label className="text-xs font-semibold uppercase text-muted-foreground">
+          Search Requisitioners Directory
+        </Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={employeeSearch}
+            onChange={(event) => setEmployeeSearch(event.target.value)}
+            placeholder="Search requisitioners by number or name..."
+            className="pl-9"
+            disabled={disabled}
+          />
+        </div>
+        {employeeSearchLoading && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Searching...
+          </div>
+        )}
+        {!employeeSearchLoading && employeeSearch.trim() && employeeResults.length === 0 && (
+          <p className="text-xs text-muted-foreground">No requisitioners found in the directory.</p>
+        )}
+        {!employeeSearchLoading &&
+          employeeSearch.trim() &&
+          employeeResults.length > 0 &&
+          selectableEmployeeResults.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              All matching requisitioners are already in this document.
+            </p>
+          )}
+        {employeeResults.length > 0 && (
+          <div className="max-h-40 space-y-2 overflow-y-auto">
+            {employeeResults.map((employee) => {
+              const alreadyOnDocument = isRequisitionerAlreadyOnDocument(
+                value,
+                employee.employeeNumber,
+                employee.id
+              );
+              return (
+              <label
+                key={employee.id}
+                className={cn(
+                  "flex items-start gap-2 rounded-md border bg-background p-2 text-sm",
+                  alreadyOnDocument ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+                )}
+              >
+                <Checkbox
+                  checked={selectedEmployeeIds.has(employee.id)}
+                  onCheckedChange={(checked) => toggleEmployeeSelection(employee.id, checked === true)}
+                  disabled={disabled || alreadyOnDocument}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="text-xs text-muted-foreground">
+                    {formatRequisitionerEmployeeNumberDisplay(employee.employeeNumber)}
+                  </span>
+                  <span className="mx-2 text-muted-foreground">—</span>
+                  <span className="font-medium">{employee.fullName}</span>
+                  {alreadyOnDocument && (
+                    <span className="mt-1 block text-[11px] font-medium text-amber-700">
+                      Already in this document
+                    </span>
+                  )}
+                </span>
+              </label>
+            );
+            })}
+          </div>
+        )}
+        {selectedEmployeeIds.size > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={addSelectedEmployees}
+            disabled={disabled || selectableEmployeeResults.every((employee) => !selectedEmployeeIds.has(employee.id))}
+            className="bg-[#0A4D27] hover:bg-[#083E1D] text-white"
+          >
+            Add Selected ({selectedEmployeeIds.size})
+          </Button>
+        )}
       </div>
 
       <div className="space-y-2 min-h-[24px]">
@@ -153,16 +416,18 @@ export function RequisitionersEditor({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openEditModal(index)}
-                    disabled={disabled}
-                    className="text-muted-foreground hover:text-[#0A4D27]"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+                  {!isDirectoryLinkedRequisitioner(row) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditModal(index)}
+                      disabled={disabled}
+                      className="text-muted-foreground hover:text-[#0A4D27]"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -196,8 +461,20 @@ export function RequisitionersEditor({
       >
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>{editingIndex === null ? "Add Requisitioner" : "Edit Requisitioner"}</DialogTitle>
+            <DialogTitle>
+              {draftReadOnly
+                ? "Requisitioner Details"
+                : editingIndex === null
+                  ? "Add Requisitioner"
+                  : "Edit Requisitioner"}
+            </DialogTitle>
           </DialogHeader>
+
+          {draftReadOnly && (
+            <p className="text-sm text-muted-foreground">
+              This requisitioner was selected from the directory. Remove it from the document to change the person tagged.
+            </p>
+          )}
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -210,20 +487,31 @@ export function RequisitionersEditor({
                 onChange={(event) => {
                   setDraft((current) => ({
                     ...current,
-                    employeeNumber: sanitizeEmployeeNumberInput(event.target.value),
+                    employeeNumber: formatEmployeeNumberInput(event.target.value),
                   }));
                   if (draftErrors.employeeNumber) {
                     setDraftErrors((current) => ({ ...current, employeeNumber: undefined }));
                   }
                 }}
-                placeholder="e.g. 202400123"
-                autoFocus
+                placeholder={EMPLOYEE_NUMBER_PLACEHOLDER}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={
+                  disabled ||
+                  draftReadOnly ||
+                  isEmployeeNumberLocked(user?.role, editingIndex !== null && !isDirectoryLinkedRequisitioner(draft))
+                }
                 className={cn(
+                  "font-mono tracking-wide",
                   draftErrors.employeeNumber && "border-destructive focus-visible:ring-destructive"
                 )}
               />
               <p className="text-xs text-muted-foreground">
-                Leave blank if the requisitioner is not an employee.
+                {draftReadOnly
+                  ? "Employee number is managed in the Requisitioners Directory."
+                  : isEmployeeNumberLocked(user?.role, editingIndex !== null)
+                    ? EMPLOYEE_NUMBER_LOCKED_HELPER
+                    : `${EMPLOYEE_NUMBER_HELPER_TEXT}. Leave blank if the requisitioner is not an employee.`}
               </p>
               {draftErrors.employeeNumber && (
                 <p className="text-sm text-destructive">{draftErrors.employeeNumber}</p>
@@ -248,6 +536,7 @@ export function RequisitionersEditor({
                     setDraft((current) => ({ ...current, firstName: formatPersonName(event.target.value) }))
                   }
                   placeholder="e.g. Juan"
+                  disabled={disabled || draftReadOnly}
                   className={cn(draftErrors.firstName && "border-destructive focus-visible:ring-destructive")}
                 />
                 {draftErrors.firstName && (
@@ -272,6 +561,7 @@ export function RequisitionersEditor({
                     setDraft((current) => ({ ...current, lastName: formatPersonName(event.target.value) }))
                   }
                   placeholder="e.g. Dela Cruz"
+                  disabled={disabled || draftReadOnly}
                   className={cn(draftErrors.lastName && "border-destructive focus-visible:ring-destructive")}
                 />
                 {draftErrors.lastName && (
@@ -284,6 +574,7 @@ export function RequisitionersEditor({
               <Label className="text-sm font-medium">Suffix</Label>
               <Select
                 value={draft.suffix}
+                disabled={disabled || draftReadOnly}
                 onValueChange={(nextValue) => {
                   if (nextValue === null) return;
                   setDraft((current) => ({ ...current, suffix: nextValue }));
@@ -292,7 +583,7 @@ export function RequisitionersEditor({
                   }
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full" disabled={disabled || draftReadOnly}>
                   <SelectValue placeholder="No Suffix">
                     {suffixOptions.find((option) => option.value === draft.suffix)?.label || "No Suffix"}
                   </SelectValue>
@@ -310,16 +601,29 @@ export function RequisitionersEditor({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={closeModal}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveRequisitioner}
-              className="bg-[#0A4D27] hover:bg-[#083E1D] text-white"
-            >
-              {editingIndex === null ? "Add Requisitioner" : "Save Changes"}
-            </Button>
+            {draftReadOnly ? (
+              <Button type="button" onClick={closeModal}>
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={closeModal}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveRequisitioner}
+                  disabled={isSavingRequisitioner}
+                  className="bg-[#0A4D27] hover:bg-[#083E1D] text-white"
+                >
+                  {isSavingRequisitioner
+                    ? "Saving..."
+                    : editingIndex === null
+                      ? "Add Requisitioner"
+                      : "Save Changes"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

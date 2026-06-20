@@ -1,5 +1,7 @@
 # Production (Vesta): backend + MySQL only.
 # Frontend is static files in public_html/digifile/ — no frontend container.
+#
+# Local development: docker compose -f docker-compose.dev.yml up --build
 services:
   db:
     image: mysql:8.0

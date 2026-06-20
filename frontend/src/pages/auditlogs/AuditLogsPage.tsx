@@ -53,7 +53,7 @@ const ACTION_OPTIONS = [
   { value: "ACTIVATE_ACCOUNT", label: "Activate Account" },
   { value: "UPDATE_USER", label: "Update User" },
   { value: "DEACTIVATE_USER", label: "Deactivate User" },
-  { value: "ACTIVATE_USER", label: "Activate User" },
+  { value: "ACCOUNT_ACTIVATED", label: "Account Activated" },
   { value: "DELETE_USER", label: "Delete User" },
   { value: "PASSWORD_RESET_REQUEST", label: "Password Reset Request" },
   { value: "PASSWORD_RESET_SUCCESS", label: "Password Reset Success" },
@@ -77,6 +77,14 @@ const ACTION_OPTIONS = [
   { value: "CREATE_CATEGORY", label: "Create Category" },
   { value: "UPDATE_CATEGORY", label: "Update Category" },
   { value: "DELETE_CATEGORY", label: "Delete Category" },
+  { value: "CREATE_EMPLOYEE", label: "Create Requisitioner Directory Entry" },
+  { value: "UPDATE_EMPLOYEE", label: "Update Requisitioner Directory Entry" },
+  { value: "UPDATE_EMPLOYEE_NUMBER", label: "Update Requisitioner Employee Number" },
+  { value: "UPDATE_EMPLOYEE_NUMBER_OVERRIDE", label: "Override Requisitioner Employee Number Lock" },
+  { value: "DELETE_EMPLOYEE", label: "Delete Requisitioner" },
+  { value: "UPSERT_REQUISITIONER_DIRECTORY", label: "Upsert Requisitioners Directory" },
+  { value: "VIEW_REQUISITIONER_DOCUMENT_REFERENCES", label: "Viewed Requisitioner Document References" },
+  { value: "REQUISITIONER_DELETE_BLOCKED", label: "Requisitioner Delete Blocked" },
 ];
 
 export default function AuditLogsPage() {

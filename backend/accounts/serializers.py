@@ -1,5 +1,4 @@
 import binascii
-import re
 
 from django.conf import settings
 from rest_framework import serializers
@@ -16,11 +15,11 @@ from orgunits.models import OrgUnit
 from .models import User
 
 ALLOWED_NAME_SUFFIXES = {"", "Jr.", "Sr.", "I", "II", "III", "IV", "V"}
-EMPLOYEE_NUMBER_PATTERN = re.compile(r"^\d+$")
-
-
-def normalize_employee_number(value):
-    return (value or "").strip()
+from config.employee_number import (
+    is_legacy_numeric_employee_number,
+    normalize_employee_number,
+    validate_employee_number_value as shared_validate_employee_number,
+)
 
 
 def validate_employee_number_value(value, instance=None):
@@ -28,10 +27,17 @@ def validate_employee_number_value(value, instance=None):
     if not employee_number:
         return None
 
-    if not EMPLOYEE_NUMBER_PATTERN.fullmatch(employee_number):
-        raise serializers.ValidationError("Employee number must contain digits only.")
+    allow_legacy = bool(
+        instance is not None
+        and instance.employee_number
+        and is_legacy_numeric_employee_number(instance.employee_number)
+        and is_legacy_numeric_employee_number(employee_number)
+    )
+    error = shared_validate_employee_number(employee_number, required=True, allow_legacy=allow_legacy)
+    if error:
+        raise serializers.ValidationError(error)
 
-    queryset = User.objects.filter(employee_number=employee_number)
+    queryset = User.objects.filter(employee_number__iexact=employee_number)
     if instance is not None:
         queryset = queryset.exclude(pk=instance.pk)
     if queryset.exists():
@@ -73,6 +79,12 @@ class UserSerializer(serializers.ModelSerializer):
     activationExpiresAt = serializers.SerializerMethodField()
     profilePictureUrl = serializers.SerializerMethodField()
     canManage = serializers.SerializerMethodField()
+    confirmPassword = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+    )
 
     class Meta:
         model = User
@@ -80,6 +92,7 @@ class UserSerializer(serializers.ModelSerializer):
             "id",
             "email",
             "password",
+            "confirmPassword",
             "fullName",
             "firstName",
             "lastName",
@@ -98,7 +111,48 @@ class UserSerializer(serializers.ModelSerializer):
             "activationEmailSentAt",
             "activationExpiresAt",
         ]
-        extra_kwargs = {"password": {"write_only": True, "required": False}}
+        extra_kwargs = {"password": {"write_only": True, "required": False, "trim_whitespace": False}}
+
+    def _can_manager_set_password(self):
+        request = self.context.get("request")
+        if not request or not getattr(request.user, "is_authenticated", False):
+            return False
+        return getattr(request.user, "role", None) in {"admin", "dept_head"}
+
+    def _validate_manager_password(self, attrs):
+        password = attrs.pop("password", None) or None
+        confirm_password = attrs.pop("confirmPassword", None) or None
+
+        if password:
+            if not self._can_manager_set_password():
+                raise serializers.ValidationError(
+                    {"password": "Only Admin or Dept Head can set user passwords."}
+                )
+            if password != confirm_password:
+                raise serializers.ValidationError({"message": "Password and confirm password do not match."})
+
+            user_for_validation = self.instance or User(
+                email=attrs.get("email", ""),
+                first_name=attrs.get("first_name", ""),
+                last_name=attrs.get("last_name", ""),
+            )
+            try:
+                validate_password(password, user_for_validation)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(
+                    {
+                        "message": "Password does not meet security requirements.",
+                        "errors": list(exc.messages),
+                    }
+                ) from exc
+            self._manager_password = password
+        elif confirm_password:
+            raise serializers.ValidationError({"message": "Password is required when confirm password is provided."})
+        else:
+            self._manager_password = None
+
+        self.password_was_set = bool(password)
+        return attrs
 
     def get_fullName(self, obj):
         return build_full_name(obj) or obj.get_full_name() or obj.email
@@ -168,12 +222,12 @@ class UserSerializer(serializers.ModelSerializer):
 
         if role == "admin":
             attrs["org_unit_id"] = None
-            return attrs
+            return self._validate_manager_password(attrs)
 
         org_unit_id = attrs.get("org_unit_id", serializers.empty)
         if org_unit_id is serializers.empty:
             if self.instance and self.instance.org_unit_id:
-                return attrs
+                return self._validate_manager_password(attrs)
             raise serializers.ValidationError({"message": "Office Unit is required for Dept Head and Staff."})
 
         if org_unit_id in ("", None):
@@ -185,7 +239,7 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"message": "Invalid Office Unit."})
 
         attrs["org_unit_id"] = org_unit.pk
-        return attrs
+        return self._validate_manager_password(attrs)
 
     def _apply_name_fields(self, user):
         # Backward compatibility: legacy clients may still send a single fullName string.
@@ -196,20 +250,38 @@ class UserSerializer(serializers.ModelSerializer):
             user.last_name = parts[1] if len(parts) > 1 else ""
 
     def create(self, validated_data):
-        validated_data.pop("password", None)
+        password = getattr(self, "_manager_password", None)
         user = User(**validated_data)
         self._apply_name_fields(user)
-        user.is_active = False
-        user.is_active_status = False
-        user.set_unusable_password()
+        if password:
+            user.set_password(password)
+            user.is_active = True
+            user.is_active_status = True
+        else:
+            user.is_active = False
+            user.is_active_status = False
+            user.set_unusable_password()
         user.save()
+        if password:
+            password_changed(password, user)
         return user
 
     def update(self, instance, validated_data):
-        validated_data.pop("password", None)
+        password = getattr(self, "_manager_password", None)
+        was_pending = (
+            not instance.has_usable_password()
+            or not instance.is_active
+            or not instance.is_active_status
+        )
         for key, value in validated_data.items():
             setattr(instance, key, value)
         self._apply_name_fields(instance)
+        if password:
+            instance.set_password(password)
+            if was_pending:
+                instance.is_active = True
+                instance.is_active_status = True
+            password_changed(password, instance)
         instance.save()
         return instance
 

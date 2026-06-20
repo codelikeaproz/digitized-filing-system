@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Files,
-  UploadCloud,
+  ExternalLink,
   Building2,
   Loader2,
   Users,
@@ -33,7 +33,7 @@ type DashboardResponse = {
   can_filter_office_units: boolean;
   aggregates_subtree?: boolean;
   total_documents: number;
-  uploaded_files: number;
+  google_drive_files: number;
   total_org_units?: number | null;
   total_users?: number | null;
   deleted_files?: number | null;
@@ -90,9 +90,9 @@ export default function DashboardPage() {
           color: "text-blue-600",
         },
         {
-          title: "Uploaded Files",
-          value: data.uploaded_files.toString(),
-          icon: UploadCloud,
+          title: "G Drive Files",
+          value: data.google_drive_files.toString(),
+          icon: ExternalLink,
           color: "text-indigo-600",
         },
       ];
@@ -121,9 +121,9 @@ export default function DashboardPage() {
         color: "text-blue-600",
       },
       {
-        title: "Uploaded Files",
-        value: data.uploaded_files.toString(),
-        icon: UploadCloud,
+        title: "G Drive Files",
+        value: data.google_drive_files.toString(),
+        icon: ExternalLink,
         color: "text-indigo-600",
       },
       {

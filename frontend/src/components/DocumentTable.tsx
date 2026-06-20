@@ -31,7 +31,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Tooltip,
@@ -49,6 +48,7 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from '@/lib/auth-context';
 import { formatDocumentTableDate } from '@/lib/time';
+import { isGoogleDriveOnlyDocument } from '@/lib/document-actions';
 
 interface DocumentTableProps {
   data: any[];
@@ -70,13 +70,6 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isRenaming, setIsRenaming] = React.useState(false);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Received': return <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100">Received</Badge>;
-      default: return <Badge variant="outline">Default</Badge>;
-    }
-  };
-
   const openRename = (doc: any) => {
     const currentName = doc.title || doc.file_name || "";
     setDocToRename(doc);
@@ -93,14 +86,13 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
             <TableHead>Category</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Date</TableHead>
-            <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                 No documents found.
               </TableCell>
             </TableRow>
@@ -151,7 +143,6 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {formatDocumentTableDate(doc.createdAt || doc.created_at)}
                 </TableCell>
-                <TableCell>{getStatusBadge(doc.status)}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -167,10 +158,12 @@ export function DocumentTable({ data, onView, onDownload, onRename, onEdit, onDe
                         <Eye className="mr-2 h-4 w-4 text-blue-600" />
                         View
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onDownload?.(doc)}>
-                        <Download className="mr-2 h-4 w-4 text-green-600" />
-                        Download
-                      </DropdownMenuItem>
+                      {!isGoogleDriveOnlyDocument(doc) && (
+                        <DropdownMenuItem onClick={() => onDownload?.(doc)}>
+                          <Download className="mr-2 h-4 w-4 text-green-600" />
+                          Download
+                        </DropdownMenuItem>
+                      )}
                       {canEdit && (
                         <DropdownMenuItem onClick={() => onEdit?.(doc)}>
                           <FilePenLine className="mr-2 h-4 w-4 text-blue-600" />

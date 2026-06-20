@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Shield } from "lucide-react";
 import { appPath } from "@/lib/app-path";
 import { api } from "@/lib/api";
+import { clearAuthStorage } from "@/lib/auth-storage";
 import { toast } from "sonner";
 
 export function SecuritySettingsForm() {
@@ -40,8 +41,7 @@ export function SecuritySettingsForm() {
       );
       toast.success(response.message || "Password updated successfully. Please login again.");
       setPasswords({ current: "", new: "", confirm: "" });
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("auth_user");
+      clearAuthStorage();
       setTimeout(() => {
         window.location.href = appPath("/login");
       }, 800);

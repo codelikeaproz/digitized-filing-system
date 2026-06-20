@@ -45,13 +45,7 @@ from rest_framework.views import APIView
 
 from auditlogs.models import log_audit
 from ai.services.extraction_service import index_document_text
-
-from .document_code import (
-    generate_document_code,
-    preview_next_document_code,
-    recode_documents_for_category_code_change,
-    swap_document_code_prefix,
-)
+from .document_code_validation import ensure_unique_document_code, normalize_document_code
 from .models import Category, Document, Folder
 from .requisitioners import (
     format_requisitioners_display,
@@ -156,6 +150,17 @@ def keywords_validation_error(keywords):
     return None
 
 
+def validate_google_drive_link(value):
+    link = (value or "").strip()
+    if not link:
+        return ""
+    if not link.lower().startswith("https://drive.google.com/"):
+        raise ValidationError(
+            {"googleDriveLink": "Google Drive link must start with https://drive.google.com/"}
+        )
+    return link
+
+
 def validate_pdf_upload(upload):
     """Enforce PDF-only uploads with size and magic-byte checks."""
     if not upload:
@@ -226,48 +231,18 @@ class CategoryViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         assert_category_write_access(self.request.user, serializer.instance)
         old_name = serializer.instance.name
-        old_code = serializer.instance.code
-        recoded_count = 0
         try:
-            with transaction.atomic():
-                category = serializer.save()
-                old_normalized = (old_code or "").strip().upper()
-                new_normalized = (category.code or "").strip().upper()
-                if old_normalized and new_normalized and old_normalized != new_normalized:
-                    recoded_count = recode_documents_for_category_code_change(
-                        category,
-                        old_code,
-                        category.code,
-                    )
-        except ValidationError:
-            raise
+            category = serializer.save()
         except IntegrityError:
             raise ValidationError(
-                {"name": "A category with this name or code already exists in this Office Unit."}
+                {"name": "A category with this name already exists in this Office Unit."}
             ) from None
 
-        name_changed = old_name != category.name
-        code_changed = (old_code or "") != (category.code or "")
-        if name_changed or code_changed:
-            if name_changed and code_changed:
-                message = (
-                    f"Renamed category: {old_name} to {category.name} "
-                    f"({old_code or '—'} → {category.code or '—'})"
-                )
-            elif name_changed:
-                message = f"Renamed category: {old_name} to {category.name}"
-            else:
-                message = (
-                    f"Updated category code: {category.name} "
-                    f"({old_code or '—'} → {category.code or '—'})"
-                )
-            if recoded_count:
-                suffix = "document" if recoded_count == 1 else "documents"
-                message = f"{message}; recoded {recoded_count} {suffix}"
+        if old_name != category.name:
             log_audit(
                 self.request.user,
                 "UPDATE_CATEGORY",
-                message,
+                f"Renamed category: {old_name} to {category.name}",
                 target_type="category",
                 target_name=category.name,
                 target_org_unit=category.org_unit.name if category.org_unit else None,
@@ -624,7 +599,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             "VIEW_DOCUMENT",
             f"Viewed document: {document.title or document.code or document.pk}",
             target_type="Document",
-            target_name=document.title or document.code or str(document.pk),
+            target_name=document.title or str(document.pk),
             target_org_unit=org_unit_name,
             ip_address=request.META.get("REMOTE_ADDR"),
         )
@@ -642,6 +617,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         assert_document_write_access(request.user, document)
 
         if not document.file or not default_storage.exists(document.file.name):
+            if document.google_drive_link:
+                return Response({"googleDriveLink": document.google_drive_link})
             return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
 
         file_name = document.file.name.rsplit("/", 1)[-1] or document.title or "document.pdf"
@@ -669,6 +646,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         assert_document_write_access(request.user, document)
 
         if not document.file or not default_storage.exists(document.file.name):
+            if document.google_drive_link:
+                return Response({"googleDriveLink": document.google_drive_link})
             return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
 
         file_name = document.file.name.rsplit("/", 1)[-1] or document.title or "document.pdf"
@@ -745,8 +724,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
             raise ValidationError({"categoryId": "Valid category is required."})
         if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
             raise ValidationError({"categoryId": "Category must belong to the selected folder's Office Unit."})
-        if not (category.code or "").strip():
-            raise ValidationError({"categoryId": "Category must have a code before it can be assigned."})
 
         new_name = document.title
         if data.get("file_name"):
@@ -792,15 +769,11 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 old_category = document.category.name if document.category else "None"
                 changes.append(f"category: {old_category} → {category.name}")
                 document.category = category
-                old_document_code = document.code
-                new_document_code = swap_document_code_prefix(
-                    document.code,
-                    category.code,
-                    document_id=document.pk,
-                )
-                if new_document_code != (old_document_code or ""):
-                    changes.append(f"code: {old_document_code} → {new_document_code}")
-                    document.code = new_document_code
+
+            new_code = data["code"]
+            if (document.code or "").upper() != new_code:
+                changes.append(f"code: {document.code or '—'} → {new_code}")
+                document.code = new_code
 
             new_requisitioners = data["requisitioners"]
             old_display = document.requestor or ""
@@ -817,21 +790,33 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 changes.append("keywords updated")
                 document.keywords = data["keywords"]
 
+            new_google_drive_link = data.get("googleDriveLink", document.google_drive_link or "")
+            if (document.google_drive_link or "") != (new_google_drive_link or ""):
+                changes.append("google drive link updated")
+                document.google_drive_link = new_google_drive_link or ""
+
+            if not document.file and not document.google_drive_link:
+                raise ValidationError(
+                    {"googleDriveLink": "Document must have an uploaded PDF and/or a Google Drive link."}
+                )
+
             update_fields = [
                 "title",
                 "file",
                 "folder",
                 "file_path",
                 "category",
+                "code",
                 "description",
                 "keywords",
+                "google_drive_link",
                 "updated_at",
             ]
-            if any(change.startswith("code:") for change in changes):
-                update_fields.insert(5, "code")
 
             document.save(update_fields=update_fields)
-            sync_document_requisitioners(document, new_requisitioners)
+            validated_requisitioners = sync_document_requisitioners(
+                document, new_requisitioners, user=request.user
+            )
 
         change_summary = "; ".join(changes) if changes else "metadata refreshed"
         log_audit(
@@ -854,9 +839,18 @@ class DocumentUploadView(APIView):
 
     def post(self, request):
         upload = request.FILES.get("file")
-        if not upload:
-            return Response({"error": "File is required."}, status=status.HTTP_400_BAD_REQUEST)
-        validate_pdf_upload(upload)
+        try:
+            google_drive_link = validate_google_drive_link(request.data.get("googleDriveLink", ""))
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        if not upload and not google_drive_link:
+            return Response(
+                {"error": "Upload a PDF file, provide a Google Drive link, or both."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if upload:
+            validate_pdf_upload(upload)
 
         folder = Folder.objects.filter(pk=request.data.get("folderId"), is_deleted=False).first()
         if not folder:
@@ -869,11 +863,6 @@ class DocumentUploadView(APIView):
         if category.org_unit_id and category.org_unit_id != folder.org_unit_id:
             return Response(
                 {"error": "Category must belong to the selected folder's Office Unit."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not (category.code or "").strip():
-            return Response(
-                {"error": "Category must have a code before documents can be uploaded."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -904,41 +893,49 @@ class DocumentUploadView(APIView):
             return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         source = "Uploaded"
-        upload = compress_pdf_upload(upload)
-        try:
-            validate_global_storage_quota(upload.size)
-        except ValidationError as exc:
-            log_audit(
-                request.user,
-                "UPLOAD_BLOCKED_STORAGE_QUOTA",
-                "Upload blocked: global storage quota exceeded.",
-                target_type="system_storage",
-                target_name="Upload",
-            )
-            detail = exc.detail
-            message = detail.get("file", detail) if isinstance(detail, dict) else str(detail)
-            if isinstance(message, list):
-                message = message[0]
-            return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
+        upload_size = 0
+        if upload:
+            upload = compress_pdf_upload(upload)
+            upload_size = upload.size
+            try:
+                validate_global_storage_quota(upload_size)
+            except ValidationError as exc:
+                log_audit(
+                    request.user,
+                    "UPLOAD_BLOCKED_STORAGE_QUOTA",
+                    "Upload blocked: global storage quota exceeded.",
+                    target_type="system_storage",
+                    target_name="Upload",
+                )
+                detail = exc.detail
+                message = detail.get("file", detail) if isinstance(detail, dict) else str(detail)
+                if isinstance(message, list):
+                    message = message[0]
+                return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                validate_storage_quota(folder.org_unit, upload_size)
+            except ValidationError as exc:
+                log_audit(
+                    request.user,
+                    "UPLOAD_BLOCKED_STORAGE_QUOTA",
+                    f"Upload blocked: Office Unit storage quota exceeded ({folder.org_unit.name}).",
+                    target_type="org_unit",
+                    target_name=folder.org_unit.name if folder.org_unit else None,
+                )
+                detail = exc.detail
+                message = detail.get("file", detail) if isinstance(detail, dict) else str(detail)
+                if isinstance(message, list):
+                    message = message[0]
+                return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            validate_storage_quota(folder.org_unit, upload.size)
-        except ValidationError as exc:
-            log_audit(
-                request.user,
-                "UPLOAD_BLOCKED_STORAGE_QUOTA",
-                f"Upload blocked: Office Unit storage quota exceeded ({folder.org_unit.name}).",
-                target_type="org_unit",
-                target_name=folder.org_unit.name if folder.org_unit else None,
-            )
-            detail = exc.detail
-            message = detail.get("file", detail) if isinstance(detail, dict) else str(detail)
-            if isinstance(message, list):
-                message = message[0]
-            return Response({"message": str(message), "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            title = normalize_pdf_filename(request.data.get("title") or upload.name)
+            if upload:
+                title = normalize_pdf_filename(request.data.get("title") or upload.name)
+            else:
+                title = (request.data.get("title") or "").strip()
+                if not title:
+                    raise ValidationError({"title": "Title is required."})
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
 
@@ -948,14 +945,26 @@ class DocumentUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        upload.name = title
+        try:
+            code = normalize_document_code(request.data.get("code", ""))
+            ensure_unique_document_code(code)
+        except ValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, list) and detail:
+                message = str(detail[0])
+            else:
+                message = str(detail)
+            return Response({"message": message, "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        if upload:
+            upload.name = title
 
         try:
             with transaction.atomic():
-                code = generate_document_code(category)
                 document = Document.objects.create(
                     title=title,
-                    file=upload,
+                    file=upload if upload else None,
+                    google_drive_link=google_drive_link,
                     file_path=folder.get_full_path(),
                     folder=folder,
                     category=category,
@@ -965,12 +974,13 @@ class DocumentUploadView(APIView):
                     description=description,
                     keywords=keywords,
                     filing_year=timezone.now().year,
-                    status="Received",
                     source=source,
-                    mime_type=getattr(upload, "content_type", "") or "application/octet-stream",
-                    file_size=upload.size,
+                    mime_type=getattr(upload, "content_type", "") or ("application/pdf" if upload else ""),
+                    file_size=upload_size if upload else None,
                 )
-                sync_document_requisitioners(document, validated_requisitioners)
+                validated_requisitioners = sync_document_requisitioners(
+                    document, validated_requisitioners, user=request.user
+                )
         except ValidationError as exc:
             detail = exc.detail
             if isinstance(detail, list) and detail:
@@ -982,9 +992,10 @@ class DocumentUploadView(APIView):
             return Response({"message": message, "errors": detail}, status=status.HTTP_400_BAD_REQUEST)
         except IntegrityError:
             return Response({"message": "Document Code is already used."}, status=status.HTTP_409_CONFLICT)
-        index_document_text(document)
-        add_storage_usage(folder.org_unit, upload.size)
-        check_storage_thresholds(request.user)
+        if upload:
+            index_document_text(document)
+            add_storage_usage(folder.org_unit, upload_size)
+            check_storage_thresholds(request.user)
         log_audit(
             request.user,
             "UPLOAD",
@@ -994,26 +1005,6 @@ class DocumentUploadView(APIView):
             target_org_unit=folder.org_unit.name if folder.org_unit else None,
         )
         return Response(DocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
-
-
-class DocumentNextCodeAPIView(APIView):
-    def get(self, request):
-        category_id = request.query_params.get("categoryId")
-        if not category_id:
-            return Response({"error": "categoryId is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        category = scoped_categories_queryset(request.user).filter(pk=category_id).first()
-        if not category:
-            return Response({"error": "Valid category is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            code = preview_next_document_code(category)
-        except ValidationError as exc:
-            detail = exc.detail
-            message = detail[0] if isinstance(detail, list) else str(detail)
-            return Response({"message": str(message)}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({"code": code})
 
 
 # ---------------------------------------------------------------------------
