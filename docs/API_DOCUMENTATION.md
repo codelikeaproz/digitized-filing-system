@@ -826,7 +826,7 @@ Parent reduction blocked:
 - File must not be empty when provided
 - Google Drive–only records do not consume file storage quota
 
-**Notes:** Document `code` is entered by the uploader and validated for uniqueness. After upload, PDF text is indexed via `index_document_text()` when a file is present. Requisitioner tags link to the Requisitioners Directory on save: directory-selected tags store an `employeeId` FK and refresh snapshots from the master record; manual tags create a directory row only when no duplicate employee number or similar name exists.
+**Notes:** Document `code` is entered by the uploader and validated for uniqueness. After upload, PDF text is indexed via `index_document_text()` when a file is present. Requisitioner tags link to the Requisitioners Directory on save: directory-selected tags store an `employeeId` FK and refresh snapshots from the master record; manual tags create a directory row only when no duplicate employee number or similar name exists. **Staff** may add and edit manual requisitioner fields (including employee number) during upload; **Edit Details** on saved documents remains **Admin** and **Dept Head** only.
 
 ---
 

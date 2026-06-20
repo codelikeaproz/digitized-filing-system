@@ -42,9 +42,8 @@ import {
 } from "@/lib/requisitioner";
 import { useAuth } from "@/lib/auth-context";
 import {
-  canChangeEmployeeNumber,
-  EMPLOYEE_NUMBER_LOCKED_HELPER,
-  isEmployeeNumberLocked,
+  canEditManualRequisitionerOnDocument,
+  isManualRequisitionerEmployeeNumberLocked,
 } from "@/lib/requisitioner-permissions";
 
 type RequisitionersEditorProps = {
@@ -65,7 +64,7 @@ export function RequisitionersEditor({
   className,
 }: RequisitionersEditorProps) {
   const { user } = useAuth();
-  const canChangeEmpNo = canChangeEmployeeNumber(user?.role);
+  const canEditManualRequisitioner = canEditManualRequisitionerOnDocument(user?.role);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<RequisitionerInput>(createEmptyRequisitioner());
@@ -242,7 +241,7 @@ export function RequisitionersEditor({
       ...draft,
       source: draft.source || "manual",
     });
-    if (editingIndex !== null && !canChangeEmpNo) {
+    if (editingIndex !== null && !canEditManualRequisitioner) {
       normalized.employeeNumber = value[editingIndex]?.employeeNumber || "";
     }
 
@@ -499,7 +498,10 @@ export function RequisitionersEditor({
                 disabled={
                   disabled ||
                   draftReadOnly ||
-                  isEmployeeNumberLocked(user?.role, editingIndex !== null && !isDirectoryLinkedRequisitioner(draft))
+                  isManualRequisitionerEmployeeNumberLocked(
+                    user?.role,
+                    editingIndex !== null && !isDirectoryLinkedRequisitioner(draft)
+                  )
                 }
                 className={cn(
                   "font-mono tracking-wide",
@@ -509,9 +511,7 @@ export function RequisitionersEditor({
               <p className="text-xs text-muted-foreground">
                 {draftReadOnly
                   ? "Employee number is managed in the Requisitioners Directory."
-                  : isEmployeeNumberLocked(user?.role, editingIndex !== null)
-                    ? EMPLOYEE_NUMBER_LOCKED_HELPER
-                    : `${EMPLOYEE_NUMBER_HELPER_TEXT}. Leave blank if the requisitioner is not an employee.`}
+                  : `${EMPLOYEE_NUMBER_HELPER_TEXT}. Leave blank if the requisitioner is not an employee.`}
               </p>
               {draftErrors.employeeNumber && (
                 <p className="text-sm text-destructive">{draftErrors.employeeNumber}</p>

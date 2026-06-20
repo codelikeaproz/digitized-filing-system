@@ -169,10 +169,11 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Staff: no sidebar link; direct URL → `/error/403` | Staff | [ ] |
 | Staff: `GET /api/employees?search=` works during document upload | Staff | [ ] |
 | Staff: browse directory without search returns 403 + audit | Staff | [ ] |
+| Staff: manual requisitioner on upload — add/edit all fields including employee number (Edit Details still admin/dept head only) | Staff | [ ] |
 | Cross-org tags: dept head sees scoped count only | Dept Head | [ ] |
 | Directory-selected requisitioner on document: name/number read-only; remove to change person | Admin, Dept Head | [ ] |
-| Manual requisitioner: editable; duplicate employee number blocked with required message | Admin, Dept Head | [ ] |
-| Manual requisitioner: similar existing name blocked on save | Admin, Dept Head | [ ] |
+| Manual requisitioner: editable; duplicate employee number blocked with required message | Admin, Dept Head, Staff (upload/edit metadata) | [ ] |
+| Manual requisitioner: similar existing name blocked on save | Admin, Dept Head, Staff (upload/edit metadata) | [ ] |
 | Document metadata edit does not create orphan directory rows | Admin | [ ] |
 | Admin: `find_duplicate_requisitioners` report identifies split rows for cleanup | Admin | [ ] |
 | Edit modal shows Tagged Documents count | Admin | [ ] |

@@ -16,8 +16,18 @@ export function canChangeEmployeeNumber(role?: string | null) {
   return normalized === "admin" || normalized === "dept_head";
 }
 
+/** Upload/edit document metadata: all uploaders may edit manual requisitioner fields. */
+export function canEditManualRequisitionerOnDocument(role?: string | null) {
+  const normalized = role?.toLowerCase();
+  return normalized === "admin" || normalized === "dept_head" || normalized === "staff";
+}
+
 export function isEmployeeNumberLocked(role?: string | null, isEdit = false) {
   return isEdit && !canChangeEmployeeNumber(role);
+}
+
+export function isManualRequisitionerEmployeeNumberLocked(role?: string | null, isEdit = false) {
+  return isEdit && !canEditManualRequisitionerOnDocument(role);
 }
 
 export const EMPLOYEE_NUMBER_LOCKED_HELPER =
