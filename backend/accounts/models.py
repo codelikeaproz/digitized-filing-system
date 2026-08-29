@@ -11,7 +11,7 @@ import uuid
 
 from django.db import models
 from django.conf import settings
-from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
 from django.utils import timezone
 
 
@@ -64,11 +64,28 @@ class User(AbstractUser):
     )
     is_active_status = models.BooleanField(default=True)
     activation_email_sent_at = models.DateTimeField(null=True, blank=True)
+    groups = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name="user_set",
+        related_query_name="user",
+        db_table="user_groups",
+    )
+    user_permissions = models.ManyToManyField(
+        Permission,
+        blank=True,
+        related_name="user_set",
+        related_query_name="user",
+        db_table="user_permissions",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+    class Meta:
+        db_table = "users"
 
     @property
     def activation_expires_at(self):

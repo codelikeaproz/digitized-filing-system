@@ -30,6 +30,7 @@ class Notification(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "notifications"
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -46,6 +47,7 @@ class StorageThresholdState(models.Model):
     quota_mb_at_last_reset = models.PositiveIntegerField(default=0)
 
     class Meta:
+        db_table = "storage_threshold_states"
         verbose_name = "Storage Threshold State"
         verbose_name_plural = "Storage Threshold State"
 

@@ -15,7 +15,7 @@ Local commands below use `-f docker-compose.dev.yml`. On the production server, 
 
 - `backend`: Django + Django REST Framework on `http://localhost:8000`
 - `frontend`: React + Vite on `http://localhost:5173`
-- `db`: MySQL 8 database on host port `3307`
+- `db`: MySQL 8.4 database on host port `3307` (required by Django 6.x)
 - `backend_media`: Docker volume for uploaded files
 - `frontend_node_modules`: Docker volume for frontend dependencies
 
@@ -321,7 +321,14 @@ docker compose -f docker-compose.dev.yml config
 
 ### Migration Errors After Pulling New Code
 
-If migrations were squashed into `0001_initial` files (for example `employees`, `documents`, or `notifications`), an old database may be out of sync. For local dev with disposable data:
+**Table naming in `0001_initial` (August 2026):** Custom tables are created with plural snake_case names (`users`, `org_units`, etc.) from the initial migration. If you have an old database with legacy table names (`accounts_user`, `orgunits_orgunit`, etc.), reset the dev volume:
+
+```powershell
+docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.dev.yml up --build
+```
+
+If migrations were squashed or `0001_initial` changed for other reasons, an old database may also be out of sync. For local dev with disposable data:
 
 ```powershell
 docker compose -f docker-compose.dev.yml down -v

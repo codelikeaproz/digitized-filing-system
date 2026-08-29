@@ -62,6 +62,8 @@ python manage.py migrate
 python manage.py createsuperuser
 ```
 
+Custom database tables use plural snake_case names (`users`, `org_units`, `documents`, etc.). See [docs/DEVELOPER_GUIDE.md](../docs/DEVELOPER_GUIDE.md#database-table-naming).
+
 ### 4) Run the Django dev server
 
 ```powershell

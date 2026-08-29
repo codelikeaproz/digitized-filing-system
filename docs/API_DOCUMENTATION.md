@@ -1740,6 +1740,8 @@ Returns `{ "matches": [...] }` without LLM answer.
 
 Provides on-demand database and media file downloads for disaster recovery and migration. Restore is not included in this phase.
 
+> **Table names:** Backups reflect the current schema. Custom DFS tables use plural snake_case names (`users`, `org_units`, `documents`, etc.). See [Appendix B — Database tables](#appendix-b--database-tables) and [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md).
+
 #### Download database backup
 
 | | |
@@ -2305,3 +2307,28 @@ Use JWT **Authorize** in Swagger with: `Bearer <access_token>` from login.
 3. Wire JWT refresh in frontend before access token expiry
 4. Restrict AuditLog ViewSet to `GET` + export actions only
 5. Add Admin-only permission to OrgUnit create/update/delete
+
+---
+
+## Appendix B — Database tables
+
+Custom DFS tables use plural snake_case names set via `Meta.db_table`. Django built-in tables (`auth_*`, `django_*`) are unchanged.
+
+| Model | App | Table |
+|-------|-----|-------|
+| `User` | accounts | `users` |
+| User ↔ Groups (M2M) | accounts | `user_groups` |
+| User ↔ Permissions (M2M) | accounts | `user_permissions` |
+| `OrgType` | orgunits | `org_types` |
+| `OrgUnit` | orgunits | `org_units` |
+| `Category` | documents | `categories` |
+| `Folder` | documents | `folders` |
+| `Document` | documents | `documents` |
+| `DocumentRequisitioner` | documents | `document_requisitioners` |
+| `Employee` | employees | `employees` |
+| `AuditLog` | auditlogs | `audit_logs` |
+| `Notification` | notifications | `notifications` |
+| `StorageThresholdState` | notifications | `storage_threshold_states` |
+| `SystemSettings` | system | `system_settings` |
+
+For upgrade notes and legacy backup compatibility, see [HANDOFF.md](./HANDOFF.md).

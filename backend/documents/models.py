@@ -19,6 +19,7 @@ class Category(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "categories"
         ordering = ["name"]
         unique_together = ("name", "org_unit")
         verbose_name_plural = "Categories"
@@ -44,6 +45,7 @@ class Folder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "folders"
         ordering = ["name"]
 
     def __str__(self):
@@ -110,6 +112,7 @@ class Document(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "documents"
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -154,6 +157,7 @@ class DocumentRequisitioner(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "document_requisitioners"
         ordering = ["created_at", "id"]
         constraints = [
             models.UniqueConstraint(

@@ -35,6 +35,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
+                "db_table": "categories",
                 "verbose_name_plural": "Categories",
                 "ordering": ["name"],
                 "unique_together": {("name", "org_unit")},
@@ -89,6 +90,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
+                "db_table": "folders",
                 "ordering": ["name"],
             },
         ),
@@ -165,6 +167,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
+                "db_table": "documents",
                 "ordering": ["-created_at"],
             },
         ),
@@ -205,6 +208,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
+                "db_table": "document_requisitioners",
                 "ordering": ["created_at", "id"],
             },
         ),

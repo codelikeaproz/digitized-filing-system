@@ -14,6 +14,7 @@ class Employee(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "employees"
         ordering = ["last_name", "first_name", "employee_number"]
 
     def get_full_name(self):

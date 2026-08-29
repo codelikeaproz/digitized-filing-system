@@ -51,6 +51,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
+                "db_table": "org_types",
                 "ordering": ["sort_order", "name"],
             },
         ),
@@ -103,6 +104,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
+                "db_table": "org_units",
                 "ordering": ["name"],
             },
         ),

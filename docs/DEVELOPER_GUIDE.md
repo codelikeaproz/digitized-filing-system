@@ -77,6 +77,35 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 
 See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for MySQL config, clean reset (`docker compose down -v`), and troubleshooting.
 
+### Database table naming
+
+Custom DFS tables use **plural snake_case** names set explicitly via `Meta.db_table` in each model. Django built-in tables (`auth_*`, `django_*`) are unchanged.
+
+| Rule | Example |
+|------|---------|
+| Plural nouns | `users`, `documents` |
+| snake_case for compound words | `org_units`, `document_requisitioners` |
+| No app prefix | `folders` (not `documents_folder`) |
+
+| Model | App | Table |
+|-------|-----|-------|
+| `User` | accounts | `users` |
+| User ↔ Groups (M2M) | accounts | `user_groups` |
+| User ↔ Permissions (M2M) | accounts | `user_permissions` |
+| `OrgType` | orgunits | `org_types` |
+| `OrgUnit` | orgunits | `org_units` |
+| `Category` | documents | `categories` |
+| `Folder` | documents | `folders` |
+| `Document` | documents | `documents` |
+| `DocumentRequisitioner` | documents | `document_requisitioners` |
+| `Employee` | employees | `employees` |
+| `AuditLog` | auditlogs | `audit_logs` |
+| `Notification` | notifications | `notifications` |
+| `StorageThresholdState` | notifications | `storage_threshold_states` |
+| `SystemSettings` | system | `system_settings` |
+
+When adding a new model, set `db_table` in `Meta` following this convention and include it in the app's `0001_initial` migration. See [HANDOFF.md](./HANDOFF.md) for August 2026 implementation notes.
+
 ---
 
 ## 3. Access control model

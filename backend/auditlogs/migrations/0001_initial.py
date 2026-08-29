@@ -29,6 +29,7 @@ class Migration(migrations.Migration):
                 ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
             ],
             options={
+                'db_table': 'audit_logs',
                 'ordering': ['-created_at'],
             },
         ),

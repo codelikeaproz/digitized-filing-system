@@ -555,7 +555,7 @@ Use a production-oriented Compose file on the server (separate from dev if neede
 ```yaml
 services:
   db:
-    image: mysql:8.0
+    image: mysql:8.4
     restart: always
     environment:
       MYSQL_DATABASE: vpaa_digi_file

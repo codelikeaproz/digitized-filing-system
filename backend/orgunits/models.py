@@ -12,6 +12,7 @@ class OrgType(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "org_types"
         ordering = ["sort_order", "name"]
 
     def __str__(self):
@@ -49,6 +50,7 @@ class OrgUnit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "org_units"
         ordering = ["name"]
 
     def __str__(self):

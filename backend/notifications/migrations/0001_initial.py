@@ -38,6 +38,7 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
+                "db_table": "notifications",
                 "ordering": ["-created_at"],
             },
         ),
@@ -54,6 +55,7 @@ class Migration(migrations.Migration):
                 ("quota_mb_at_last_reset", models.PositiveIntegerField(default=0)),
             ],
             options={
+                "db_table": "storage_threshold_states",
                 "verbose_name": "Storage Threshold State",
                 "verbose_name_plural": "Storage Threshold State",
             },

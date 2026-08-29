@@ -27,6 +27,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
+                "db_table": "system_settings",
                 "verbose_name": "System Settings",
                 "verbose_name_plural": "System Settings",
             },

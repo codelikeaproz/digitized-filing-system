@@ -13,6 +13,7 @@ class SystemSettings(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "system_settings"
         verbose_name = "System Settings"
         verbose_name_plural = "System Settings"
 

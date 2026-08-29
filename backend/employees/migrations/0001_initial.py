@@ -21,6 +21,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
+                "db_table": "employees",
                 "ordering": ["last_name", "first_name", "employee_number"],
             },
         ),

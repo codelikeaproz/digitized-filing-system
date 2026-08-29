@@ -74,6 +74,7 @@ class Migration(migrations.Migration):
                     "groups",
                     models.ManyToManyField(
                         blank=True,
+                        db_table="user_groups",
                         help_text="The groups this user belongs to. A user will get all permissions granted to each of their groups.",
                         related_name="user_set",
                         related_query_name="user",
@@ -95,6 +96,7 @@ class Migration(migrations.Migration):
                     "user_permissions",
                     models.ManyToManyField(
                         blank=True,
+                        db_table="user_permissions",
                         help_text="Specific permissions for this user.",
                         related_name="user_set",
                         related_query_name="user",
@@ -104,6 +106,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
+                "db_table": "users",
                 "verbose_name": "user",
                 "verbose_name_plural": "users",
                 "abstract": False,

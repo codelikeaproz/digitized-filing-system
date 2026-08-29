@@ -78,3 +78,9 @@ New institutional format: `Letter-Year-Code` (e.g. `D-2122-GCM`, `D-2123-GCMD`).
 
 - **Policy:** Existing documents keep their PDF files. New link-only documents store no file and do not count toward storage quota usage.
 
+
+
+## Database table names
+
+See [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md#database-table-naming) for the current schema. August 2026 implementation notes: [HANDOFF.md](./HANDOFF.md).
+
