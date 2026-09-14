@@ -11,14 +11,10 @@
             "id": "ca1fd9fe57349025",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "VPAA_PRESENTATION_GUIDE.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "VPAA_PRESENTATION_GUIDE"
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           }
         ]
@@ -99,7 +95,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "VPAA_PRESENTATION_GUIDE.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +113,6 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "VPAA_PRESENTATION_GUIDE.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +155,6 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "VPAA_PRESENTATION_GUIDE.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,6 +183,7 @@
   },
   "active": "ca1fd9fe57349025",
   "lastOpenFiles": [
+    "VPAA_PRESENTATION_GUIDE.md",
     "VESTA_DEPLOYMENT.md",
     "HANDOFF.md",
     "FRONTEND_ROUTES.md",
@@ -197,7 +191,6 @@
     "API_DOCUMENTATION.md",
     "ALPHA_TEST_CHECKLIST.md",
     "DATA_MIGRATION_POLICY.md",
-    "VPAA_PRESENTATION_GUIDE.md",
     "Untitled.canvas",
     "DOCUMENTATION MEMORY",
     "data MIGRATION POLICY.md",
