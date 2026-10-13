@@ -1,12 +1,11 @@
 asgiref
-Django
+Django>=4.2,<5
 django-cors-headers
 djangorestframework
 djangorestframework-simplejwt
 PyJWT
 pytz
 sqlparse
-psycopg2-binary
 PyMySQL
 python-dotenv
 cryptography

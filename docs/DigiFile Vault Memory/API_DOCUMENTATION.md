@@ -2,6 +2,8 @@
 
 > **Generated from the current backend implementation.**  
 > Source of truth: `backend/config/urls.py` and app-level `urls.py`, `views.py": "`, `serializers.py`, and `models.py`.
+>
+> **Related notes:** [HANDOFF.md](./HANDOFF.md) · [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [ALPHA_TEST_CHECKLIST.md](./ALPHA_TEST_CHECKLIST.md)
 
 ---
 
@@ -1784,6 +1786,7 @@ Provides on-demand database and media file downloads for disaster recovery and m
 **Content-Type:** `application/zip`
 
 Archives all files under `MEDIA_ROOT` (uploaded PDFs, profile pictures, etc.).
+Uploaded PDFs are organized in the ZIP as `documents/<Office>/<Suboffice>/<Folder>/filename.pdf` instead of physical upload-date folders. Unlinked PDF files are preserved under `_unlinked/documents/`. `MEDIA_BACKUP_MANIFEST.csv` maps every readable ZIP path to its original `MEDIA_ROOT` path for recovery.
 
 **Audit action:** `BACKUP_MEDIA_DOWNLOADED`
 

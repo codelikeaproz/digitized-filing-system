@@ -174,19 +174,6 @@ export function getTitleTooltipRequisitioners(document: {
   return legacyName.replace(/^\d+\s*-\s*/, "").trim();
 }
 
-export function getDocumentRequisitionersDisplay(document: {
-  requisitioners?: DocumentRequisitioner[];
-  requestor?: string;
-}): string {
-  if (document.requisitioners && document.requisitioners.length > 0) {
-    const formatted = formatRequisitionersDisplay(document.requisitioners);
-    if (formatted) {
-      return formatted;
-    }
-  }
-  return document.requestor?.trim() || "";
-}
-
 export function getRequisitionerTableCell(document: {
   requisitioners?: DocumentRequisitioner[];
   requestor?: string;

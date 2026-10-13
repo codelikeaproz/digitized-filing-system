@@ -2,7 +2,7 @@
 
 Production deployment guide for **Digitized Filing System (DFS)** on a server using **Vesta CP**, **nginx**, and **Docker**.
 
-> **Related:** [DOCKER_SETUP.md](../DOCKER_SETUP.md) (local dev) · [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+> **Related:** [HANDOFF.md](./HANDOFF.md) · [DOCKER_SETUP.md](./DOCKER_SETUP.md) (local dev) · [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
 
 **Start here for CMU production:** [Quick deploy (recurring)](#quick-deploy-recurring)
 

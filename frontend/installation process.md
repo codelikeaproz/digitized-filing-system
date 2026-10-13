@@ -123,7 +123,13 @@ To match this repo’s style (high-level checklist):
 
 ## Optional React Grab Dev Tool
 
-To enable the React Grab MCP client in development, place this inside `frontend/index.html`:
+Install the optional packages only when you want to enable React Grab:
+
+```powershell
+npm install --save-dev react-grab @react-grab/mcp
+```
+
+Then place this inside `frontend/index.html`:
 
 ```html
 <!-- React Grab MCP Client for the small dev overlay in the top-right corner. -->

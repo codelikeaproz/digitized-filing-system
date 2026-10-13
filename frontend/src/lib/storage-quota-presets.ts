@@ -88,23 +88,13 @@ export function orgUnitQuotaExceedsSystemLimit(orgUnitQuotaMb: number, systemQuo
   return Number.isFinite(orgUnitQuotaMb) && Number.isFinite(systemQuotaMb) && orgUnitQuotaMb > systemQuotaMb;
 }
 
-export function sumOrgUnitAllocatedMb(
-  orgUnits: ReadonlyArray<{ storageQuotaMb?: number }>,
-  excludeOrgUnitId?: string | null
-): number {
-  return orgUnits.reduce((total, unit) => {
-    if (excludeOrgUnitId && "id" in unit && unit.id === excludeOrgUnitId) {
-      return total;
-    }
-    const quota = Number(unit.storageQuotaMb ?? 0);
-    return total + (Number.isFinite(quota) && quota > 0 ? quota : 0);
-  }, 0);
-}
-
 export type OrgUnitAllocationRow = {
   id?: string;
   parentId?: string | null;
   storageQuotaMb?: number;
+  childCount?: number;
+  childrenAllocatedMb?: number;
+  availableForAllocationMb?: number;
 };
 
 export function sumTopLevelAllocatedMb(
@@ -199,15 +189,6 @@ export function resolveAvailableAllocationMb(
   return getSystemAvailableAllocationMb(systemQuotaMb, orgUnits, excludeOrgUnitId);
 }
 
-/** @deprecated Use getSystemAvailableAllocationMb for top-level allocation checks. */
-export function getAvailableAllocationMb(
-  systemQuotaMb: number | null,
-  orgUnits: ReadonlyArray<{ id?: string; storageQuotaMb?: number }>,
-  excludeOrgUnitId?: string | null
-): number | null {
-  return getSystemAvailableAllocationMb(systemQuotaMb, orgUnits, excludeOrgUnitId);
-}
-
 export function orgUnitQuotaExceedsAvailableAllocation(
   requestedQuotaMb: number,
   availableAllocationMb: number | null
@@ -248,13 +229,6 @@ export function formatStorageCell(mb: number | undefined): string {
   const dual = formatStorageQuotaDual(Math.round(mb * 100) / 100);
   return dual.secondary ? `${dual.primary} (${dual.secondary})` : dual.primary;
 }
-
-type OrgUnitAllocationRow = {
-  childCount?: number;
-  storageQuotaMb?: number;
-  childrenAllocatedMb?: number;
-  availableForAllocationMb?: number;
-};
 
 export function isParentWithChildren(ou: { childCount?: number }): boolean {
   return (ou.childCount ?? 0) > 0;

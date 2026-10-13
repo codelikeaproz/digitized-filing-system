@@ -33,7 +33,7 @@ This project is using:
 - Tailwind v4
 - `radix-vega` shadcn style
 - TypeScript component files in `src/components/ui/`
-- CSS variables in `src/styles/global.css`
+- CSS variables in `src/index.css`
 - alias imports like `@/components/ui/button`
 
 Important file:
@@ -303,7 +303,7 @@ If you edit that file, every place using `Button` can change.
 Use:
 
 ```bash
-src/styles/global.css
+src/index.css
 ```
 
 That is for theme colors, base styles, and app-wide styling.
@@ -482,7 +482,7 @@ That is the main idea.
 - `frontend/components.json`
 - `frontend/src/components/ui/`
 - `frontend/src/pages/`
-- `frontend/src/styles/global.css`
+- `frontend/src/index.css`
 
 If confused:
 

@@ -131,17 +131,6 @@ def get_delete_block_reason(count):
     return "Cannot delete. Tagged on more than 3 documents."
 
 
-def get_delete_block_message(count):
-    if can_delete_requisitioner(count):
-        return ""
-    document_label = "document" if count == 1 else "documents"
-    return (
-        f"Cannot delete requisitioner. "
-        f"This requisitioner is currently tagged on {count} {document_label}. "
-        f"Remove or update document tags before deletion."
-    )
-
-
 def get_delete_api_message(count):
     document_label = "document" if count == 1 else "documents"
     return f"Cannot delete requisitioner. Tagged on {count} {document_label}."

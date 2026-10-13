@@ -178,17 +178,20 @@
       "daily-notes:Open today's daily note": false,
       "templates:Insert template": false,
       "command-palette:Open command palette": false,
-      "bases:Create new base": false
+      "bases:Create new base": false,
+      "realclaudian:Open Claudian": false
     }
   },
   "active": "ca1fd9fe57349025",
   "lastOpenFiles": [
+    "API_DOCUMENTATION.md",
+    "DOCKER_SETUP.md",
+    "CHATBOT_CAPABILITIES.md",
     "VPAA_PRESENTATION_GUIDE.md",
     "VESTA_DEPLOYMENT.md",
     "HANDOFF.md",
     "FRONTEND_ROUTES.md",
     "DEVELOPER_GUIDE.md",
-    "API_DOCUMENTATION.md",
     "ALPHA_TEST_CHECKLIST.md",
     "DATA_MIGRATION_POLICY.md",
     "Untitled.canvas",

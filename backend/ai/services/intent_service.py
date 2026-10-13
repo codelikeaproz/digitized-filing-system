@@ -327,15 +327,6 @@ def build_document_queryset(user, query, folders=None):
     return queryset, filters
 
 
-def documents_in_folders(user, folders, limit=None):
-    if limit is None:
-        limit = chatbot_list_limit()
-    if not folders:
-        return []
-    queryset, _ = build_document_queryset(user, "", folders=folders)
-    return list(queryset[:limit])
-
-
 def document_matches(documents, reason):
     return [DocumentMatch(document=document, score=900, reasons=[reason]) for document in documents]
 

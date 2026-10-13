@@ -54,19 +54,5 @@ def assert_directory_admin(user):
         raise PermissionDenied("Only administrators can manage the Requisitioners Directory.")
 
 
-def assert_can_search_requisitioners(user, *, search, request=None):
-    assert_directory_read(user, search=search, request=request)
-
-
 def assert_can_manage_requisitioners(user):
     assert_directory_admin(user)
-
-
-def assert_can_change_employee_number(user):
-    if not can_change_employee_number(user):
-        raise PermissionDenied("Only Admin or Dept Head can change the employee number after save.")
-
-
-def assert_admin_only(user):
-    if _role(user) != "admin":
-        raise PermissionDenied("Only administrators can perform this action.")

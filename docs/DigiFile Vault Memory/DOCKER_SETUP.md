@@ -1,5 +1,7 @@
 # Docker Setup Guide
 
+> **Related notes:** [HANDOFF.md](./HANDOFF.md) · [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [VESTA_DEPLOYMENT.md](./VESTA_DEPLOYMENT.md)
+
 This guide runs the Digitized Filing System with Docker and explains how to switch the backend database from SQLite to MySQL safely.
 
 ## Compose files

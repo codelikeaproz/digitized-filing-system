@@ -36,34 +36,3 @@ export function getApiBaseUrl(): string {
 
   return (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 }
-
-/**
- * Resolve a document media URL for iframe preview.
- *
- * Django returns absolute URLs like https://host/media/... which miss the
- * production subpath (/digifile). Always route media through getApiBaseUrl().
- */
-export function resolveMediaUrl(fileUrl?: string | null): string | null {
-  if (!fileUrl) return null;
-
-  const base = getApiBaseUrl().replace(/\/$/, "");
-
-  const withBase = (pathname: string, search = "", hash = "") => {
-    const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
-    if (base && (path === base || path.startsWith(`${base}/`))) {
-      return `${path}${search}${hash}`;
-    }
-    return `${base}${path}${search}${hash}`;
-  };
-
-  if (fileUrl.startsWith("/")) {
-    return withBase(fileUrl);
-  }
-
-  try {
-    const url = new URL(fileUrl);
-    return withBase(url.pathname, url.search, url.hash);
-  } catch {
-    return withBase(fileUrl.replace(/^\/+/, ""));
-  }
-}

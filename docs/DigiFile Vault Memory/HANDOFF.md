@@ -1,10 +1,39 @@
-# DFS HandOff — August 2026
+# DFS Handoff
 
-Brief handoff for recent schema and Docker changes. For ongoing data rules (document codes, employee numbers, requisitioners), see [DATA_MIGRATION_POLICY.md](./DATA_MIGRATION_POLICY.md).
+Living task log for DigiFile development. For ongoing data rules (document codes, employee numbers, requisitioners), see [DATA_MIGRATION_POLICY.md](./DATA_MIGRATION_POLICY.md).
+
+> **Related notes:** [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [ALPHA_TEST_CHECKLIST.md](./ALPHA_TEST_CHECKLIST.md) · [DOCKER_SETUP.md](./DOCKER_SETUP.md) · [CHATBOT_CAPABILITIES.md](./CHATBOT_CAPABILITIES.md)
 
 ---
 
-## Summary
+## October 13, 2026 checkpoint
+
+### Completed
+
+- Removed confirmed dead backend helpers, unused frontend exports and components, the disconnected legacy stylesheet, and the empty legacy account test module.
+- Removed unused PostgreSQL and React Grab dependencies. React Grab remains documented as an optional development install.
+- Consolidated the duplicate `OrgUnitAllocationRow` TypeScript type and removed redundant PyMySQL initialization from Django settings.
+- Updated media backups so ZIP folders use Office/Suboffice and DigiFile folder names instead of numeric/date storage paths.
+- Added `MEDIA_BACKUP_MANIFEST.csv`, collision-safe archive names, invalid filename sanitization, and backup service tests.
+- Moved the Docker and chatbot notes into this Obsidian vault and repaired their related-document links.
+- Pinned local backend setup to Django 4.2 because this project currently supports the XAMPP/MySQL-compatible Django 4.2 stack.
+
+### Verification
+
+- Frontend production build passed.
+- Backend backup tests passed against the local environment.
+- TypeScript checking still has seven pre-existing errors in requisitioner and dialog component typings; these were not hidden or changed during cleanup.
+- React Doctor 0.9.18 scanned 115 frontend files: score **45/100**, 145 warnings. The first planned repair batch is form labels, icon-button names, keyboard-accessible folder rows, and an Office Unit submit re-entry guard.
+
+### Next task
+
+Fix the confirmed React Doctor findings in small batches, rerunning React Doctor and the relevant frontend checks after each batch. Treat the localStorage authentication warning as a separate backend/frontend authentication design change, not part of the accessibility cleanup.
+
+---
+
+## August 2026 schema and Docker handoff
+
+### Summary
 
 - Standardized custom DB table names to **plural snake_case** via `Meta.db_table`
 - Squashed naming into each app's **`0001_initial`** (no `0002` rename migrations)
@@ -59,7 +88,7 @@ When adding a new model, set `db_table` in `Meta` and include it in the app's in
 - **Normal restart** (keep data): `docker compose -f docker-compose.dev.yml up`
 - **Admin account:** auto-created on startup when `DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD` are set in `backend/.env`
 
-See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for full setup and troubleshooting.
+See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for full setup and troubleshooting.
 
 ---
 
@@ -75,6 +104,6 @@ New backups from `GET /api/backups/database` use the current schema.
 
 - [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) — database table naming section
 - [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) — Appendix B (database tables)
-- [DOCKER_SETUP.md](../DOCKER_SETUP.md) — MySQL 8.4 and migration notes
+- [DOCKER_SETUP.md](./DOCKER_SETUP.md) — MySQL 8.4 and migration notes
 - [VESTA_DEPLOYMENT.md](./VESTA_DEPLOYMENT.md) — MySQL 8.4
 - [README.md](../README.md), [backend/installation process.md](../backend/installation%20process.md)

@@ -1,11 +1,21 @@
+import csv
+import io
 import os
+import re
 import sqlite3
 import subprocess
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from django.conf import settings
 from django.utils import timezone
+
+from documents.models import Document
+from documents.services import build_folder_path_map
+from orgunits.models import OrgUnit
+
+
+INVALID_ARCHIVE_SEGMENT_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 def backup_timestamp():
@@ -40,6 +50,43 @@ def _run_command(command, *, output_path):
         raise RuntimeError(stderr or "Backup command failed.")
 
     output_path.write_bytes(result.stdout)
+
+
+def _safe_archive_segment(value, fallback):
+    segment = INVALID_ARCHIVE_SEGMENT_CHARS.sub("_", (value or "").strip()).rstrip(". ")
+    return segment if segment not in {"", ".", ".."} else fallback
+
+
+def _org_unit_path_map():
+    rows = {
+        row["id"]: row
+        for row in OrgUnit.objects.values("id", "name", "parent_id")
+    }
+
+    paths = {}
+    for org_unit_id in rows:
+        parts = []
+        current_id = org_unit_id
+        visited = set()
+        while current_id and current_id in rows and current_id not in visited:
+            visited.add(current_id)
+            row = rows[current_id]
+            parts.append(_safe_archive_segment(row["name"], "Unnamed Office"))
+            current_id = row["parent_id"]
+        paths[org_unit_id] = list(reversed(parts))
+    return paths
+
+
+def _unique_archive_name(archive_name, document_id, used_names):
+    normalized = archive_name.casefold()
+    if normalized not in used_names:
+        used_names.add(normalized)
+        return archive_name
+
+    path = PurePosixPath(archive_name)
+    candidate = path.with_name(f"{path.stem}__{document_id}{path.suffix}").as_posix()
+    used_names.add(candidate.casefold())
+    return candidate
 
 
 def create_database_backup():
@@ -88,12 +135,47 @@ def create_media_backup():
     media_root = Path(settings.MEDIA_ROOT)
     media_root.mkdir(parents=True, exist_ok=True)
 
+    documents = list(
+        Document.objects.exclude(file="").values("id", "file", "folder_id", "folder__org_unit_id")
+    )
+    folder_paths = build_folder_path_map(row["folder_id"] for row in documents)
+    org_unit_paths = _org_unit_path_map()
+    documents_by_file = {str(row["file"]).replace("\\", "/"): row for row in documents}
+    used_names = set()
+    manifest_rows = []
+
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for root, _, files in os.walk(media_root):
             for file_name in files:
                 absolute_path = Path(root) / file_name
                 relative_path = absolute_path.relative_to(media_root)
-                archive.write(absolute_path, arcname=str(relative_path).replace("\\", "/"))
+                stored_name = relative_path.as_posix()
+                document = documents_by_file.get(stored_name)
+
+                if document:
+                    org_parts = org_unit_paths.get(document["folder__org_unit_id"], ["Unassigned Office"])
+                    folder_parts = [
+                        _safe_archive_segment(part, "Unnamed Folder")
+                        for part in folder_paths.get(document["folder_id"], "").split(" > ")
+                        if part
+                    ]
+                    archive_name = PurePosixPath(
+                        "documents", *org_parts, *folder_parts, relative_path.name
+                    ).as_posix()
+                    archive_name = _unique_archive_name(archive_name, document["id"], used_names)
+                elif relative_path.parts and relative_path.parts[0] == "documents":
+                    archive_name = PurePosixPath("_unlinked", *relative_path.parts).as_posix()
+                else:
+                    archive_name = stored_name
+
+                archive.write(absolute_path, arcname=archive_name)
+                manifest_rows.append((archive_name, stored_name))
+
+        manifest = io.StringIO(newline="")
+        writer = csv.writer(manifest)
+        writer.writerow(["archive_path", "original_media_path"])
+        writer.writerows(manifest_rows)
+        archive.writestr("MEDIA_BACKUP_MANIFEST.csv", manifest.getvalue())
 
     return output_path, filename
 

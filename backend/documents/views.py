@@ -106,10 +106,6 @@ from .pdf_compression import compress_pdf_upload
 from .serializers import DashboardStatsSerializer
 
 
-def ensure_default_folder(user=None):
-    return None
-
-
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 

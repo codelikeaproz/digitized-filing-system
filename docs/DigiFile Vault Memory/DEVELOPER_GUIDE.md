@@ -2,7 +2,7 @@
 
 Onboarding guide for the **Digitized Filing System (DFS)** — **DigiFile**, CMU’s institution-wide document management platform — a Django REST + React/Vite application for OrgUnit-scoped PDF document management.
 
-> **Related docs:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [FRONTEND_ROUTES.md](./FRONTEND_ROUTES.md) · [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md) · [DOCKER_SETUP.md](../DOCKER_SETUP.md) · [VESTA_DEPLOYMENT.md](./VESTA_DEPLOYMENT.md)
+> **Related docs:** [HANDOFF.md](./HANDOFF.md) · [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [FRONTEND_ROUTES.md](./FRONTEND_ROUTES.md) · [CHATBOT_CAPABILITIES.md](./CHATBOT_CAPABILITIES.md) · [DOCKER_SETUP.md](./DOCKER_SETUP.md) · [VESTA_DEPLOYMENT.md](./VESTA_DEPLOYMENT.md)
 
 ---
 
@@ -75,7 +75,7 @@ The backend uses **Django apps by domain**, not by HTTP layer. This matches Djan
 3. `docker compose -f docker-compose.dev.yml up --build`
 4. Sign in at `http://localhost:5173` (auto-seeded admin or run `createsuperuser` manually if env vars are unset)
 
-See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for MySQL config, clean reset (`docker compose down -v`), and troubleshooting.
+See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for MySQL config, clean reset (`docker compose down -v`), and troubleshooting.
 
 ### Database table naming
 
@@ -167,7 +167,7 @@ cd backend
 python manage.py runserver
 ```
 
-See [DOCKER_SETUP.md](../DOCKER_SETUP.md) for container workflow.
+See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for container workflow.
 
 ### Live OpenAPI docs (Swagger UI)
 
@@ -196,7 +196,7 @@ Requires `drf-spectacular` in `backend/requirements.txt`.
 - **MySQL:** Backend Docker image includes `default-mysql-client` for `mysqldump`
 - **SQLite dev:** Uses SQLite `.dump` when `DB_ENGINE=sqlite`
 - **Temp files:** Written to `BACKUP_TEMP_DIR` (default `backend/tmp/backups`), deleted after download
-- **Restore:** Manual / out of scope — import SQL into MySQL or replace `MEDIA_ROOT` contents yourself
+- **Restore:** Manual / out of scope — import SQL into MySQL; the media ZIP's `MEDIA_BACKUP_MANIFEST.csv` maps readable Office/Folder paths back to their original `MEDIA_ROOT` paths
 
 ### Adding a new API endpoint
 

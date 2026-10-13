@@ -1,5 +1,7 @@
 # Document Assistant Capabilities
 
+> **Related notes:** [HANDOFF.md](./HANDOFF.md) · [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+
 This document describes the current capabilities and limitations of the Digitized Filing System Document Assistant. The assistant searches **documents** within your access scope; the **Requisitioners Directory** is a separate page for managing people and viewing **Tagged Documents** counts.
 
 **Document codes:** New uploads receive auto-generated codes in the format `{CategoryCode}-{Year}-{Sequence}` (e.g. `RPT-2026-000001`). Category abbreviations are auto-generated or editable in Manage Categories. When the abbreviation changes or a document is reassigned to another category, auto-generated codes update their prefix only (sequence preserved). Legacy manual codes remain searchable and unchanged.

@@ -24,22 +24,6 @@ from .serializers import OrgTypeSerializer, OrgUnitSerializer
 from .storage import ALLOCATION_ERROR_MESSAGES
 
 
-def ensure_default_org_unit():
-    org_type, _ = OrgType.objects.get_or_create(
-        name="Office",
-        defaults={"code": "office", "is_active": True, "sort_order": 30},
-    )
-    org_unit, _ = OrgUnit.objects.get_or_create(
-        name="Headquarters",
-        defaults={"type": org_type.name, "org_type": org_type},
-    )
-    if org_unit.org_type_id is None:
-        org_unit.org_type = org_type
-        org_unit.type = org_type.name
-        org_unit.save(update_fields=["org_type", "type"])
-    return org_unit
-
-
 class OrgTypeViewSet(viewsets.ModelViewSet):
     serializer_class = OrgTypeSerializer
     pagination_class = None

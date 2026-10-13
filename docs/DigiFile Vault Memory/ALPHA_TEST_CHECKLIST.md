@@ -2,7 +2,7 @@
 
 Manual testing guide for **Digitized Filing System (DFS)** alpha sign-off.
 
-> **Related:** [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md)
+> **Related:** [HANDOFF.md](./HANDOFF.md) · [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) · [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) · [CHATBOT_CAPABILITIES.md](./CHATBOT_CAPABILITIES.md)
 
 ---
 
@@ -126,7 +126,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Staff Requisitioners Directory chatbot questions politely refused | Staff | [ ] |
 | Child Dept Head / Staff assistant excludes parent and sibling units | Dept Head, Staff | [ ] |
 
-> More queries: [CHATBOT_CAPABILITIES.md](../CHATBOT_CAPABILITIES.md)
+> More queries: [CHATBOT_CAPABILITIES.md](./CHATBOT_CAPABILITIES.md)
 
 ---
 
@@ -262,6 +262,7 @@ Use three accounts: **Admin**, **Dept Head**, and **Staff** (each with a valid O
 | Admin sees Backup Management under Administration sidebar | Admin | [ ] |
 | Download Database Backup → `.sql` file saves locally | Admin | [ ] |
 | Download Media Backup → `.zip` file saves locally | Admin | [ ] |
+| Media ZIP groups PDFs by Office/Suboffice and DigiFile folder names | Admin | [ ] |
 | Audit Logs show `BACKUP_DATABASE_DOWNLOADED` / `BACKUP_MEDIA_DOWNLOADED` | Admin | [ ] |
 | Dept Head / Staff: route blocked → `/error/403` | Dept Head, Staff | [ ] |
 | Unauthorized API call returns 403 | Dept Head, Staff | [ ] |

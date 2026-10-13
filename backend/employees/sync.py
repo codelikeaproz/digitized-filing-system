@@ -134,11 +134,6 @@ def link_document_requisitioners(requisitioners, *, document=None):
     return linked
 
 
-def sync_requisitioners_to_directory(requisitioners, *, document=None):
-    """Backward-compatible alias used by document upload/edit views."""
-    return link_document_requisitioners(requisitioners, document=document)
-
-
 def _refresh_requestor_for_documents(document_ids):
     from documents.models import Document
 
