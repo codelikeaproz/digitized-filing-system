@@ -65,8 +65,7 @@ export function PermanentDeleteConfirmDialog({
             <Trash2 className="h-5 w-5" />
             {title}
           </DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-3 text-sm text-muted-foreground">
+          <DialogDescription render={<div />} className="space-y-3 text-sm text-muted-foreground">
               <p>You are about to permanently delete:</p>
               <p className="font-semibold text-foreground">{displayName}</p>
               <p>
@@ -85,7 +84,6 @@ export function PermanentDeleteConfirmDialog({
                   {requiredPhrase}
                 </p>
               </div>
-            </div>
           </DialogDescription>
         </DialogHeader>
 

@@ -59,24 +59,27 @@ export function BulkPermanentDeleteConfirmDialog({
     if (!open) {
       setConfirmationInput("");
       setSummary(null);
+      setIsLoadingSummary(false);
       return;
     }
 
+    const controller = new AbortController();
     const fetchSummary = async () => {
       setIsLoadingSummary(true);
       try {
         const data = await api.post<BulkSummaryResponse>("/api/recycle-bin/bulk-summary", {
           items,
-        });
+        }, { signal: controller.signal });
         setSummary(data);
-      } catch {
-        setSummary(null);
+      } catch (error: any) {
+        if (error.name !== "AbortError") setSummary(null);
       } finally {
-        setIsLoadingSummary(false);
+        if (!controller.signal.aborted) setIsLoadingSummary(false);
       }
     };
 
     fetchSummary();
+    return () => controller.abort();
   }, [open, items]);
 
   const documentCount = summary?.document_count ?? items.filter((item) => item.type === "document").length;
@@ -91,8 +94,7 @@ export function BulkPermanentDeleteConfirmDialog({
             <Trash2 className="h-5 w-5" />
             Permanently Delete Selected Items
           </DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-3 text-sm text-muted-foreground">
+          <DialogDescription render={<div />} className="space-y-3 text-sm text-muted-foreground">
               <p>You are about to permanently delete:</p>
               <p>
                 Documents: <span className="font-semibold text-foreground">{documentCount}</span>
@@ -121,7 +123,6 @@ export function BulkPermanentDeleteConfirmDialog({
                   {requiredPhrase}
                 </p>
               </div>
-            </div>
           </DialogDescription>
         </DialogHeader>
 

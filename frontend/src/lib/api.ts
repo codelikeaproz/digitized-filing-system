@@ -7,8 +7,8 @@ import { redirectToLogin, refreshAccessToken } from '@/lib/auth-tokens';
  * Centralized HTTP client for the DFS backend.
  *
  * Features:
- * - Attaches JWT from localStorage (auth_token)
- * - Silently refreshes expired access tokens via auth_refresh_token
+ * - Attaches the in-memory access token
+ * - Silently refreshes it via an HttpOnly cookie
  * - JSON helpers: get, post, put, patch, delete
  * - upload() for multipart/form-data (PDF uploads)
  * - Auto-redirect on 401 when refresh fails, 429, 5xx
@@ -86,6 +86,7 @@ class ApiService {
     try {
       const response = await fetch(url, {
         ...init,
+        credentials: "include",
         headers: {
           ...this.getHeaders(),
           ...init.headers,
@@ -171,14 +172,18 @@ class ApiService {
     }
   }
 
-  get<T>(endpoint: string, params?: Record<string, string | number | undefined | null>) {
-    return this.request<T>(endpoint, { method: "GET", params });
+  get<T>(
+    endpoint: string,
+    params?: Record<string, string | number | undefined | null>,
+    options?: Pick<RequestOptions, "signal">
+  ) {
+    return this.request<T>(endpoint, { method: "GET", params, ...options });
   }
 
   post<T>(
     endpoint: string,
     data?: any,
-    options?: Pick<RequestOptions, "skipRateLimitRedirect">
+    options?: Pick<RequestOptions, "signal" | "skipRateLimitRedirect">
   ) {
     return this.request<T>(endpoint, {
       method: "POST",
@@ -227,6 +232,7 @@ class ApiService {
       method: "POST",
       body: formData,
       headers,
+      credentials: "include",
     });
 
     if (response.status === 401) {

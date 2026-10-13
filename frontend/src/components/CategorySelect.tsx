@@ -327,9 +327,9 @@ export function CategorySelect({
           <div className="py-4 space-y-4">
             {(isAdmin || (isDeptHead && hasSubtreeOrgUnits)) && !orgUnitId && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Select target Office Unit</label>
+                <label htmlFor="category-org-unit" className="text-sm font-medium">Select target Office Unit</label>
                 <Select value={targetOrgUnit} onValueChange={(val) => val !== null && setTargetOrgUnit(val)}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="category-org-unit" className="w-full">
                     <SelectValue placeholder="Select Office Unit">
                       {targetOrgUnit ? (orgUnits.find(ou => ou.id === targetOrgUnit)?.name || "Select Office Unit...") : undefined}
                     </SelectValue>
@@ -343,8 +343,9 @@ export function CategorySelect({
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Category Name</label>
+              <label htmlFor="new-category-name" className="text-sm font-medium">Category Name</label>
               <Input 
+                id="new-category-name"
                 placeholder="e.g. Legal, HR, Finance" 
                 value={newCategoryName}
                 onChange={(e) => {
@@ -443,6 +444,7 @@ export function CategorySelect({
                       {editingCategoryId === c.id ? (
                         <>
                           <Button
+                            aria-label={`Save ${c.name}`}
                             variant="ghost"
                             size="icon"
                             onClick={handleRenameCategory}
@@ -451,12 +453,13 @@ export function CategorySelect({
                           >
                             <Check className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={handleCancelRenameCategory} disabled={isSubmitting}>
+                          <Button aria-label={`Cancel editing ${c.name}`} variant="ghost" size="icon" onClick={handleCancelRenameCategory} disabled={isSubmitting}>
                             <X className="h-4 w-4" />
                           </Button>
                         </>
                       ) : (
                         <Button
+                          aria-label={`Rename ${c.name}`}
                           variant="ghost"
                           size="icon"
                           onClick={() => handleStartRenameCategory(c)}
@@ -472,6 +475,7 @@ export function CategorySelect({
                             <TooltipTrigger render={<div className="flex items-center gap-2" />}>
                                 <span className="inline-block cursor-not-allowed">
                                   <Button
+                                    aria-label={`Cannot delete ${c.name} because it is in use`}
                                     variant="ghost" 
                                     size="icon"
                                     disabled={true}
@@ -489,6 +493,7 @@ export function CategorySelect({
                         </TooltipProvider>
                       ) : (
                         <Button
+                          aria-label={`Delete ${c.name}`}
                           variant="ghost" 
                           size="icon"
                           disabled={!canManage}

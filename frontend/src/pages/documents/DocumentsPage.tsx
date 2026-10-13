@@ -55,6 +55,7 @@ import { AssistantPageContext } from "@/lib/assistant/pageContext";
 import { AssistantMatchedDocument } from "@/components/assistant/documents/ChatDocumentCard";
 
 import { getApiBaseUrl, resolveApiUrl } from "@/lib/api-base-url";
+import { getAccessToken } from "@/lib/auth-storage";
 
 const BACKEND_URL = getApiBaseUrl();
 
@@ -67,9 +68,10 @@ function getFileNameFromDisposition(disposition: string | null) {
 }
 
 async function downloadDocumentFile(document: DocType) {
-  const token = localStorage.getItem("auth_token");
+  const token = getAccessToken();
   const response = await fetch(`${BACKEND_URL}/api/documents/${document.id}/download/`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -148,6 +150,12 @@ export default function DocumentsPage() {
   const [storageQuotaExceeded, setStorageQuotaExceeded] = useState(false);
 
   useEffect(() => {
+    return () => {
+      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+    };
+  }, [previewBlobUrl]);
+
+  useEffect(() => {
     fetchSystemSettings()
       .then((settings) => setStorageQuotaExceeded(Boolean(settings.storageQuotaExceeded)))
       .catch(() => setStorageQuotaExceeded(false));
@@ -200,10 +208,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     if (!previewDoc) {
-      setPreviewBlobUrl((previous) => {
-        if (previous) URL.revokeObjectURL(previous);
-        return null;
-      });
+      setPreviewBlobUrl(null);
       setPreviewLoading(false);
       setPreviewError(null);
       return;
@@ -215,9 +220,10 @@ export default function DocumentsPage() {
 
     const loadPreview = async () => {
       try {
-        const token = localStorage.getItem("auth_token");
+        const token = getAccessToken();
         const response = await fetch(resolveApiUrl(`/api/documents/${previewDoc.id}/preview/`), {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
         });
 
         if (!response.ok) {
@@ -258,17 +264,11 @@ export default function DocumentsPage() {
         if (cancelled) return;
 
         const objectUrl = URL.createObjectURL(blob);
-        setPreviewBlobUrl((previous) => {
-          if (previous) URL.revokeObjectURL(previous);
-          return objectUrl;
-        });
+        setPreviewBlobUrl(objectUrl);
       } catch (error: any) {
         if (!cancelled) {
           setPreviewError(error.message || "Failed to load preview");
-          setPreviewBlobUrl((previous) => {
-            if (previous) URL.revokeObjectURL(previous);
-            return null;
-          });
+          setPreviewBlobUrl(null);
         }
       } finally {
         if (!cancelled) setPreviewLoading(false);
@@ -362,7 +362,7 @@ export default function DocumentsPage() {
   }, [findFolderById]);
 
   // Fetch Documents
-  const fetchDocuments = async (silent = false, searchArg?: string) => {
+  const fetchDocuments = useCallback(async (silent = false, searchArg?: string, signal?: AbortSignal) => {
     if (!silent) setIsRefreshing(true);
     try {
       const params: Record<string, string | number> = {
@@ -377,23 +377,29 @@ export default function DocumentsPage() {
       const effectiveSearch = searchArg !== undefined ? searchArg : debouncedSearch;
       if (effectiveSearch) params.search = effectiveSearch;
       
-      const docPage = await api.get<PaginatedResponse<DocType>>("/api/documents", params);
+      const docPage = await api.get<PaginatedResponse<DocType>>("/api/documents", params, { signal });
       setDocuments(docPage.results);
       setDocumentCount(docPage.count);
-    } catch (error) {
-      console.error("API Error (Documents):", error);
-      if (!silent) toast.error("Failed to load documents");
+    } catch (error: any) {
+      if (error.name !== "AbortError") {
+        console.error("API Error (Documents):", error);
+        if (!silent) toast.error("Failed to load documents");
+      }
     } finally {
-      setIsRefreshing(false);
+      if (!signal?.aborted) setIsRefreshing(false);
     }
-  };
+  }, [categoryFilter, currentPage, debouncedSearch, endDate, isOrgUnitNode, pageSize, selectedFolder, startDate]);
 
   useEffect(() => {
-    fetchDocuments();
+    const controller = new AbortController();
+    fetchDocuments(false, undefined, controller.signal);
     // Poll for updates if we want "pseudo-realtime" without sockets
-    const interval = setInterval(() => fetchDocuments(true), 5000);
-    return () => clearInterval(interval);
-  }, [selectedFolder, debouncedSearch, categoryFilter, startDate, endDate, currentPage, pageSize]);
+    const interval = setInterval(() => fetchDocuments(true, undefined, controller.signal), 5000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, [fetchDocuments]);
 
   const processedDocs = useMemo(() => {
     return documents.map(doc => {

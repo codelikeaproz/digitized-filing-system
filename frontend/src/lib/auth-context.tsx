@@ -1,11 +1,11 @@
 /**
  * Authentication context — session state for the SPA.
  *
- * On load: rehydrates user via GET /api/auth/me when auth_token exists.
- * Login:   POST /api/auth/login → stores access + refresh tokens and user.
- * Logout:  client-side only (clears tokens; no server revoke endpoint).
+ * On load: restores the session through the HttpOnly refresh cookie.
+ * Login:   POST /api/auth/login → keeps the access token in memory.
+ * Logout:  clears the refresh cookie and local session state.
  */
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useState, useEffect, ReactNode } from "react";
 import { User } from "../types";
 import { api } from "./api";
 import { toast } from "sonner";
@@ -13,10 +13,11 @@ import { clearDocumentAssistantSession } from "@/lib/assistant/session";
 import {
   AUTH_USER_KEY,
   clearAuthStorage,
-  getAccessToken,
-  setAuthTokens,
+  clearLegacyTokenStorage,
+  setAccessToken,
 } from "@/lib/auth-storage";
 import { refreshAccessToken } from "@/lib/auth-tokens";
+import { resolveApiUrl } from "@/lib/api-base-url";
 
 const ACCESS_TOKEN_REFRESH_INTERVAL_MS = 25 * 60 * 1000;
 
@@ -34,13 +35,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Rehydrate auth state from localStorage
-  const rehydrate = async () => {
+  const rehydrate = useCallback(async () => {
     setLoading(true);
-    const token = getAccessToken();
-    const storedUser = localStorage.getItem(AUTH_USER_KEY);
-
-    if (token && storedUser) {
+    clearLegacyTokenStorage();
+    if (await refreshAccessToken()) {
       try {
         const verifiedUser = await api.get<User>("/api/auth/me");
         setUser(verifiedUser);
@@ -51,14 +49,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
       }
     } else {
+      clearAuthStorage();
       setUser(null);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     rehydrate();
-  }, []);
+  }, [rehydrate]);
 
   useEffect(() => {
     if (!user) return;
@@ -73,13 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(interval);
   }, [user]);
 
-  const login = async (email: string, pass: string) => {
+  const login = useCallback(async (email: string, pass: string) => {
     try {
-      const response = await api.post<{ token: string; refresh: string; user: User }>(
+      const response = await api.post<{ token: string; user: User }>(
         "/api/auth/login",
         { email, password: pass }
       );
-      setAuthTokens(response.token, response.refresh);
+      setAccessToken(response.token);
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user));
       setUser(response.user);
       toast.success(`Welcome back, ${response.user.fullName}`);
@@ -88,17 +87,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast.error(error.message || "Invalid email or password");
       throw error;
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
+    void fetch(resolveApiUrl("/api/auth/logout"), {
+      method: "POST",
+      credentials: "include",
+    });
     clearAuthStorage();
     clearDocumentAssistantSession();
     setUser(null);
     toast.info("Logged out successfully");
-  };
+  }, []);
+
+  const value = useMemo<AuthContextType>(
+    () => ({ user, loading, login, logout, rehydrate }),
+    [loading, login, logout, rehydrate, user]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, rehydrate }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

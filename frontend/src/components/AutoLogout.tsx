@@ -1,7 +1,7 @@
 /**
  * AutoLogout — idle timeout; clears session after inactivity (default 10 min).
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -12,13 +12,13 @@ export default function AutoLogout({ timeoutMinutes = 10 }: { timeoutMinutes?: n
   const location = useLocation();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     logout();
     toast("You were logged out due to inactivity.");
     navigate("/login");
-  };
+  }, [logout, navigate]);
 
-  const resetTimer = () => {
+  const resetTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
@@ -27,7 +27,7 @@ export default function AutoLogout({ timeoutMinutes = 10 }: { timeoutMinutes?: n
     if (user && location.pathname !== '/login') {
       timeoutRef.current = setTimeout(handleLogout, timeoutMinutes * 60 * 1000);
     }
-  };
+  }, [handleLogout, location.pathname, timeoutMinutes, user]);
 
   useEffect(() => {
     // Initial setup
@@ -53,7 +53,7 @@ export default function AutoLogout({ timeoutMinutes = 10 }: { timeoutMinutes?: n
         window.removeEventListener(event, handleUserActivity);
       });
     };
-  }, [user, location.pathname, timeoutMinutes]);
+  }, [resetTimer]);
 
   return <></>; // render nothing
 }

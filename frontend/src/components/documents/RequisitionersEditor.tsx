@@ -67,7 +67,7 @@ export function RequisitionersEditor({
   const canEditManualRequisitioner = canEditManualRequisitionerOnDocument(user?.role);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [draft, setDraft] = useState<RequisitionerInput>(createEmptyRequisitioner());
+  const [draft, setDraft] = useState<RequisitionerInput>(createEmptyRequisitioner);
   const [draftReadOnly, setDraftReadOnly] = useState(false);
   const [draftErrors, setDraftErrors] = useState<RequisitionerRowErrors>({});
   const [employeeSearch, setEmployeeSearch] = useState("");
@@ -95,7 +95,7 @@ export function RequisitionersEditor({
   );
 
   const suffixOptions = useMemo(() => {
-    const options = REQUISITIONER_SUFFIX_OPTIONS.map((option) => ({ ...option }));
+    const options: Array<{ value: string; label: string }> = REQUISITIONER_SUFFIX_OPTIONS.map((option) => ({ ...option }));
     if (draft.suffix && !options.some((option) => option.value === draft.suffix)) {
       options.push({ value: draft.suffix, label: draft.suffix });
     }
@@ -417,6 +417,7 @@ export function RequisitionersEditor({
                 <div className="flex shrink-0 items-center gap-1">
                   {!isDirectoryLinkedRequisitioner(row) && (
                     <Button
+                      aria-label={`Edit ${displayName}`}
                       type="button"
                       variant="ghost"
                       size="icon"
@@ -428,6 +429,7 @@ export function RequisitionersEditor({
                     </Button>
                   )}
                   <Button
+                    aria-label={`Remove ${displayName}`}
                     type="button"
                     variant="ghost"
                     size="icon"

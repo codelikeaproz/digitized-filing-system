@@ -67,20 +67,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isAdmin && !canFilter) return;
+    const controller = new AbortController();
     const fetchOrgUnits = async () => {
       try {
         const data = await api.get<PaginatedResponse<OrgUnitOption>>("/api/org-units/", {
           page_size: 100,
-        });
+        }, { signal: controller.signal });
         setOrgUnits(data.results);
-      } catch (error) {
-        console.error("Failed to load Office Units for dashboard filter:", error);
+      } catch (error: any) {
+        if (error.name !== "AbortError") console.error("Failed to load Office Units for dashboard filter:", error);
       }
     };
     fetchOrgUnits();
+    return () => controller.abort();
   }, [canFilter, isAdmin]);
 
-  const buildStatCards = (data: DashboardResponse): StatCard[] => {
+  const buildStatCards = useCallback((data: DashboardResponse): StatCard[] => {
     if (data.scope === "global") {
       const cards: StatCard[] = [
         {
@@ -140,9 +142,9 @@ export default function DashboardPage() {
       },
     ];
     return cards;
-  };
+  }, [isAdmin]);
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsLoading(true);
       const params: Record<string, string> = {};
@@ -152,7 +154,7 @@ export default function DashboardPage() {
         params.office_unit = "all";
       }
 
-      const data = await api.get<DashboardResponse>("/api/dashboard/", params);
+      const data = await api.get<DashboardResponse>("/api/dashboard/", params, { signal });
       setStats(buildStatCards(data));
       setStorage(data.storage || null);
       setStorageComparison(data.storage_by_office_unit || []);
@@ -160,25 +162,27 @@ export default function DashboardPage() {
       setOfficeUnitLabel(data.office_unit_name);
       setCanFilter(data.can_filter_office_units);
       setAggregatesSubtree(Boolean(data.aggregates_subtree));
-    } catch (error) {
-      console.error("Dashboard Stats Error:", error);
+    } catch (error: any) {
+      if (error.name !== "AbortError") console.error("Dashboard Stats Error:", error);
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
-  }, [isAdmin, officeUnitFilter, canFilter]);
+  }, [buildStatCards, isAdmin, officeUnitFilter, canFilter]);
 
   useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 30000);
-    const onFocus = () => fetchStats();
+    const controller = new AbortController();
+    fetchStats(controller.signal);
+    const interval = setInterval(() => fetchStats(controller.signal), 30000);
+    const onFocus = () => fetchStats(controller.signal);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        fetchStats();
+        fetchStats(controller.signal);
       }
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
+      controller.abort();
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);

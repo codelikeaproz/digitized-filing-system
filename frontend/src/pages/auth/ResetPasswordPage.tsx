@@ -178,6 +178,7 @@ export default function ResetPasswordPage() {
                         disabled={isLoading}
                       />
                       <button
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
@@ -211,6 +212,7 @@ export default function ResetPasswordPage() {
                         disabled={isLoading}
                       />
                       <button
+                        aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"

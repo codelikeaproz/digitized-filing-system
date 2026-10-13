@@ -164,7 +164,7 @@ OrgUnit list API (`GET /api/org-units/`) returns only accessible units for non-a
 
 ```bash
 cd backend
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
 See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for container workflow.
@@ -321,7 +321,7 @@ formData.append("file", pdfFile);
 await api.upload("/api/documents/upload", formData);
 ```
 
-Token is read from `localStorage.auth_token`. On `401`, client clears storage and redirects to `/login`.
+The access token is kept in module memory and the refresh token is an HttpOnly cookie. On `401`, the client attempts one cookie-backed refresh before clearing local session state and redirecting to `/login`.
 
 ### Route protection
 

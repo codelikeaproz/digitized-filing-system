@@ -6,7 +6,7 @@ This doc is written to match this repo’s backend folder: `project_dfs/backend/
 
 - **Framework**: Django (project settings module: `config.settings`)
 - **API**: Django REST Framework (DRF)
-- **Auth**: SimpleJWT (`/api/token/`, `/api/token/refresh/`)
+- **Auth**: JWT access tokens with an HttpOnly refresh cookie (`/api/auth/login`, `/api/token/refresh/`)
 - **User model**: Custom user model (`AUTH_USER_MODEL = "accounts.User"`)
 - **CORS**: `django-cors-headers` (currently allows all origins in dev)
 - **DB**: **SQLite** by default (even though `psycopg2-binary` is installed)
@@ -67,7 +67,7 @@ Custom database tables use plural snake_case names (`users`, `org_units`, `docum
 ### 4) Run the Django dev server
 
 ```powershell
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
 Default dev URL:
@@ -113,8 +113,8 @@ Do not run `docker compose down -v` if you need to keep real records.
 ## API endpoints (from `backend/config/urls.py`)
 
 - **Register**: `POST /api/user/register`
-- **Login (JWT)**: `POST /api/token/`
-- **Refresh token**: `POST /api/token/refresh/`
+- **Login (JWT)**: `POST /api/auth/login`
+- **Refresh session**: `POST /api/token/refresh/` (uses the HttpOnly cookie; empty body)
 - **DRF session login**: `GET /api-auth/`
 
 ## Typical request bodies (example)
@@ -125,7 +125,7 @@ Do not run `docker compose down -v` if you need to keep real records.
 { "username": "your_user", "password": "your_pass" }
 ```
 
-Response includes `access` and `refresh`.
+The response includes the access token and user; the refresh token is set as an HttpOnly cookie.
 
 ### Auth header for protected APIs
 
@@ -189,7 +189,7 @@ Finally:
 ```powershell
 python manage.py makemigrations
 python manage.py migrate
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
 ## Common issues
@@ -199,7 +199,7 @@ python manage.py runserver
 - **Powershell can’t activate venv**
   - Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 - **JWT login returns 401**
-  - Check username/password. Also ensure you’re calling `POST /api/token/` with JSON body.
+  - Check email/password. Also ensure you’re calling `POST /api/auth/login` with a JSON body.
 - **CORS errors from React**
   - In this repo dev is permissive (`CORS_ALLOW_ALL_ORIGINS = True`). For production, lock it down.
 

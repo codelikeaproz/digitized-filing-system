@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "@/lib/api-base-url";
+import { getAccessToken } from "@/lib/auth-storage";
 
 const BACKEND_URL = getApiBaseUrl();
 
@@ -11,9 +12,10 @@ function getFileNameFromDisposition(disposition: string | null) {
 }
 
 async function downloadBackup(path: string, fallbackFilename: string) {
-  const token = localStorage.getItem("auth_token");
+  const token = getAccessToken();
   const response = await fetch(`${BACKEND_URL}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
   });
 
   if (!response.ok) {

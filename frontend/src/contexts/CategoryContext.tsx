@@ -1,5 +1,5 @@
 // Version 1.0.2 - API Integration Robustness
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { api, PaginatedResponse } from "@/lib/api";
 import type { Category } from "@/types";
@@ -117,17 +117,17 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const value = useMemo<CategoryContextType>(() => ({
+    categories,
+    loading,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+    refreshCategories: fetchCategories,
+  }), [addCategory, categories, deleteCategory, fetchCategories, loading, updateCategory]);
+
   return (
-    <CategoryContext.Provider
-      value={{
-        categories,
-        loading,
-        addCategory,
-        updateCategory,
-        deleteCategory,
-        refreshCategories: fetchCategories,
-      }}
-    >
+    <CategoryContext.Provider value={value}>
       {children}
     </CategoryContext.Provider>
   );

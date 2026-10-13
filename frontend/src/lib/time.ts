@@ -3,6 +3,14 @@ const MANILA_OFFSET = "+08:00";
 
 const LEGACY_24H_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const LEGACY_12H_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{1,2}):(\d{2}):(\d{2}) ([AP]M)$/i;
+const DOCUMENT_TABLE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: MANILA_TIME_ZONE,
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
 
 function normalizeTimestamp(value: string | number | Date) {
   if (value instanceof Date || typeof value === "number") return value;
@@ -59,14 +67,7 @@ export function formatDocumentTableDate(value?: string | number | Date | null) {
   const date = new Date(normalizeTimestamp(value));
   if (Number.isNaN(date.getTime())) return String(value);
 
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: MANILA_TIME_ZONE,
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(date);
+  const parts = DOCUMENT_TABLE_FORMATTER.formatToParts(date);
 
   const month = parts.find((part) => part.type === "month")?.value ?? "";
   const day = parts.find((part) => part.type === "day")?.value ?? "";

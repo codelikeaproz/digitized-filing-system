@@ -4,7 +4,7 @@
  * Features: search/filter, pagination, Excel export.
  * APIs: GET /api/audit-logs/, export-xlsx.
  */
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { 
   Table, 
   TableBody, 
@@ -37,6 +37,7 @@ import {
 } from "@/components/auditlogs/AuditAnalyticsCharts";
 
 import { getApiBaseUrl } from "@/lib/api-base-url";
+import { getAccessToken } from "@/lib/auth-storage";
 
 const BACKEND_URL = getApiBaseUrl();
 
@@ -108,7 +109,7 @@ export default function AuditLogsPage() {
   const [analytics, setAnalytics] = useState<AuditAnalytics | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
-  const buildFilterParams = (includePagination = true) => {
+  const buildFilterParams = useCallback((includePagination = true) => {
     const params: Record<string, string | number> = {};
     if (includePagination) {
       params.page = currentPage;
@@ -121,55 +122,65 @@ export default function AuditLogsPage() {
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
     return params;
-  };
+  }, [actionFilter, currentPage, debouncedSearch, endDate, orgUnitFilter, pageSize, roleFilter, startDate]);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async (signal?: AbortSignal) => {
     try {
-      const logPage = await api.get<PaginatedResponse<AuditLog>>("/api/audit-logs/", buildFilterParams());
+      const logPage = await api.get<PaginatedResponse<AuditLog>>("/api/audit-logs/", buildFilterParams(), { signal });
       setLogs(logPage.results);
       setLogCount(logPage.count);
-    } catch (error) {
-      console.error("API Error (Audit Logs):", error);
-      toast.error("Failed to load audit logs");
+    } catch (error: any) {
+      if (error.name !== "AbortError") {
+        console.error("API Error (Audit Logs):", error);
+        toast.error("Failed to load audit logs");
+      }
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
-  };
+  }, [buildFilterParams]);
 
-  const fetchOrgUnits = async () => {
+  const fetchOrgUnits = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await api.get<PaginatedResponse<{ id: string; name: string }>>("/api/org-units/", { page_size: 100 });
+      const data = await api.get<PaginatedResponse<{ id: string; name: string }>>("/api/org-units/", { page_size: 100 }, { signal });
       setOrgUnits(data.results);
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      if (error.name !== "AbortError") console.error(error);
     }
-  };
+  }, []);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsAnalyticsLoading(true);
-      const data = await api.get<AuditAnalytics>("/api/audit-logs/analytics/", buildFilterParams(false));
+      const data = await api.get<AuditAnalytics>("/api/audit-logs/analytics/", buildFilterParams(false), { signal });
       setAnalytics(data);
-    } catch (error) {
-      console.error("API Error (Audit Analytics):", error);
+    } catch (error: any) {
+      if (error.name !== "AbortError") console.error("API Error (Audit Analytics):", error);
     } finally {
-      setIsAnalyticsLoading(false);
+      if (!signal?.aborted) setIsAnalyticsLoading(false);
     }
-  };
+  }, [buildFilterParams]);
 
   useEffect(() => {
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 10000);
-    return () => clearInterval(interval);
-  }, [currentPage, pageSize, debouncedSearch, actionFilter, roleFilter, orgUnitFilter, startDate, endDate]);
+    const controller = new AbortController();
+    fetchLogs(controller.signal);
+    const interval = setInterval(() => fetchLogs(controller.signal), 10000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, [fetchLogs]);
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [debouncedSearch, actionFilter, roleFilter, orgUnitFilter, startDate, endDate]);
+    const controller = new AbortController();
+    fetchAnalytics(controller.signal);
+    return () => controller.abort();
+  }, [fetchAnalytics]);
 
   useEffect(() => {
-    fetchOrgUnits();
-  }, []);
+    const controller = new AbortController();
+    fetchOrgUnits(controller.signal);
+    return () => controller.abort();
+  }, [fetchOrgUnits]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -227,9 +238,10 @@ export default function AuditLogsPage() {
         query.set(key, String(value));
       });
       const url = `${BACKEND_URL}/api/audit-logs/export-xlsx/${query.toString() ? `?${query.toString()}` : ""}`;
-      const token = localStorage.getItem("auth_token");
+      const token = getAccessToken();
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
       });
 
       if (!response.ok) {

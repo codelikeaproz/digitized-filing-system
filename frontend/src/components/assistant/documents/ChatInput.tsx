@@ -37,6 +37,7 @@ export function ChatInput({ value, disabled, placeholder, onChange, onSubmit }: 
           }}
         />
         <Button
+          aria-label="Send message"
           type="submit"
           disabled={disabled || !value.trim()}
           size="icon"

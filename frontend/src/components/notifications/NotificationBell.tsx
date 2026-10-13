@@ -35,20 +35,22 @@ export function NotificationBell() {
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverTrigger
+        render={
+          <Button
           variant="ghost"
           size="icon"
           className="relative text-muted-foreground hover:text-foreground"
           aria-label="Notifications"
-        >
+          />
+        }
+      >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 ? (
             <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           ) : null}
-        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-0">
         <div className="flex items-start justify-between gap-3 border-b px-4 py-3">

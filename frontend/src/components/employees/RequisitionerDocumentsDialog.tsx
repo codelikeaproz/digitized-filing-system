@@ -26,10 +26,11 @@ import {
 import { PaginationControls } from "@/components/PaginationControls";
 import { api } from "@/lib/api";
 import { resolveApiUrl } from "@/lib/api-base-url";
+import { getAccessToken } from "@/lib/auth-storage";
 import { formatRequisitionerEmployeeNumberDisplay } from "@/lib/employee-number";
 import { formatManilaDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { DocType, EmployeeDirectoryEntry, RequisitionerDocumentsResponse } from "@/types";
+import type { Document as DocType, EmployeeDirectoryEntry, RequisitionerDocumentsResponse } from "@/types";
 
 interface RequisitionerDocumentsDialogProps {
   employee: EmployeeDirectoryEntry | null;
@@ -56,6 +57,12 @@ export function RequisitionerDocumentsDialog({
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+    };
+  }, [previewBlobUrl]);
+
+  useEffect(() => {
     if (!open) {
       setCurrentPage(1);
       setSearchQuery("");
@@ -67,8 +74,9 @@ export function RequisitionerDocumentsDialog({
     setCurrentPage(1);
   }, [employee?.id, searchQuery]);
 
-  const fetchDocuments = useCallback(async () => {
-    if (!employee) return;
+  const employeeId = employee?.id;
+  const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
+    if (!employeeId) return;
     setLoading(true);
     try {
       const params: Record<string, string | number> = {
@@ -79,32 +87,36 @@ export function RequisitionerDocumentsDialog({
         params.search = searchQuery.trim();
       }
       const data = await api.get<RequisitionerDocumentsResponse>(
-        `/api/employees/${employee.id}/documents`,
+        `/api/employees/${employeeId}/documents`,
         params,
+        { signal },
       );
       setDocuments(data.results);
       setDocumentCount(data.count);
     } catch (error: any) {
-      toast.error(error.message || "Failed to load tagged documents");
+      if (error.name !== "AbortError") {
+        toast.error(error.message || "Failed to load tagged documents");
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  }, [employee, currentPage, pageSize, searchQuery]);
+  }, [employeeId, currentPage, pageSize, searchQuery]);
 
   useEffect(() => {
-    if (!open || !employee) return;
+    if (!open || !employeeId) return;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetchDocuments();
+      fetchDocuments(controller.signal);
     }, 300);
-    return () => clearTimeout(timer);
-  }, [open, employee, fetchDocuments]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, employeeId, fetchDocuments]);
 
   useEffect(() => {
     if (!previewDoc) {
-      setPreviewBlobUrl((previous) => {
-        if (previous) URL.revokeObjectURL(previous);
-        return null;
-      });
+      setPreviewBlobUrl(null);
       setPreviewLoading(false);
       setPreviewError(null);
       return;
@@ -116,9 +128,10 @@ export function RequisitionerDocumentsDialog({
 
     const loadPreview = async () => {
       try {
-        const token = localStorage.getItem("auth_token");
+        const token = getAccessToken();
         const response = await fetch(resolveApiUrl(`/api/documents/${previewDoc.id}/preview/`), {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
         });
 
         if (!response.ok) {
@@ -149,18 +162,11 @@ export function RequisitionerDocumentsDialog({
 
         const blob = await response.blob();
         if (cancelled) return;
-        const objectUrl = URL.createObjectURL(blob);
-        setPreviewBlobUrl((previous) => {
-          if (previous) URL.revokeObjectURL(previous);
-          return objectUrl;
-        });
+        setPreviewBlobUrl(URL.createObjectURL(blob));
       } catch (error: any) {
         if (!cancelled) {
           setPreviewError(error.message || "Failed to load preview");
-          setPreviewBlobUrl((previous) => {
-            if (previous) URL.revokeObjectURL(previous);
-            return null;
-          });
+          setPreviewBlobUrl(null);
         }
       } finally {
         if (!cancelled) setPreviewLoading(false);

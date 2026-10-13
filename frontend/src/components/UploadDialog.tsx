@@ -90,7 +90,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
 
   const uploadLimitBytes = uploadLimitMb * 1024 * 1024;
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setState("manual-upload");
     setFile(null);
     setCustomFileName("");
@@ -108,31 +108,34 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
     setFileSizeError(null);
     setGoogleDriveLink("");
     setGoogleDriveLinkError("");
-  };
+  }, [selectedFolderId]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!open) {
       reset();
     } else {
       setTargetFolderId(selectedFolderId || "");
-      fetchFolders();
+      api.get<Folder[]>("/api/folders")
+        .then((folderList) => {
+          if (!cancelled) setFolders(folderList);
+        })
+        .catch((error) => console.error("Failed to load folders:", error));
       fetchSystemSettings()
-        .then((settings) => setUploadLimitMb(settings.uploadLimitMb))
-        .catch(() => setUploadLimitMb(15));
+        .then((settings) => {
+          if (!cancelled) setUploadLimitMb(settings.uploadLimitMb);
+        })
+        .catch(() => {
+          if (!cancelled) setUploadLimitMb(15);
+        });
       if (storageQuotaExceeded) {
         toast.error("Storage quota exceeded. Please contact your system administrator.");
       }
     }
-  }, [open, selectedFolderId, storageQuotaExceeded]);
-
-  const fetchFolders = async () => {
-    try {
-      const folderList = await api.get<Folder[]>("/api/folders");
-      setFolders(folderList);
-    } catch (error) {
-      console.error("Failed to load folders:", error);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reset, selectedFolderId, storageQuotaExceeded]);
 
   const folderPaths = useMemo(() => {
     const getPath = (folderId: string): string => {

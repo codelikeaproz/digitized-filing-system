@@ -5,7 +5,7 @@
  * APIs: GET /api/recycle-bin, POST restore, POST permanent delete with typed confirmation,
  * POST bulk-summary, bulk-restore, bulk-delete.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -95,27 +95,31 @@ export default function RecycleBinPage() {
   const selectedDocumentCount = selectedItems.filter((item) => item.type === 'document').length;
   const selectedFolderCount = selectedItems.filter((item) => item.type === 'folder').length;
 
-  const fetchRecycleBin = async () => {
+  const fetchRecycleBin = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
     try {
       const data = await api.get<PaginatedResponse<RecycleBinItem>>('/api/recycle-bin', {
         page: currentPage,
         page_size: pageSize,
         type: filter,
-      });
+      }, { signal });
       setItems(data.results);
       setItemCount(data.count);
     } catch (error: any) {
-      toast.error('Failed to load recycle bin');
-      console.error(error);
+      if (error.name !== 'AbortError') {
+        toast.error('Failed to load recycle bin');
+        console.error(error);
+      }
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
-  };
+  }, [currentPage, filter, pageSize]);
 
   useEffect(() => {
-    fetchRecycleBin();
-  }, [currentPage, pageSize, filter]);
+    const controller = new AbortController();
+    fetchRecycleBin(controller.signal);
+    return () => controller.abort();
+  }, [fetchRecycleBin]);
 
   const clearSelection = () => setSelectedItemsMap(new Map());
 
@@ -257,7 +261,7 @@ export default function RecycleBinPage() {
               <SelectItem value="folders">Folders Only</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={fetchRecycleBin} disabled={isLoading}>
+          <Button aria-label="Refresh recycle bin" variant="outline" size="icon" onClick={() => fetchRecycleBin()} disabled={isLoading}>
             <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>

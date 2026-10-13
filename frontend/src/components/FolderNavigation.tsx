@@ -70,36 +70,43 @@ const FolderItem: React.FC<FolderItemProps> = ({
   const canRename = isFolder && (isAdmin || isDeptHead || isStaff);
   const canDelete = isFolder && (isAdmin || isDeptHead || (isStaff && !isNonEmpty));
   const canManage = canAddSubfolder || canRename || canDelete;
+  const selectFolder = () => {
+    onSelect(folder);
+    setIsOpen((open) => !open);
+  };
 
   return (
     <div className="select-none">
-      <div 
+      <div
         className={cn(
-          "group flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground cursor-pointer",
+          "group flex items-center rounded-md pr-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
           selectedId === folder.id && "bg-accent text-accent-foreground"
         )}
-        style={{ paddingLeft: `${level * 12 + 16}px` }}
-        onClick={() => {
-          onSelect(folder);
-          setIsOpen(!isOpen);
-        }}
       >
-        <div className="flex h-4 w-4 items-center justify-center">
-          {hasChildren ? (
-            isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
-          ) : null}
-        </div>
-        {isOrgUnit ? (
-          <Building2 className={cn("h-4 w-4", selectedId === folder.id ? "text-primary" : "text-emerald-700")} />
-        ) : (
-          <Folder className={cn("h-4 w-4", selectedId === folder.id ? "text-primary" : "text-muted-foreground")} />
-        )}
-        <span className="flex-1 truncate">{folder.name}</span>
+        <button
+          type="button"
+          aria-expanded={hasChildren ? isOpen : undefined}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          style={{ paddingLeft: `${level * 12 + 16}px` }}
+          onClick={selectFolder}
+        >
+          <span className="flex h-4 w-4 items-center justify-center">
+            {hasChildren ? (
+              isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+            ) : null}
+          </span>
+          {isOrgUnit ? (
+            <Building2 className={cn("h-4 w-4", selectedId === folder.id ? "text-primary" : "text-emerald-700")} />
+          ) : (
+            <Folder className={cn("h-4 w-4", selectedId === folder.id ? "text-primary" : "text-muted-foreground")} />
+          )}
+          <span className="flex-1 truncate">{folder.name}</span>
+        </button>
         {canManage && (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="ghost" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100">
+                <Button aria-label={`Actions for ${folder.name}`} variant="ghost" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus:opacity-100">
                   <MoreHorizontal className="h-3 w-3" />
                 </Button>
               }
@@ -265,7 +272,7 @@ export function FolderNavigation({ folders, onSelect, selectedId }: { folders: a
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex shrink-0 items-center justify-between px-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Folders</h3>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openCreateFromToolbar}>
+        <Button aria-label="Create folder" variant="ghost" size="icon" className="h-6 w-6" onClick={openCreateFromToolbar}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>

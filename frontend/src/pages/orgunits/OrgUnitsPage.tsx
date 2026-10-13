@@ -3,7 +3,7 @@
  *
  * APIs: /api/org-units/, /api/org-types/ (CRUD, soft delete OrgUnit).
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Network, Plus, Trash2, Edit, Loader2, FolderTree, Filter, MoreVertical } from 'lucide-react';
@@ -106,6 +106,7 @@ export default function OrgUnitsPage() {
   const [ouToDelete, setOuToDelete] = useState<OrgUnit | null>(null);
   const [typeToDelete, setTypeToDelete] = useState<OrgType | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingOrgUnit, setIsSavingOrgUnit] = useState(false);
   const [isSavingType, setIsSavingType] = useState(false);
   const [systemStorageQuotaMb, setSystemStorageQuotaMb] = useState<number | null>(null);
   const [storageQuotaError, setStorageQuotaError] = useState('');
@@ -115,7 +116,7 @@ export default function OrgUnitsPage() {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
-  const fetchOrgUnits = async () => {
+  const fetchOrgUnits = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsLoading(true);
       const params: Record<string, string | number> = {
@@ -125,58 +126,80 @@ export default function OrgUnitsPage() {
       if (typeFilter !== 'all') {
         params.org_type_id = typeFilter;
       }
-      const data = await api.get<OrgUnitListResponse>('/api/org-units/', params);
+      const data = await api.get<OrgUnitListResponse>('/api/org-units/', params, { signal });
       setOrgUnits(data.results);
       setOrgUnitCount(data.count);
       setListSummary(data.summary ?? null);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch Office Units');
+      if (error.name !== 'AbortError') toast.error(error.message || 'Failed to fetch Office Units');
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
-  };
+  }, [currentPage, pageSize, typeFilter]);
 
-  const fetchAllOrgUnits = async () => {
+  const fetchAllOrgUnits = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await api.get<PaginatedResponse<OrgUnit>>('/api/org-units/', { page_size: 100 });
+      const data = await api.get<PaginatedResponse<OrgUnit>>('/api/org-units/', { page_size: 100 }, { signal });
       setAllOrgUnits(data.results);
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') console.error(error);
     }
-  };
+  }, []);
 
-  const fetchOrgTypes = async () => {
+  const fetchOrgTypes = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsTypeLoading(true);
-      const data = await api.get<OrgType[] | PaginatedResponse<OrgType>>('/api/org-types/', { includeInactive: 'true' });
+      const data = await api.get<OrgType[] | PaginatedResponse<OrgType>>('/api/org-types/', { includeInactive: 'true' }, { signal });
       const results = Array.isArray(data) ? data : data.results;
       setOrgTypes([...results].sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch org types');
+      if (error.name !== 'AbortError') toast.error(error.message || 'Failed to fetch org types');
     } finally {
-      setIsTypeLoading(false);
+      if (!signal?.aborted) setIsTypeLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchOrgUnits();
-  }, [currentPage, pageSize, typeFilter]);
-
-  useEffect(() => {
-    fetchAllOrgUnits();
-    fetchOrgTypes();
-    fetchSystemSettings()
-      .then((settings) => setSystemStorageQuotaMb(settings.storageQuotaMb))
-      .catch(() => setSystemStorageQuotaMb(null));
   }, []);
 
   useEffect(() => {
-    if (!isModalOpen) return;
+    const controller = new AbortController();
+    fetchOrgUnits(controller.signal);
+    return () => controller.abort();
+  }, [fetchOrgUnits]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    fetchAllOrgUnits(controller.signal);
+    fetchOrgTypes(controller.signal);
     fetchSystemSettings()
-      .then((settings) => setSystemStorageQuotaMb(settings.storageQuotaMb))
-      .catch(() => setSystemStorageQuotaMb(null));
-    fetchAllOrgUnits();
-  }, [isModalOpen]);
+      .then((settings) => {
+        if (!cancelled) setSystemStorageQuotaMb(settings.storageQuotaMb);
+      })
+      .catch(() => {
+        if (!cancelled) setSystemStorageQuotaMb(null);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [fetchAllOrgUnits, fetchOrgTypes]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    fetchSystemSettings()
+      .then((settings) => {
+        if (!cancelled) setSystemStorageQuotaMb(settings.storageQuotaMb);
+      })
+      .catch(() => {
+        if (!cancelled) setSystemStorageQuotaMb(null);
+      });
+    fetchAllOrgUnits(controller.signal);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [fetchAllOrgUnits, isModalOpen]);
 
   const selectedOrgUnitQuotaMb = Number(formData.storageQuotaMb);
   const isChildUnit = Boolean(formData.parentId);
@@ -377,6 +400,7 @@ export default function OrgUnitsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingOrgUnit) return;
     setStorageQuotaError('');
 
     if (quotaExceedsSystemLimit) {
@@ -407,6 +431,7 @@ export default function OrgUnitsPage() {
       return;
     }
 
+    setIsSavingOrgUnit(true);
     try {
       if (isEditMode && editId) {
         await api.put<OrgUnit>(`/api/org-units/${editId}/`, {
@@ -443,6 +468,8 @@ export default function OrgUnitsPage() {
         setStorageQuotaError(String(fieldError));
       }
       toast.error(error.message || 'Failed to save Office Unit');
+    } finally {
+      setIsSavingOrgUnit(false);
     }
   };
 
@@ -953,6 +980,7 @@ export default function OrgUnitsPage() {
                 <Button
                   type="submit"
                   disabled={
+                    isSavingOrgUnit ||
                     !formData.orgTypeId ||
                     isTypeLoading ||
                     quotaExceedsSystemLimit ||
@@ -960,7 +988,7 @@ export default function OrgUnitsPage() {
                   }
                   className="h-11 rounded-xl px-6 bg-[#0A4D27] hover:bg-[#083E1D] text-white disabled:opacity-50"
                 >
-                  {isEditMode ? 'Save Changes' : 'Create'}
+                  {isSavingOrgUnit ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create'}
                 </Button>
               </div>
             </form>

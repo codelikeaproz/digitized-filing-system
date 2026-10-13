@@ -1,6 +1,6 @@
 /**
  * LoginPage — public login form.
- * API: POST /api/auth/login → stores JWT in localStorage via auth-context.
+ * API: POST /api/auth/login → starts the cookie-backed session via auth-context.
  */
 import React, { useState } from 'react'
 import { publicAsset } from '@/lib/app-path'
@@ -151,6 +151,7 @@ export default function LoginPage() {
                       disabled={isLoading}
                     />
                     <button
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"

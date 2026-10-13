@@ -284,6 +284,7 @@ export function DocumentAssistantDrawer({
             </div>
           </div>
           <Button
+            aria-label="Minimize document assistant"
             type="button"
             variant="ghost"
             size="icon-sm"

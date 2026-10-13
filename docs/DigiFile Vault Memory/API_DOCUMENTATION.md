@@ -83,7 +83,6 @@ User (role + optional OrgUnit assignment)
 ```json
 {
   "token": "<access_token>",
-  "refresh": "<refresh_token>",
   "user": {
     "id": "1",
     "email": "user@example.com",
@@ -111,26 +110,20 @@ User (role + optional OrgUnit assignment)
 
 **Notes for frontend developers:**
 
-- Store `token` in `localStorage` as `auth_token` (see `frontend/src/lib/api.ts`).
+- Keep `token` in memory. The refresh token is set separately as an HttpOnly cookie and is never returned to JavaScript.
+- Requests that may use the refresh session must include credentials (`credentials: "include"`).
 - Login requires both `is_active` and `is_active_status` to be true.
 - New users created by Admin/Dept Head receive an activation email. They may also receive an optional password from the manager on create/update to activate immediately without using the activation link.
 
 ---
 
-### 3.2 SimpleJWT token endpoints (alternate)
+### 3.2 Refresh the browser session
 
 | | |
 |---|---|
-| **Obtain pair** | `POST /api/token/` |
 | **Refresh** | `POST /api/token/refresh/` |
 
-**Refresh request:**
-
-```json
-{
-  "refresh": "<refresh_token>"
-}
-```
+The request body is empty. The endpoint reads the HttpOnly `dfs_refresh_token` cookie set by login. A refresh token supplied in JSON is rejected.
 
 **Refresh success `200`:**
 
@@ -145,7 +138,7 @@ User (role + optional OrgUnit assignment)
 | Access token lifetime | 30 minutes |
 | Refresh token lifetime | 1 day |
 
-> The React app currently uses `/api/auth/login` (returns `token` + `refresh`), not `/api/token/`.
+The direct `/api/token/` pair endpoint is intentionally not exposed because it would return a JavaScript-readable refresh token.
 
 ---
 
@@ -286,9 +279,7 @@ Sets `is_active` and `is_active_status` to `true`.
 
 ### 3.8 Logout
 
-**Status: Not implemented server-side.**
-
-The frontend clears `auth_token` and `auth_user` from `localStorage` on logout. JWT tokens remain valid until expiry unless you add a denylist.
+`POST /api/auth/logout` clears the HttpOnly refresh cookie. The frontend also clears its in-memory access token and cached user metadata. The already-issued access token remains valid until its 30-minute expiry.
 
 ---
 
@@ -448,15 +439,14 @@ Or custom:
 | Endpoint | Method | Path | Auth | Notes |
 |----------|--------|------|------|-------|
 | Login | POST | `/api/auth/login` | No | Primary login; rate-limited |
+| Logout | POST | `/api/auth/logout` | No | Clears the HttpOnly refresh cookie |
 | Current user | GET | `/api/auth/me` | Yes | Profile for session rehydration |
 | Update password | POST | `/api/auth/update-password` | Yes | Changes password for logged-in user |
 | Forgot password | POST | `/api/auth/forgot-password` | No | Sends reset email if account exists |
 | Reset password | POST | `/api/auth/reset-password` | No | Completes email reset flow |
 | Set password / activate | POST | `/api/auth/set-password` | No | First-time account activation |
-| JWT obtain pair | POST | `/api/token/` | No | Alternate SimpleJWT login |
-| JWT refresh | POST | `/api/token/refresh/` | No | Refresh access token |
+| JWT refresh | POST | `/api/token/refresh/` | Cookie | Refresh access token from HttpOnly cookie |
 | Public register | POST | `/api/user/register` | No | **Disabled** — returns `405` |
-| Logout | — | — | — | **Not implemented** (client-side only) |
 
 ---
 
@@ -2109,6 +2099,8 @@ No global `ordering` query parameter is implemented on list endpoints.
 | `EMAIL_HOST_PASSWORD` | SMTP password | `<secret>` |
 | `DEFAULT_FROM_EMAIL` | From address | `<email>` |
 | `FRONTEND_URL` | Base URL for email links | `http://localhost:5173` |
+| `CORS_ALLOWED_ORIGINS` | Optional comma-separated browser origins; defaults to the origin in `FRONTEND_URL` | `<empty>` |
+| `AUTH_REFRESH_COOKIE_PATH` | Optional cookie path; defaults to the `FRONTEND_URL` path plus `/api/` | `/api/` |
 | `OPENROUTER_API_KEY` | AI assistant API key | `<secret>` |
 | `OPENROUTER_MODEL` | LLM model slug | `google/gemini-2.5-flash-lite` |
 | `OPENROUTER_BASE_URL` | OpenRouter API base | `https://openrouter.ai/api/v1` |
@@ -2122,15 +2114,16 @@ No global `ordering` query parameter is implemented on list endpoints.
 
 - Location: `frontend/src/lib/api.ts`
 - Base URL: `import.meta.env.VITE_API_URL`
-- Token storage: `localStorage.auth_token`
+- Access token: module memory only
+- Refresh token: HttpOnly cookie only
 - User storage: `localStorage.auth_user`
 - Header: `Authorization: Bearer <token>`
 
 ### Auth flow
 
-1. `POST /api/auth/login` → store token + user
-2. On app load, `GET /api/auth/me` rehydrates session
-3. On `401`, client clears storage and redirects to `/login`
+1. `POST /api/auth/login` → keep the access token in memory; browser receives the refresh cookie
+2. On app load, `POST /api/token/refresh/`, then `GET /api/auth/me`, rehydrates the session
+3. On `401`, client attempts one cookie refresh, then clears local session state and redirects to `/login`
 4. On `429`, redirects to `/error/429`
 5. On `5xx`, redirects to `/error/500`
 
@@ -2205,8 +2198,9 @@ curl "http://localhost:8000/api/audit-logs/export-xlsx/?start_date=2026-05-01&en
 
 ```bash
 curl -X POST http://localhost:8000/api/token/refresh/ \
+  --cookie "dfs_refresh_token=<REFRESH_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"refresh":"<REFRESH_TOKEN>"}'
+  -d '{}'
 ```
 
 ### AI assistant chat

@@ -32,6 +32,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
 from auditlogs.models import log_audit
 from config.pagination import StandardResultsSetPagination
@@ -52,6 +53,26 @@ from .throttles import ActivationEmailRateThrottle, LoginRateThrottle
 
 logger = logging.getLogger(__name__)
 LAST_ACTIVE_ADMIN_MESSAGE = "At least one active Admin must remain in the system."
+
+
+def _set_refresh_cookie(response, token):
+    response.set_cookie(
+        settings.AUTH_REFRESH_COOKIE_NAME,
+        token,
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        httponly=True,
+        secure=settings.AUTH_REFRESH_COOKIE_SECURE,
+        samesite=settings.AUTH_REFRESH_COOKIE_SAMESITE,
+        path=settings.AUTH_REFRESH_COOKIE_PATH,
+    )
+
+
+def _clear_refresh_cookie(response):
+    response.delete_cookie(
+        settings.AUTH_REFRESH_COOKIE_NAME,
+        path=settings.AUTH_REFRESH_COOKIE_PATH,
+        samesite=settings.AUTH_REFRESH_COOKIE_SAMESITE,
+    )
 
 
 def role_label(role):
@@ -88,13 +109,44 @@ class LoginView(APIView):
 
         refresh = RefreshToken.for_user(user)
         log_audit(user, "LOGIN", "User logged in from web interface", ip_address=request.META.get("REMOTE_ADDR"))
-        return Response(
+        response = Response(
             {
                 "token": str(refresh.access_token),
-                "refresh": str(refresh),
                 "user": UserSerializer(user, context={"request": request}).data,
             }
         )
+        _set_refresh_cookie(response, str(refresh))
+        return response
+
+
+class CookieTokenRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh = request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        if not refresh:
+            return Response({"detail": "Refresh session not found."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh})
+        if not serializer.is_valid():
+            response = Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
+            _clear_refresh_cookie(response)
+            return response
+
+        response = Response({"access": serializer.validated_data["access"]})
+        rotated_refresh = serializer.validated_data.get("refresh")
+        if rotated_refresh:
+            _set_refresh_cookie(response, rotated_refresh)
+        return response
+
+
+class LogoutView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        response = Response({"message": "Logged out successfully."})
+        _clear_refresh_cookie(response)
+        return response
 
 
 class MeView(APIView):

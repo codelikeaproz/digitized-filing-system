@@ -5,7 +5,7 @@
  * APIs: GET/POST /api/users, PUT/PATCH/DELETE /api/users/{id},
  *       activate/deactivate, resend-activation.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { api, PaginatedResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import { 
@@ -162,7 +162,7 @@ export default function UsersPage() {
     return isAdmin && target.id !== currentUser?.id && !target.isLastActiveAdmin;
   };
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsLoading(true);
       const params: Record<string, string | number> = {
@@ -178,32 +178,36 @@ export default function UsersPage() {
         if (orgUnitFilter !== 'all') params.orgUnitId = orgUnitFilter;
       }
 
-      const data = await api.get<PaginatedResponse<User>>('/api/users', params);
+      const data = await api.get<PaginatedResponse<User>>('/api/users', params, { signal });
       setUsers(data.results);
       setUserCount(data.count);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch users');
+      if (error.name !== 'AbortError') toast.error(error.message || 'Failed to fetch users');
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
-  };
+  }, [currentPage, debouncedSearch, isDeptHead, orgUnitFilter, pageSize, roleFilter]);
 
-  const fetchOrgUnits = async () => {
+  const fetchOrgUnits = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 });
+      const data = await api.get<PaginatedResponse<{id: string, name: string}>>('/api/org-units/', { page_size: 100 }, { signal });
       setOrgUnits(data.results);
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') console.error(error);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchUsers();
-  }, [currentPage, pageSize, debouncedSearch, roleFilter, orgUnitFilter, currentUserRole, currentUserOrgUnitId]);
+    const controller = new AbortController();
+    fetchUsers(controller.signal);
+    return () => controller.abort();
+  }, [currentUserOrgUnitId, currentUserRole, fetchUsers]);
 
   useEffect(() => {
-    fetchOrgUnits();
-  }, [currentUserRole, currentUserOrgUnitId]);
+    const controller = new AbortController();
+    fetchOrgUnits(controller.signal);
+    return () => controller.abort();
+  }, [currentUserOrgUnitId, currentUserRole, fetchOrgUnits]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -761,8 +765,9 @@ export default function UsersPage() {
             
             <form onSubmit={isAddModalOpen ? handleSubmitAdd : handleSubmitEdit} className="p-6 space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Employee Number</label>
+                <label htmlFor="user-employee-number" className="text-sm font-medium text-gray-700">Employee Number</label>
                 <Input
+                  id="user-employee-number"
                   name="employeeNumber"
                   value={formData.employeeNumber}
                   onChange={handleInputChange}
@@ -780,8 +785,9 @@ export default function UsersPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">First Name</label>
+                  <label htmlFor="user-first-name" className="text-sm font-medium text-gray-700">First Name</label>
                   <Input
+                    id="user-first-name"
                     name="firstName"
                     value={formData.firstName}
                     onChange={handleInputChange}
@@ -791,8 +797,9 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Last Name</label>
+                  <label htmlFor="user-last-name" className="text-sm font-medium text-gray-700">Last Name</label>
                   <Input
+                    id="user-last-name"
                     name="lastName"
                     value={formData.lastName}
                     onChange={handleInputChange}
@@ -804,8 +811,9 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Suffix</label>
+                <label htmlFor="user-suffix" className="text-sm font-medium text-gray-700">Suffix</label>
                 <select
+                  id="user-suffix"
                   title="Select suffix"
                   name="suffix"
                   value={formData.suffix}
@@ -821,8 +829,9 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Email Address</label>
+                <label htmlFor="user-email" className="text-sm font-medium text-gray-700">Email Address</label>
                 <Input 
+                  id="user-email"
                   type="email"
                   name="email"
                   value={formData.email}
@@ -834,8 +843,9 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Role</label>
+                <label htmlFor="user-role" className="text-sm font-medium text-gray-700">Role</label>
                 <select 
+                  id="user-role"
                   title="Select role"
                   name="role"
                   value={formData.role}
@@ -860,13 +870,14 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Office Unit</label>
+                <span id="user-office-unit-label" className="text-sm font-medium text-gray-700">Office Unit</span>
                 {formData.role === 'admin' ? (
                   <div className="flex h-11 w-full items-center rounded-xl border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
                     Global Access (Not applicable for Admins)
                   </div>
                 ) : (
                   <select 
+                    aria-labelledby="user-office-unit-label"
                     title="Select Office Unit"
                     name="orgUnitId"
                     value={formData.orgUnitId}
@@ -892,10 +903,11 @@ export default function UsersPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">
+                  <label htmlFor="user-password" className="text-sm font-medium text-gray-700">
                     {isAddModalOpen ? 'Password (optional)' : 'New Password (optional)'}
                   </label>
                   <Input
+                    id="user-password"
                     type="password"
                     name="password"
                     value={formData.password}
@@ -906,8 +918,9 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Confirm Password</label>
+                  <label htmlFor="user-confirm-password" className="text-sm font-medium text-gray-700">Confirm Password</label>
                   <Input
+                    id="user-confirm-password"
                     type="password"
                     name="confirmPassword"
                     value={formData.confirmPassword}

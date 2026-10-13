@@ -312,6 +312,7 @@ export function PublicAssistantDrawer({ open, onOpenChange }: PublicAssistantDra
                 className="h-10 rounded-lg border-[#C9DACB] bg-white"
               />
               <Button
+                aria-label="Send message"
                 type="submit"
                 size="icon"
                 disabled={inputLocked || !value.trim()}

@@ -37,15 +37,13 @@ export function BulkRestoreConfirmDialog({
             <RefreshCcw className="h-5 w-5" />
             Restore Selected Items
           </DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-2 text-sm text-muted-foreground">
+          <DialogDescription render={<div />} className="space-y-2 text-sm text-muted-foreground">
               <p>Documents: <span className="font-semibold text-foreground">{documentCount}</span></p>
               <p>Folders: <span className="font-semibold text-foreground">{folderCount}</span></p>
               <p>
                 Total Selected:{" "}
                 <span className="font-semibold text-foreground">{totalItems} Items</span>
               </p>
-            </div>
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
