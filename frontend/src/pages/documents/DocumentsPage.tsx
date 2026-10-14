@@ -577,12 +577,15 @@ export default function DocumentsPage() {
         selectedFolderPath={isVirtualFolder ? 'All Files' : isOrgUnitNode ? selectedFolder?.name : folderPath.map(f => f.name).join(' > ') || 'All Files'}
         storageQuotaExceeded={storageQuotaExceeded}
       />
-      <DocumentEditDialog
-        open={!!docToEdit}
-        document={docToEdit}
-        onOpenChange={(open) => !open && setDocToEdit(null)}
-        onSaved={() => fetchDocuments(true)}
-      />
+      {docToEdit ? (
+        <DocumentEditDialog
+          key={docToEdit.id}
+          open
+          document={docToEdit}
+          onOpenChange={(open) => !open && setDocToEdit(null)}
+          onSaved={() => fetchDocuments(true)}
+        />
+      ) : null}
       <DocumentAssistant
         pageContext={assistantPageContext}
         onViewDocument={handleAssistantViewDocument}

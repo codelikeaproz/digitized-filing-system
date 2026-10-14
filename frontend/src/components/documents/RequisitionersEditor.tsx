@@ -392,7 +392,7 @@ export function RequisitionersEditor({
 
             return (
               <div
-                key={`requisitioner-${index}-${row.employeeNumber}-${displayName}`}
+                key={row.employeeId || `${row.source}-${row.employeeNumber}-${displayName}`}
                 className={cn(
                   "flex items-center justify-between gap-3 rounded-lg border bg-card/50 p-3",
                   (errors.employeeNumber || errors.firstName || errors.lastName || errors.suffix) &&

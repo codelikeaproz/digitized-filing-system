@@ -137,8 +137,7 @@ interface PublicAssistantDrawerProps {
 }
 
 export function PublicAssistantDrawer({ open, onOpenChange }: PublicAssistantDrawerProps) {
-  const initialMessages = useMemo(() => createInitialMessages(), []);
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<Message[]>(createInitialMessages);
   const [value, setValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isCooldown, setIsCooldown] = useState(false);
@@ -167,26 +166,9 @@ export function PublicAssistantDrawer({ open, onOpenChange }: PublicAssistantDra
     }
   }, []);
 
-  const resetSession = useCallback(() => {
-    clearTimers();
-    setMessages(createInitialMessages());
-    setValue("");
-    setIsTyping(false);
-    setIsCooldown(false);
-    setInputHint("");
-    lastQueryRef.current = "";
-    lastQueryAtRef.current = 0;
-  }, [clearTimers]);
-
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, isTyping]);
-
-  useEffect(() => {
-    if (!open) {
-      resetSession();
-    }
-  }, [open, resetSession]);
 
   useEffect(() => clearTimers, [clearTimers]);
 

@@ -14,7 +14,7 @@ Living task log for DigiFile development. For ongoing data rules (document codes
 - Removed unused PostgreSQL and React Grab dependencies. React Grab remains documented as an optional development install.
 - Consolidated the duplicate `OrgUnitAllocationRow` TypeScript type and removed redundant PyMySQL initialization from Django settings.
 - Updated media backups so ZIP folders use Office/Suboffice and DigiFile folder names instead of numeric/date storage paths.
-- Added `MEDIA_BACKUP_MANIFEST.csv`, collision-safe archive names, invalid filename sanitization, and backup service tests.
+- Added collision-safe archive names, invalid filename sanitization, and backup service tests.
 - Moved the Docker and chatbot notes into this Obsidian vault and repaired their related-document links.
 - Pinned local backend setup to Django 4.2 because this project currently supports the XAMPP/MySQL-compatible Django 4.2 stack.
 
@@ -125,6 +125,21 @@ Manually verify login, reload, automatic refresh, and logout against the configu
 - Removed the PDF iframe sandbox because it prevented the browser's built-in PDF viewer from rendering. This intentionally restores the two React Doctor iframe security warnings for the LAN showcase.
 - Production still defaults to Secure refresh cookies whenever `DEBUG=False`; do not copy the development cookie override into the server environment.
 - The original fetch failure was the running Django process binding only to `127.0.0.1:8000`. It was replaced with a single `0.0.0.0:8000 --noreload` process; both LAN IPs now reach the API and both CORS preflights return the matching origin with credentials enabled.
+- `python manage.py runserver` now defaults to `0.0.0.0:8000`; an explicitly supplied address remains unchanged. This prevents later manual restarts from silently returning the backend to localhost-only access.
+
+### React Doctor reliability and duplication cleanup
+
+- Fixed the confirmed bug behavior behind the prop-reset, effect-chain, changing-callback, stale bulk-summary, and unstable requisitioner-key findings.
+- Stateful dialogs now mount only while open, so document, requisitioner, assistant, and permanent-delete state resets naturally without stale prop-driven effects.
+- Extracted shared authentication introduction/header/success sections and a shared target-folder selector; React Doctor's four duplicate-JSX findings are now zero.
+- Validation: `npx tsc --noEmit` and the production build pass. The latest full scan reports **60 findings**: 26 maintainability, 21 performance, 11 bug, and 2 intentional LAN PDF iframe security warnings. The score API timed out.
+- Manual test focus: document editing, assistant reopen/reset, requisitioner search/pagination and PDF preview, employee-directory mutations, requisitioner row editing/removal, and single/bulk permanent deletion.
+
+### Media backup ZIP cleanup
+
+- Removed `MEDIA_BACKUP_MANIFEST.csv` from generated media backup ZIPs and updated the focused backup test.
+- Media files remain grouped under readable `documents/<Office>/<Suboffice>/<Folder>/` paths, with unlinked documents under `_unlinked/documents/`.
+- Restore remains manual: without the manifest, database file paths and readable ZIP paths must be reconciled manually when rebuilding `MEDIA_ROOT`.
 
 ---
 

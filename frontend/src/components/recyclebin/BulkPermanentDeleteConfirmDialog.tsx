@@ -56,21 +56,17 @@ export function BulkPermanentDeleteConfirmDialog({
   const showMismatchError = confirmationInput.length > 0 && !isMatch;
 
   useEffect(() => {
-    if (!open) {
-      setConfirmationInput("");
-      setSummary(null);
-      setIsLoadingSummary(false);
-      return;
-    }
+    if (!open) return;
 
     const controller = new AbortController();
+    let cancelled = false;
     const fetchSummary = async () => {
       setIsLoadingSummary(true);
       try {
         const data = await api.post<BulkSummaryResponse>("/api/recycle-bin/bulk-summary", {
           items,
         }, { signal: controller.signal });
-        setSummary(data);
+        if (!cancelled) setSummary(data);
       } catch (error: any) {
         if (error.name !== "AbortError") setSummary(null);
       } finally {
@@ -79,7 +75,10 @@ export function BulkPermanentDeleteConfirmDialog({
     };
 
     fetchSummary();
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [open, items]);
 
   const documentCount = summary?.document_count ?? items.filter((item) => item.type === "document").length;

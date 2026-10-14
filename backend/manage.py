@@ -4,6 +4,12 @@ import os
 import sys
 
 
+def with_lan_runserver_default(argv):
+    if len(argv) == 2 and argv[1] == "runserver":
+        return [*argv, "0.0.0.0:8000"]
+    return argv
+
+
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
@@ -15,7 +21,7 @@ def main():
             "available on your PYTHONPATH environment variable? Did you "
             "forget to activate a virtual environment?"
         ) from exc
-    execute_from_command_line(sys.argv)
+    execute_from_command_line(with_lan_runserver_default(sys.argv))
 
 
 if __name__ == '__main__':

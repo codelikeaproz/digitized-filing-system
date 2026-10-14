@@ -1,5 +1,3 @@
-import csv
-import io
 import os
 import re
 import sqlite3
@@ -142,7 +140,6 @@ def create_media_backup():
     org_unit_paths = _org_unit_path_map()
     documents_by_file = {str(row["file"]).replace("\\", "/"): row for row in documents}
     used_names = set()
-    manifest_rows = []
 
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for root, _, files in os.walk(media_root):
@@ -169,13 +166,6 @@ def create_media_backup():
                     archive_name = stored_name
 
                 archive.write(absolute_path, arcname=archive_name)
-                manifest_rows.append((archive_name, stored_name))
-
-        manifest = io.StringIO(newline="")
-        writer = csv.writer(manifest)
-        writer.writerow(["archive_path", "original_media_path"])
-        writer.writerows(manifest_rows)
-        archive.writestr("MEDIA_BACKUP_MANIFEST.csv", manifest.getvalue())
 
     return output_path, filename
 

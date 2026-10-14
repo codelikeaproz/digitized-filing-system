@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FileText, FolderOpen, Hash, Loader2, MessageSquare, Tag, X } from "lucide-react";
+import { FileText, Hash, Loader2, MessageSquare, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,15 +13,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { CategorySelect } from "@/components/CategorySelect";
 import { RequisitionersEditor } from "@/components/documents/RequisitionersEditor";
+import { TargetFolderSelect } from "@/components/documents/TargetFolderSelect";
 import { useCategories } from "@/contexts/CategoryContext";
 import { api } from "@/lib/api";
 import {
@@ -37,7 +31,7 @@ import { Document, Folder } from "@/types";
 
 type DocumentEditDialogProps = {
   open: boolean;
-  document: Document | null;
+  document: Document;
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void;
 };
@@ -45,18 +39,24 @@ type DocumentEditDialogProps = {
 export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: DocumentEditDialogProps) {
   const { categories } = useCategories();
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [targetFolderId, setTargetFolderId] = useState("");
-  const [customFileName, setCustomFileName] = useState("");
-  const [docCode, setDocCode] = useState("");
+  const [targetFolderId, setTargetFolderId] = useState(() => String(document.folderId || ""));
+  const [customFileName, setCustomFileName] = useState(() =>
+    (document.title || document.file_name || "").replace(/\.pdf$/i, "")
+  );
+  const [docCode, setDocCode] = useState(document.code || "");
   const [docCodeError, setDocCodeError] = useState("");
-  const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>([]);
+  const [requisitioners, setRequisitioners] = useState<RequisitionerInput[]>(() =>
+    seedRequisitionersFromDocument(document)
+  );
   const [requisitionerErrors, setRequisitionerErrors] = useState<RequisitionerRowErrors[]>([]);
   const [requisitionerListError, setRequisitionerListError] = useState("");
-  const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [description, setDescription] = useState(document.description || "");
+  const [categoryId, setCategoryId] = useState(() => String(document.categoryId || ""));
+  const [keywords, setKeywords] = useState<string[]>(() =>
+    Array.isArray(document.keywords) ? [...document.keywords] : []
+  );
   const [keywordInput, setKeywordInput] = useState("");
-  const [googleDriveLink, setGoogleDriveLink] = useState("");
+  const [googleDriveLink, setGoogleDriveLink] = useState(document.googleDriveLink || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const folderPaths = useMemo(() => {
@@ -91,23 +91,6 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
       toast.error("Failed to load folders");
     });
   }, [open]);
-
-  useEffect(() => {
-    if (!open || !document) return;
-    const currentName = document.title || document.file_name || "";
-    setTargetFolderId(String(document.folderId || ""));
-    setCustomFileName(currentName.replace(/\.pdf$/i, ""));
-    setDocCode(document.code || "");
-    setDocCodeError("");
-    setRequisitioners(seedRequisitionersFromDocument(document));
-    setRequisitionerErrors([]);
-    setRequisitionerListError("");
-    setDescription(document.description || "");
-    setCategoryId(String(document.categoryId || ""));
-    setKeywords(Array.isArray(document.keywords) ? [...document.keywords] : []);
-    setKeywordInput("");
-    setGoogleDriveLink(document.googleDriveLink || "");
-  }, [open, document]);
 
   const addKeyword = () => {
     const value = keywordInput.trim();
@@ -211,26 +194,7 @@ export function DocumentEditDialog({ open, document, onOpenChange, onSaved }: Do
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-                <FolderOpen className="h-3.5 w-3.5" />
-                Target Folder (Physical Location)
-              </Label>
-              <Select value={targetFolderId} onValueChange={(value) => value !== null && setTargetFolderId(value)}>
-                <SelectTrigger className="h-10 text-sm w-full">
-                  <SelectValue placeholder="Select destination folder...">
-                    {folderPaths.find((folder) => folder.id === targetFolderId)?.path}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {folderPaths.map((folder) => (
-                    <SelectItem key={folder.id} value={folder.id}>
-                      <span style={{ paddingLeft: `${folder.level * 12}px` }}>{folder.path}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <TargetFolderSelect value={targetFolderId} folders={folderPaths} onValueChange={setTargetFolderId} />
 
             <div className="space-y-2">
               <Label htmlFor="edit-file-name" className="text-xs font-semibold uppercase text-muted-foreground">

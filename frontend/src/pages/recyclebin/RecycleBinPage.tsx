@@ -402,13 +402,16 @@ export default function RecycleBinPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <PermanentDeleteConfirmDialog
-        open={!!itemToDelete}
-        item={itemToDelete}
-        isProcessing={isProcessing}
-        onCancel={() => setItemToDelete(null)}
-        onConfirm={handleDelete}
-      />
+      {itemToDelete ? (
+        <PermanentDeleteConfirmDialog
+          key={`${itemToDelete.type}-${itemToDelete.id}`}
+          open
+          item={itemToDelete}
+          isProcessing={isProcessing}
+          onCancel={() => setItemToDelete(null)}
+          onConfirm={handleDelete}
+        />
+      ) : null}
 
       <BulkRestoreConfirmDialog
         open={showBulkRestore}
@@ -420,13 +423,15 @@ export default function RecycleBinPage() {
         onConfirm={handleBulkRestore}
       />
 
-      <BulkPermanentDeleteConfirmDialog
-        open={showBulkDelete}
-        items={selectedItems.map(itemToPayload)}
-        isProcessing={isProcessing}
-        onCancel={() => setShowBulkDelete(false)}
-        onConfirm={handleBulkDelete}
-      />
+      {showBulkDelete ? (
+        <BulkPermanentDeleteConfirmDialog
+          open
+          items={selectedItems.map(itemToPayload)}
+          isProcessing={isProcessing}
+          onCancel={() => setShowBulkDelete(false)}
+          onConfirm={handleBulkDelete}
+        />
+      ) : null}
     </div>
   );
 }

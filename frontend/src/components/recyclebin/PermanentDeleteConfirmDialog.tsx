@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,12 +45,6 @@ export function PermanentDeleteConfirmDialog({
   const isMatch = confirmationInput === requiredPhrase;
   const showMismatchError =
     confirmationInput.length > 0 && !isMatch;
-
-  useEffect(() => {
-    if (!open) {
-      setConfirmationInput("");
-    }
-  }, [open, item?.id, item?.type]);
 
   const title =
     item?.type === "folder"

@@ -44,6 +44,4 @@ class MediaBackupTests(TestCase):
                 archive_path,
                 archive.namelist(),
             )
-            manifest = archive.read("MEDIA_BACKUP_MANIFEST.csv").decode("utf-8")
-            self.assertIn(archive_path, manifest)
-            self.assertIn(document.file.name, manifest)
+            self.assertNotIn("MEDIA_BACKUP_MANIFEST.csv", archive.namelist())

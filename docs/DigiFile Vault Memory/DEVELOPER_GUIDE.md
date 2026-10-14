@@ -196,7 +196,7 @@ Requires `drf-spectacular` in `backend/requirements.txt`.
 - **MySQL:** Backend Docker image includes `default-mysql-client` for `mysqldump`
 - **SQLite dev:** Uses SQLite `.dump` when `DB_ENGINE=sqlite`
 - **Temp files:** Written to `BACKUP_TEMP_DIR` (default `backend/tmp/backups`), deleted after download
-- **Restore:** Manual / out of scope — import SQL into MySQL; the media ZIP's `MEDIA_BACKUP_MANIFEST.csv` maps readable Office/Folder paths back to their original `MEDIA_ROOT` paths
+- **Restore:** Manual / out of scope — import SQL into MySQL. The media ZIP uses readable Office/Folder paths and has no original `MEDIA_ROOT` path manifest, so a database-plus-media restore requires manual path reconciliation.
 
 ### Adding a new API endpoint
 

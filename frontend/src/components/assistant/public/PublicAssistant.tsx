@@ -8,7 +8,7 @@ export function PublicAssistant() {
   return (
     <>
       <PublicAssistantFloatingButton onClick={() => setOpen(true)} />
-      <PublicAssistantDrawer open={open} onOpenChange={setOpen} />
+      {open ? <PublicAssistantDrawer open onOpenChange={setOpen} /> : null}
     </>
   );
 }

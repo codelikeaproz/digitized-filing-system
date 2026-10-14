@@ -92,6 +92,7 @@ export default function EmployeeDirectoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeDirectoryEntry | null>(null);
@@ -151,13 +152,13 @@ export default function EmployeeDirectoryPage() {
   }, []);
 
   useEffect(() => {
-    setCurrentPage(1);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
   }, [searchQuery]);
 
   useEffect(() => {
-    const timer = setTimeout(() => fetchEmployees(searchQuery), 300);
-    return () => clearTimeout(timer);
-  }, [fetchEmployees, searchQuery, currentPage, pageSize]);
+    fetchEmployees(debouncedSearch);
+  }, [debouncedSearch, fetchEmployees]);
 
   const openCreateModal = () => {
     setEditingEmployee(null);
@@ -280,7 +281,10 @@ export default function EmployeeDirectoryPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              setCurrentPage(1);
+            }}
             placeholder="Search requisitioners by number or name..."
             className="pl-9"
           />
@@ -383,11 +387,14 @@ export default function EmployeeDirectoryPage() {
           />
         </div>
 
-        <RequisitionerDocumentsDialog
-          employee={viewingEmployee}
-          open={!!viewingEmployee}
-          onOpenChange={(open) => !open && setViewingEmployee(null)}
-        />
+        {viewingEmployee ? (
+          <RequisitionerDocumentsDialog
+            key={viewingEmployee.id}
+            employee={viewingEmployee}
+            open
+            onOpenChange={(open) => !open && setViewingEmployee(null)}
+          />
+        ) : null}
 
         <Dialog
           open={isModalOpen}

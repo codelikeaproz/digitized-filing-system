@@ -4,18 +4,16 @@
  */
 import React, { useState } from 'react';
 import { publicAsset } from '@/lib/app-path';
-import { CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
+import { AuthCardHeader, AuthSuccessMessage } from "@/components/auth/AuthSharedSections";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -117,38 +115,23 @@ export default function SetPasswordPage() {
       <div className="flex-1 flex items-center justify-center p-8 bg-gray-50/50 relative">
         <div className="w-full max-w-[520px] space-y-8">
           <Card className="shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-none rounded-2xl bg-white p-2">
-            <CardHeader className="space-y-4 py-8 flex flex-col items-center text-center">
-              <div className="flex items-center">
-                <div className="h-12 w-12 rounded-xl object-contain">
-                  <img src={publicAsset('img/login_logo.png')} alt="DigiFile logo" />
-                </div>
-                <span className="text-2xl font-black tracking-tighter text-gray-900">DigiFile</span>
-              </div>
-              <div className="space-y-1">
-                <CardTitle className="text-xl font-bold text-gray-900">Set Your Password</CardTitle>
-                <CardDescription className="text-sm text-gray-500 font-medium">
-                  Create a secure password to activate your account.
-                </CardDescription>
-              </div>
-            </CardHeader>
+            <AuthCardHeader title="Set Your Password" description="Create a secure password to activate your account." />
 
             <CardContent className="px-8">
               {isSuccess ? (
-                <div className="py-6 flex flex-col items-center justify-center space-y-4 text-center animate-in fade-in zoom-in">
-                  <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                    <CheckCircle2 className="h-8 w-8 text-green-600" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">Account Activated</h3>
-                  <p className="text-sm text-gray-500 max-w-sm">
+                <AuthSuccessMessage
+                  title="Account Activated"
+                  action={
+                    <Button
+                      onClick={() => navigate('/login')}
+                      className="mt-6 w-full bg-[#0A4D27] hover:bg-[#083E1D] text-white rounded-xl py-6 font-bold text-sm h-12 shadow-lg shadow-[#0A4D27]/10"
+                    >
+                      Go to Login
+                    </Button>
+                  }
+                >
                     Your account is active. You can now log in using your new password.
-                  </p>
-                  <Button
-                    onClick={() => navigate('/login')}
-                    className="mt-6 w-full bg-[#0A4D27] hover:bg-[#083E1D] text-white rounded-xl py-6 font-bold text-sm h-12 shadow-lg shadow-[#0A4D27]/10"
-                  >
-                    Go to Login
-                  </Button>
-                </div>
+                </AuthSuccessMessage>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-2">

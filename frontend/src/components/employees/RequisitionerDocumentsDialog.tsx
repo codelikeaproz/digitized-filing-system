@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, FileText, Loader2, MoreVertical, Search } from "lucide-react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button";
@@ -62,57 +62,38 @@ export function RequisitionerDocumentsDialog({
     };
   }, [previewBlobUrl]);
 
-  useEffect(() => {
-    if (!open) {
-      setCurrentPage(1);
-      setSearchQuery("");
-      setPreviewDoc(null);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [employee?.id, searchQuery]);
-
   const employeeId = employee?.id;
-  const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
-    if (!employeeId) return;
-    setLoading(true);
-    try {
-      const params: Record<string, string | number> = {
-        page: currentPage,
-        page_size: pageSize,
-      };
-      if (searchQuery.trim()) {
-        params.search = searchQuery.trim();
-      }
-      const data = await api.get<RequisitionerDocumentsResponse>(
-        `/api/employees/${employeeId}/documents`,
-        params,
-        { signal },
-      );
-      setDocuments(data.results);
-      setDocumentCount(data.count);
-    } catch (error: any) {
-      if (error.name !== "AbortError") {
-        toast.error(error.message || "Failed to load tagged documents");
-      }
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [employeeId, currentPage, pageSize, searchQuery]);
-
   useEffect(() => {
     if (!open || !employeeId) return;
     const controller = new AbortController();
-    const timer = setTimeout(() => {
-      fetchDocuments(controller.signal);
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const params: Record<string, string | number> = {
+          page: currentPage,
+          page_size: pageSize,
+        };
+        if (searchQuery.trim()) params.search = searchQuery.trim();
+        const data = await api.get<RequisitionerDocumentsResponse>(
+          `/api/employees/${employeeId}/documents`,
+          params,
+          { signal: controller.signal },
+        );
+        setDocuments(data.results);
+        setDocumentCount(data.count);
+      } catch (error: any) {
+        if (error.name !== "AbortError") {
+          toast.error(error.message || "Failed to load tagged documents");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }, 300);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [open, employeeId, fetchDocuments]);
+  }, [open, employeeId, currentPage, pageSize, searchQuery]);
 
   useEffect(() => {
     if (!previewDoc) {
@@ -210,7 +191,10 @@ export function RequisitionerDocumentsDialog({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setCurrentPage(1);
+              }}
               placeholder="Search by document title or code..."
               className="pl-9"
             />

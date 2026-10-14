@@ -11,11 +11,9 @@ import { Label } from "@/components/ui/label"
 import { 
   Card, 
   CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle,
   CardFooter
 } from "@/components/ui/card"
+import { AuthCardHeader, AuthSystemIntroduction } from "@/components/auth/AuthSharedSections"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "@/lib/auth-context"
 import { toast } from "sonner"
@@ -80,16 +78,7 @@ export default function LoginPage() {
         </div>
 
         <div className="z-20 flex flex-col items-start justify-center flex-1 text-left">
-          <div className="max-w-xl space-y-6">
-            <h1 className="text-6xl font-bold leading-tight tracking-tight text-white uppercase sm:normal-case">
-              Digitized Filing System.
-            </h1>
-            <p className="text-xl text-white font-medium leading-relaxed">
-              The official document management system of
-              <br />
-              <span className="whitespace-nowrap">Central Mindanao University</span>
-            </p>
-          </div>
+          <AuthSystemIntroduction />
         </div>
 
         <div className="z-20 flex flex-col gap-4">
@@ -101,20 +90,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-8 bg-gray-50/50 relative">
         <div className="w-full max-w-[520px] space-y-8">
           <Card className="shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-none rounded-2xl bg-white p-2">
-            <CardHeader className="space-y-4 py-8 flex flex-col items-center text-center">
-            <div className="flex items-center">
-                <div className="h-12 w-12 rounded-xl object-contain">
-                  <img src={publicAsset('img/login_logo.png')} alt="DigiFile logo" />
-                </div>
-                <span className="text-2xl font-black tracking-tighter text-gray-900">DigiFile</span>
-              </div>
-              <div className="space-y-1">
-                <CardTitle className="text-xl font-bold text-gray-900">Welcome Back</CardTitle>
-                <CardDescription className="text-sm text-gray-500 font-medium">
-                  Please sign in to access your dashboard
-                </CardDescription>
-              </div>
-            </CardHeader>
+            <AuthCardHeader title="Welcome Back" description="Please sign in to access your dashboard" />
             
             <CardContent className="px-8">
               <form onSubmit={handleSubmit} className="space-y-6">

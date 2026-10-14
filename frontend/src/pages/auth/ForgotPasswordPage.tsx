@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react';
 import { publicAsset } from '@/lib/app-path';
-import { ArrowLeft, Building2, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Building2, Loader2 } from 'lucide-react';
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,11 +12,9 @@ import { cn } from "@/lib/utils";
 import { 
   Card, 
   CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle,
   CardFooter
 } from "@/components/ui/card";
+import { AuthCardHeader, AuthSuccessMessage, AuthSystemIntroduction } from "@/components/auth/AuthSharedSections";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -72,16 +70,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         <div className="z-20 flex flex-col items-start justify-center flex-1 text-left">
-          <div className="max-w-xl space-y-6">
-            <h1 className="text-6xl font-bold leading-tight tracking-tight text-white uppercase sm:normal-case">
-              Digitized Filing System.
-            </h1>
-            <p className="text-xl text-white font-medium leading-relaxed">
-              The official document management system of
-              <br />
-              <span className="whitespace-nowrap">Central Mindanao University</span>
-            </p>
-          </div>
+          <AuthSystemIntroduction />
         </div>
 
         <div className="z-20 flex flex-col gap-4">
@@ -93,41 +82,26 @@ export default function ForgotPasswordPage() {
       <div className="flex-1 flex items-center justify-center p-8 bg-gray-50/50 relative">
         <div className="w-full max-w-[520px] space-y-8">
           <Card className="shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-none rounded-2xl bg-white p-2">
-            <CardHeader className="space-y-4 py-8 flex flex-col items-center text-center">
-              <div className="flex items-center">
-                <div className="h-12 w-12 rounded-xl object-contain">
-                  <img src={publicAsset('img/login_logo.png')} alt="DigiFile logo" />
-                </div>
-                <span className="text-2xl font-black tracking-tighter text-gray-900">DigiFile</span>
-              </div>
-              <div className="space-y-1">
-                <CardTitle className="text-xl font-bold text-gray-900">Reset Password</CardTitle>
-                <CardDescription className="text-sm text-gray-500 font-medium">
-                  Enter your email to receive a password reset link
-                </CardDescription>
-              </div>
-            </CardHeader>
+            <AuthCardHeader title="Reset Password" description="Enter your email to receive a password reset link" />
             
             <CardContent className="px-8">
               {isSuccess ? (
-                <div className="py-6 flex flex-col items-center justify-center space-y-4 text-center animate-in fade-in zoom-in">
-                  <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                    <CheckCircle2 className="h-8 w-8 text-green-600" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">Link Sent!</h3>
-                  <p className="text-sm text-gray-500 max-w-sm">
+                <AuthSuccessMessage
+                  title="Link Sent!"
+                  action={
+                    <Link
+                      to="/login"
+                      className={cn(
+                        buttonVariants({ variant: "outline" }),
+                        "mt-6 w-full flex items-center justify-center rounded-xl py-6 font-bold text-sm h-12"
+                      )}
+                    >
+                      Return to Login
+                    </Link>
+                  }
+                >
                     If an account exists for <span className="font-semibold text-gray-900">{email}</span>, a reset link has been sent. Please check your inbox.
-                  </p>
-                  <Link 
-                    to="/login"
-                    className={cn(
-                      buttonVariants({ variant: "outline" }),
-                      "mt-6 w-full flex items-center justify-center rounded-xl py-6 font-bold text-sm h-12"
-                    )}
-                  >
-                    Return to Login
-                  </Link>
-                </div>
+                </AuthSuccessMessage>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="space-y-2">

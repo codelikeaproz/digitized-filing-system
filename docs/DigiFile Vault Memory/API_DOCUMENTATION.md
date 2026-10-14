@@ -1776,7 +1776,7 @@ Provides on-demand database and media file downloads for disaster recovery and m
 **Content-Type:** `application/zip`
 
 Archives all files under `MEDIA_ROOT` (uploaded PDFs, profile pictures, etc.).
-Uploaded PDFs are organized in the ZIP as `documents/<Office>/<Suboffice>/<Folder>/filename.pdf` instead of physical upload-date folders. Unlinked PDF files are preserved under `_unlinked/documents/`. `MEDIA_BACKUP_MANIFEST.csv` maps every readable ZIP path to its original `MEDIA_ROOT` path for recovery.
+Uploaded PDFs are organized in the ZIP as `documents/<Office>/<Suboffice>/<Folder>/filename.pdf` instead of physical upload-date folders. Unlinked PDF files are preserved under `_unlinked/documents/`. The ZIP does not include a CSV manifest.
 
 **Audit action:** `BACKUP_MEDIA_DOWNLOADED`
 

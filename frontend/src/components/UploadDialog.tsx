@@ -20,13 +20,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   UploadCloud,
   FileText,
   X,
@@ -35,10 +28,10 @@ import {
   Hash,
   MessageSquare,
   Tag,
-  FolderOpen,
 } from "lucide-react";
 import { CategorySelect } from "@/components/CategorySelect";
 import { RequisitionersEditor } from "@/components/documents/RequisitionersEditor";
+import { TargetFolderSelect } from "@/components/documents/TargetFolderSelect";
 import { cn, compareByNaturalName } from "@/lib/utils";
 import {
   serializeRequisitionersForApi,
@@ -549,26 +542,7 @@ export function UploadDialog({ open, onOpenChange, selectedFolderId, storageQuot
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  Target Folder (Physical Location)
-                </Label>
-                <Select value={targetFolderId} onValueChange={(value) => value !== null && setTargetFolderId(value)}>
-                  <SelectTrigger className="h-10 text-sm w-full">
-                    <SelectValue placeholder="Select destination folder...">
-                      {folderPaths.find((folder) => folder.id === targetFolderId)?.path}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {folderPaths.map((folder) => (
-                      <SelectItem key={folder.id} value={folder.id}>
-                        <span style={{ paddingLeft: `${folder.level * 12}px` }}>{folder.path}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <TargetFolderSelect value={targetFolderId} folders={folderPaths} onValueChange={setTargetFolderId} />
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold uppercase text-muted-foreground">
